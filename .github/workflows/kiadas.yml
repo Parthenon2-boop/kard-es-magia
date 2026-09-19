@@ -1,0 +1,68 @@
+# Kard és Mágia – kiadás: egy „v…” címke feltöltésekor elkészül a Windows- és a Mac-változat,
+# és egy GitHub-kiadásba kerül. A ParthLauncher innen tölti le és frissíti a játékot.
+name: Kard és Mágia kiadás
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Függőségek
+        run: npm install --no-audit --no-fund
+      - name: Csomagolás (Windows)
+        run: npx @electron/packager . KardEsMagia --platform=win32 --arch=x64 --out=dist --icon=build/icon.ico --overwrite --asar --ignore="^/dist" --ignore="^/\.github" --win32metadata.ProductName="Kard es Magia" --win32metadata.FileDescription="Kard es Magia"
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/KardEsMagia-win32-x64/* -DestinationPath kard_es_magia-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: kard_es_magia-windows.zip
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Függőségek
+        run: npm install --no-audit --no-fund
+      - name: Csomagolás (macOS, Intel és Apple Silicon)
+        run: npx @electron/packager . KardEsMagia --platform=darwin --arch=universal --out=dist --overwrite --asar --ignore="^/dist" --ignore="^/\.github"
+      - name: Zip
+        run: ditto -c -k --keepParent dist/KardEsMagia-darwin-universal/KardEsMagia.app kard_es_magia-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: kard_es_magia-macos.zip
+
+  kiadas:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Kard és Mágia ${{ github.ref_name }}
+          body: |
+            Kard és Mágia – roguelike kaland a katakombákban.
+            A legegyszerűbb a ParthLauncherből játszani: az letölti és frissíti.
+
+            - **kard_es_magia-windows.zip** – Windows (KardEsMagia.exe)
+            - **kard_es_magia-macos.zip** – macOS (Intel és Apple Silicon)
+          files: |
+            out/windows/kard_es_magia-windows.zip
+            out/macos/kard_es_magia-macos.zip
