@@ -121,6 +121,18 @@ function sfxShoot(){
   const g=AC.createGain();g.gain.setValueAtTime(0.22,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
   src.connect(f).connect(g).connect(masterGain);src.start(t);
 }
+// varázsgömb: csilingelő, felfelé ívelő hang
+function sfxMagic(){
+  if(!AC||muted)return;
+  const t=AC.currentTime;
+  for(const[fr,dl]of[[660,0],[990,0.04],[1320,0.08]]){
+    const o=AC.createOscillator();o.type='sine';
+    o.frequency.setValueAtTime(fr,t+dl);o.frequency.exponentialRampToValueAtTime(fr*1.6,t+dl+0.22);
+    const g=AC.createGain();g.gain.setValueAtTime(0.0001,t+dl);g.gain.exponentialRampToValueAtTime(0.09,t+dl+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dl+0.3);
+    o.connect(g).connect(masterGain);o.start(t+dl);o.stop(t+dl+0.32);
+  }
+}
 function sfxCannon(){
   if(!AC||muted)return;
   const t=AC.currentTime;
@@ -1197,18 +1209,18 @@ const MONS={
   goblin:{name:'Goblin',hp:14,atk:4,def:1,xp:12},
   skeleton:{name:'Csontváz',hp:18,atk:5,def:2,xp:18},
   orc:{name:'Ork',hp:30,atk:7,def:2,xp:30},
-  vampire:{name:'Vámpír',hp:35,atk:9,def:3,xp:55,sp:'lifesteal'},
+  vampire:{name:'Vámpír',hp:35,atk:9,def:3,mres:2,xp:55,sp:'lifesteal'},
   spider:{name:'Mérgespók',hp:22,atk:6,def:1,xp:40,sp:'poison'},
   golem:{name:'Kőgolem',hp:70,atk:10,def:8,xp:80,sp:'regen'},
-  witch:{name:'Boszorkány',hp:28,atk:12,def:2,xp:70,sp:'fireball'},
+  witch:{name:'Boszorkány',hp:28,atk:12,def:2,mres:4,xp:70,sp:'fireball'},
   assassin:{name:'Bérgyilkos',hp:25,atk:15,def:2,xp:65,sp:'crit'},
   troll:{name:'Troll',hp:55,atk:11,def:4,xp:60},
-  demon:{name:'Démon',hp:80,atk:16,def:6,xp:110,sp:'aoe'},
+  demon:{name:'Démon',hp:80,atk:16,def:6,mres:4,xp:110,sp:'aoe'},
   goblin_king:{name:'👑 Goblin Király',hp:120,atk:14,def:5,xp:300,sp:'summon',boss:true},
-  necromancer:{name:'💀 Nekromanta',hp:160,atk:18,def:6,xp:400,sp:'revive',boss:true},
+  necromancer:{name:'💀 Nekromanta',hp:160,atk:18,def:6,mres:5,xp:400,sp:'revive',boss:true},
   stone_titan:{name:'⚙ Kő Titán',hp:240,atk:20,def:12,xp:500,sp:'regen',boss:true},
-  shadow_lord:{name:'🌑 Árnyak Ura',hp:300,atk:24,def:10,xp:700,sp:'teleport',boss:true},
-  dragon:{name:'🐉 SÁRKÁNY',hp:420,atk:32,def:15,xp:1500,sp:'aoe',boss:true},
+  shadow_lord:{name:'🌑 Árnyak Ura',hp:300,atk:24,def:10,mres:6,xp:700,sp:'teleport',boss:true},
+  dragon:{name:'🐉 SÁRKÁNY',hp:420,atk:32,def:15,mres:5,xp:1500,sp:'aoe',boss:true},
 };
 const BOSS_LVL={1:'goblin_king',2:'necromancer',3:'stone_titan',4:'shadow_lord',5:'dragon'};
 const POOL={1:['goblin','skeleton'],2:['goblin','skeleton','orc','spider','vampire'],
@@ -1218,7 +1230,7 @@ function makeMon(key,x,y,diff){
   const t=MONS[key];const d=DIFF[diff];
   return{key,x,y,rx:x,ry:y,name:t.name,seed:Math.random()*100,facing:pick([-1,1]),
     maxHp:Math.round(t.hp*d.monHp),hp:Math.round(t.hp*d.monHp),
-    atk:Math.round(t.atk*d.monAtk),def:t.def,xp:t.xp,
+    atk:Math.round(t.atk*d.monAtk),def:t.def,mres:t.mres||0,xp:t.xp,
     sp:t.sp||null,boss:!!t.boss,alive:true};
 }
 function spawnMons(rooms,level,diff){
@@ -1246,19 +1258,28 @@ function spawnChests(rooms,lvl){
 }
 
 // ══════════ PLAYER ══════════
+// A három kaszt:
+//   Lovag – közelharc: +35% kardsebzés, 20% eséllyel pajzzsal felfogja az ütés felét, sok életerő
+//   Íjász – fizikai sebzés messziről: íjjal indul, +1 lőtáv, gyakori kritikus; közelről gyengébb
+//   Mágus – kék varázsgömb (5 mező): varázssebzés, amely nagyrészt átüt a páncélon; kevés életerő
 const CLASSES={
-  'Lovag':{hp:38,atk:7,def:4,col:'#70c8e8',desc:'Nehézpáncél mester, extra védelem tekercsekből.'},
-  'Mágus':{hp:22,atk:13,def:1,col:'#c070f0',desc:'Pusztító varázserő, tekercs hatás kétszeres.'},
-  'Íjász':{hp:30,atk:8,def:2,col:'#70d860',desc:'Éles szem, gyakori kritikus, íjjal messziről lő.'},
+  'Lovag':{hp:46,atk:9,def:5,col:'#70c8e8',desc:'A közelharc mestere: +35% kardsebzés, és 20% eséllyel pajzzsal felfogja az ütés felét.'},
+  'Mágus':{hp:26,atk:4,mag:11,def:1,col:'#6aa8ff',desc:'Kék varázsgömböt lő 5 mezőre: varázssebzés, amely átüt a páncélon. Kevés életereje van.'},
+  'Íjász':{hp:32,atk:6,def:2,col:'#70d860',desc:'Fizikai sebzés messziről: íjjal indul, +1 lőtáv, gyakori kritikus. Közelről gyengébb.'},
 };
+const MAGE_RANGE=5,MELEE_MULT={'Lovag':1.35,'Íjász':0.7,'Mágus':0.6};
+// varázssebzés: a páncél (védelem) csak harmadában számít, a varázsellenállás teljesen
+function magicDmg(mag,m){return Math.max(1,mag+rnd(-1,3)-Math.floor(m.def/3)-(m.mres||0));}
 function createPlayer(cls){
   const s=CLASSES[cls];
-  return{cls,x:0,y:0,rx:0,ry:0,col:s.col,facing:1,
-    maxHp:s.hp,hp:s.hp,baseAtk:s.atk,baseDef:s.def,
+  const p={cls,x:0,y:0,rx:0,ry:0,col:s.col,facing:1,
+    maxHp:s.hp,hp:s.hp,baseAtk:s.atk,baseMag:s.mag||0,baseDef:s.def,
     lives:3,weapon:null,armor:null,inventory:[],
     gold:0,xp:0,plvl:1,xpNext:60,
     alive:true,msgs:[],explored:new Set(),poison:0,lunge:0,lungeDx:0,lungeDy:0,
     get atk(){return this.baseAtk+(this.weapon?.dmg||0);},
+    // a mágus varázsereje: a fegyver fele is hozzáadódik (a rúnakard jobban vezeti a mágiát)
+    get mag(){return this.baseMag+Math.floor((this.weapon?.dmg||0)*0.5);},
     get def(){return this.baseDef+(this.armor?.def||0);},
     addMsg(t,c='#c8a870'){this.msgs.push({t,c});if(this.msgs.length>7)this.msgs.shift();},
     gainXP(n,xm){
@@ -1266,12 +1287,17 @@ function createPlayer(cls){
       while(this.xp>=this.xpNext){
         this.xp-=this.xpNext;this.plvl++;
         this.xpNext=Math.floor(this.xpNext*1.6);
-        this.maxHp+=10;this.hp=Math.min(this.hp+10,this.maxHp);
-        this.baseAtk+=2;this.baseDef++;
+        const hpUp=this.cls==='Lovag'?13:this.cls==='Íjász'?10:8;
+        this.maxHp+=hpUp;this.hp=Math.min(this.hp+hpUp,this.maxHp);
+        if(this.cls==='Mágus'){this.baseMag+=3;this.baseAtk+=1;}else this.baseAtk+=2;
+        this.baseDef++;
         this.addMsg(`⬆ Szint ${this.plvl}!`,P.parchGold);
         sfxLevelUp();
       }
     }};
+  // az íjász íjjal kezdi a kalandot
+  if(cls==='Íjász'){const b=ITEM_BASES.find(i=>i.name==='Faíj');if(b)p.weapon=makeItem(b,'common',1);}
+  return p;
 }
 
 // ══════════ FX (projectiles, flashes) ══════════
@@ -1279,10 +1305,36 @@ let fx=[];
 function addFx(o){fx.push({...o,t0:performance.now()});}
 function drawFx(camX,camY){
   const now=performance.now();
-  fx=fx.filter(f=>now-f.t0<f.dur);
+  fx=fx.filter(f=>now-f.t0<f.dur+(f.delay||0));
   for(const f of fx){
-    const p=(now-f.t0)/f.dur;
-    if(f.type==='arrow'||f.type==='ball'){
+    if(now-f.t0<(f.delay||0))continue;   // késleltetett hatás (pl. a gömb becsapódása)
+    const p=(now-f.t0-(f.delay||0))/f.dur;
+    if(f.type==='orb'){
+      // kék varázsgömb: izzó mag, fényudvar és szikrázó csóva
+      const x=(f.x0+(f.x1-f.x0)*p-camX)*TILE+TILE/2;
+      const y=(f.y0+(f.y1-f.y0)*p-camY)*TILE+TILE/2;
+      const ddx=(f.x1-f.x0),ddy=(f.y1-f.y0),len=Math.hypot(ddx,ddy)||1;
+      ctx.save();ctx.globalCompositeOperation='lighter';
+      for(let i=1;i<=5;i++){
+        const tx=x-ddx/len*i*TILE*0.16,ty=y-ddy/len*i*TILE*0.16;
+        ctx.fillStyle=`rgba(80,150,255,${0.28-i*0.045})`;
+        ctx.beginPath();ctx.arc(tx,ty,TILE*(0.16-i*0.018),0,7);ctx.fill();
+      }
+      const g=ctx.createRadialGradient(x,y,1,x,y,TILE*0.55);
+      g.addColorStop(0,'rgba(200,230,255,0.95)');g.addColorStop(0.3,'rgba(90,160,255,0.75)');g.addColorStop(1,'rgba(30,70,200,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,TILE*0.55,0,7);ctx.fill();
+      ctx.restore();
+    }else if(f.type==='mburst'){
+      const x=(f.x-camX)*TILE+TILE/2,y=(f.y-camY)*TILE+TILE/2;
+      ctx.save();ctx.globalCompositeOperation='lighter';
+      const r=TILE*(0.25+p*0.8);
+      const g=ctx.createRadialGradient(x,y,1,x,y,r);
+      g.addColorStop(0,`rgba(180,215,255,${0.7*(1-p)})`);g.addColorStop(1,'rgba(40,90,255,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();
+      ctx.strokeStyle=`rgba(140,190,255,${0.8*(1-p)})`;ctx.lineWidth=2;
+      for(let i=0;i<6;i++){const a=i/6*Math.PI*2+p;ctx.beginPath();ctx.moveTo(x+Math.cos(a)*r*0.4,y+Math.sin(a)*r*0.4);ctx.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r);ctx.stroke();}
+      ctx.restore();
+    }else if(f.type==='arrow'||f.type==='ball'){
       const x=(f.x0+(f.x1-f.x0)*p-camX)*TILE+TILE/2;
       const y=(f.y0+(f.y1-f.y0)*p-camY)*TILE+TILE/2;
       if(f.type==='arrow'){
@@ -1570,7 +1622,8 @@ function monSpecial(m,w){
   }
 }
 function monAttack(m,w){
-  const p=w.player;const dmg=calcDmg(m.atk,p.def);
+  const p=w.player;let dmg=calcDmg(m.atk,p.def);
+  if(p.cls==='Lovag'&&Math.random()<0.2){dmg=Math.ceil(dmg/2);p.addMsg('🛡 Pajzs! Felfogtad az ütés felét.','#80a8e0');}
   p.hp-=dmg;p.addMsg(`${m.name}: -${dmg}`,P.vein);
   addFx({type:'dmgnum',x:p.x,y:p.y,txt:`-${dmg}`,col:'#ff5040',dur:700});
   sfxGrowl();sfxHit();
@@ -1582,8 +1635,8 @@ function monAttack(m,w){
   }
 }
 function pAttack(p,m,w){
-  let dmg=calcDmg(p.atk,m.def);
-  if(p.cls==='Íjász'&&Math.random()<0.28){dmg=Math.floor(dmg*2.2);p.addMsg('🏹 Kritikus!',P.parchGold);}
+  // közelharc: a lovag erős, az íjász és a mágus gyengébb közelről
+  const dmg=Math.max(1,Math.round(calcDmg(p.atk,m.def)*(MELEE_MULT[p.cls]||1)));
   m.hp-=dmg;
   addFx({type:'slash',x:m.x,y:m.y,dur:250});
   addFx({type:'dmgnum',x:m.x,y:m.y,txt:`-${dmg}`,col:'#ffd060',dur:700});
@@ -1599,26 +1652,38 @@ function pAttack(p,m,w){
 // Ranged: shoot the first monster in a straight line within weapon range
 function tryRangedAttack(w,dx,dy){
   const p=w.player;const wep=p.weapon;
-  if(!wep||!wep.range||wep.range<2)return false;
-  for(let d=1;d<=wep.range;d++){
+  const mage=p.cls==='Mágus';
+  // lőtáv: a mágus varázsgömbje mindig 5 mező; a többieknek íj vagy ágyú kell (az íjász +1 mezővel lő)
+  const range=mage?MAGE_RANGE:(wep&&wep.range?wep.range+(p.cls==='Íjász'?1:0):0);
+  if(range<2)return false;
+  for(let d=1;d<=range;d++){
     const tx=p.x+dx*d,ty=p.y+dy*d;
     if(blocked(w,tx,ty))return false; // wall blocks the shot
     const m=monAt(w,tx,ty);
     if(m){
-      if(d===1)return false; // adjacent: melee instead
-      let dmg=calcDmg(p.atk,m.def);
-      if(p.cls==='Íjász'&&Math.random()<0.28){dmg=Math.floor(dmg*2.2);p.addMsg('🏹 Kritikus!',P.parchGold);}
+      if(d===1&&!mage)return false; // szomszédos: közelharc (a mágus közelről is varázsol)
+      let dmg,col;
+      if(mage){
+        dmg=magicDmg(p.mag,m);col='#8cc4ff';
+        addFx({type:'orb',x0:p.x,y0:p.y,x1:m.x,y1:m.y,dur:120+d*45});
+        addFx({type:'mburst',x:m.x,y:m.y,dur:420,delay:120+d*45});
+        sfxMagic();
+      }else{
+        dmg=calcDmg(p.atk,m.def);col='#ffd060';
+        if(p.cls==='Íjász'&&wep.subtype==='bow'&&Math.random()<0.3){dmg=Math.floor(dmg*2.2);p.addMsg('🏹 Kritikus!',P.parchGold);}
+        const isCannon=wep.subtype==='cannon';
+        addFx({type:isCannon?'ball':'arrow',x0:p.x,y0:p.y,x1:m.x,y1:m.y,dur:isCannon?300:200});
+        if(isCannon){sfxCannon();addFx({type:'boom',x:m.x,y:m.y,dur:350});}
+        else sfxShoot();
+      }
       m.hp-=dmg;
-      const isCannon=wep.subtype==='cannon';
-      addFx({type:isCannon?'ball':'arrow',x0:p.x,y0:p.y,x1:m.x,y1:m.y,dur:isCannon?300:200});
-      addFx({type:'dmgnum',x:m.x,y:m.y,txt:`-${dmg}`,col:'#ffd060',dur:700});
-      if(isCannon){sfxCannon();addFx({type:'boom',x:m.x,y:m.y,dur:350});}
-      else sfxShoot();
+      addFx({type:'dmgnum',x:m.x,y:m.y,txt:`-${dmg}`,col,dur:700});
+      p.facing=dx!==0?dx:p.facing;
       if(m.hp<=0){
         m.alive=false;p.gainXP(m.xp,DIFF[w.diff].xpMult);
         p.addMsg(`${m.name} elesett! +${m.xp}xp`,P.parchGold);
         if(m.boss)p.addMsg('⚜ BOSS LEGYŐZVE!',P.legendary);
-      }else{p.addMsg(`Lövés: ${m.name} -${dmg}`,'#e0a040');sfxGrowl();}
+      }else{p.addMsg(`${mage?'Varázsgömb':'Lövés'}: ${m.name} -${dmg}`,mage?'#8cc4ff':'#e0a040');sfxGrowl();}
       advanceTurn(w);
       return true;
     }
@@ -1668,7 +1733,10 @@ function doUseItem(w,item){
   if(item.subtype==='heal'){const h=Math.min(item.heal,p.maxHp-p.hp);p.hp+=h;p.addMsg(`+${h} HP`,'#40c860');rem();}
   else if(item.subtype==='maxheal'){p.maxHp+=item.maxHpUp;p.hp=Math.min(p.hp+item.heal,p.maxHp);p.addMsg(`MaxHP +${item.maxHpUp}!`,'#40c860');rem();}
   else if(item.subtype==='fireball'){let c=0;for(const m of w.mons){if(!m.alive||!w.vis.has(`${m.x},${m.y}`))continue;const d=item.damage+rnd(0,15);m.hp-=d;addFx({type:'boom',x:m.x,y:m.y,dur:400});if(m.hp<=0){m.alive=false;p.gainXP(m.xp,DIFF[w.diff].xpMult);}c++;}p.addMsg(`🔥 Tűzgömb! ${c} szörny`,'#e06020');sfxCannon();rem();}
-  else if(item.subtype==='atk_up'){const up=p.cls==='Mágus'?item.atkUp*2:item.atkUp;p.baseAtk+=up;p.addMsg(`ATK +${up} örökre!`,'#e05050');rem();}
+  else if(item.subtype==='atk_up'){
+    if(p.cls==='Mágus'){const up=item.atkUp*2;p.baseMag+=up;p.addMsg(`VARÁZSERŐ +${up} örökre!`,'#8cc4ff');}
+    else{p.baseAtk+=item.atkUp;p.addMsg(`ATK +${item.atkUp} örökre!`,'#e05050');}
+    rem();}
   else if(item.subtype==='def_up'){const up=p.cls==='Lovag'?item.defUp+2:item.defUp;p.baseDef+=up;p.addMsg(`DEF +${up} örökre!`,'#5080e0');rem();}
   else if(item.slot==='weapon'){if(p.weapon)p.inventory.push(p.weapon);p.weapon=item;rem();p.addMsg(`Felvéve: ${item.label}`,'#a0c8e0');}
   else if(item.slot==='armor'){if(p.armor)p.inventory.push(p.armor);p.armor=item;rem();p.addMsg(`Felvéve: ${item.label}`,'#8090c0');}
@@ -1910,7 +1978,7 @@ function drawHUD(){
     ftxt(`${p.cls} Lv${p.plvl}`,8+bw1+62,y0+18,P.parchGold,10);
     ftxt(`M${world.dungeonLevel}/${MAX_LEVEL}`,W-8,y0+18,P.inkDark,10,'right');
     bar(8,y0+26,bw1,7,xpPct,'#404090','#141428');
-    ftxt(`⚔${p.atk} 🛡${p.def}`,8+bw1+8,y0+40,P.ink,10);
+    ftxt(p.cls==='Mágus'?`✦${p.mag} 🛡${p.def}`:`⚔${p.atk} 🛡${p.def}`,8+bw1+8,y0+40,P.ink,10);
     const msgs=p.msgs.slice(-2);
     for(let i=0;i<msgs.length;i++){
       ctx.save();ctx.beginPath();ctx.rect(8,y0+44,W-16,40);ctx.clip();
@@ -1925,7 +1993,7 @@ function drawHUD(){
     ftxt('♥'.repeat(p.lives)+'♡'.repeat(3-p.lives),10,y0+58,P.vein,15);
     const c2=210;
     ftxt(`${p.cls}  ·  Lv.${p.plvl}`,c2,y0+22,P.parchGold,12);
-    ftxt(`⚔ ${p.atk}    🛡 ${p.def}`,c2,y0+42,P.ink,11);
+    ftxt(p.cls==='Mágus'?`✦ ${p.mag}    🛡 ${p.def}`:`⚔ ${p.atk}    🛡 ${p.def}`,c2,y0+42,P.ink,11);
     ftxt(`Mélység ${world.dungeonLevel}/${MAX_LEVEL} · ${DIFF[world.diff].label} · Kör ${world.turn}`,c2,y0+62,P.inkDark,10);
     const c3=470;
     ftxt(`⚔ ${p.weapon?p.weapon.label:'Puszta kéz'}`,c3,y0+22,p.weapon?p.weapon.R.border:P.inkDark,10);
@@ -2535,7 +2603,7 @@ function drawCharSel(){
     const spriteSize=Math.min(150,ph*0.36);
     CLASS_SPRITES[name](W/2,oy+ph*0.28,spriteSize,tick);
     ftxt(name,W/2,oy+ph*0.52,P.parchGold,22,'center');
-    const stats=[['♥',s.hp,'#d04030'],['⚔',s.atk,'#e09030'],['🛡',s.def,'#5080d0']];
+    const stats=[['♥',s.hp,'#d04030'],s.mag?['✦',s.mag,'#6aa8ff']:['⚔',s.atk,'#e09030'],['🛡',s.def,'#5080d0']];
     const stW=pw/3;
     for(let j=0;j<3;j++){
       const sx2=ox+stW*j+stW/2;
@@ -2574,7 +2642,7 @@ function drawCharSel(){
       panel(bx,by,bw2,bh,sel?'#2e2210':'#1a1206',sel?s.col:P.parchEdge,sel?2.5:1,10);
       CLASS_SPRITES[name](bx+bw2/2,by+bh*0.24,Math.min(110,bh*0.3),tick);
       ftxt(name,bx+bw2/2,by+bh*0.46,sel?P.parchGold:P.ink,18,'center');
-      const stats=[['♥ Életerő',s.hp,'#d04030'],['⚔ Támadás',s.atk,'#e09030'],['🛡 Védelem',s.def,'#5080d0']];
+      const stats=[['♥ Életerő',s.hp,'#d04030'],s.mag?['✦ Varázserő',s.mag,'#6aa8ff']:['⚔ Támadás',s.atk,'#e09030'],['🛡 Védelem',s.def,'#5080d0']];
       for(let j=0;j<3;j++){
         ftxt(stats[j][0],bx+18,by+bh*0.56+j*24,stats[j][2],11);
         ftxt(String(stats[j][1]),bx+bw2-18,by+bh*0.56+j*24,P.ink,12,'right');

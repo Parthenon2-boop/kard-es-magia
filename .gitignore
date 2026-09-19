@@ -1,3 +1,8 @@
-node_modules/
-dist/
+# Godot
+.godot/
+/android/
+# kiadás
 *.zip
+/export/
+# képernyőképek (ellenőrzéshez)
+_shots/

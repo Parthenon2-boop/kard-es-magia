@@ -1,68 +1,91 @@
-# Kard és Mágia – kiadás: egy „v…” címke feltöltésekor elkészül a Windows- és a Mac-változat,
-# és egy GitHub-kiadásba kerül. A ParthLauncher innen tölti le és frissíti a játékot.
 name: Kard és Mágia kiadás
+
+# Mit csinál?
+#   Godot 4.7.2-vel elkészíti a Windows .exe-t és a macOS .app-ot, majd GitHub-kiadásként
+#   (Release) közzéteszi őket. A ParthLauncher innen tölti le és frissíti a játékot.
+#
+# Mikor fut?
+#   1) ha "v" kezdetű címkét (tag) küldesz fel:   git tag v2.0 && git push origin v2.0
+#   2) kézzel: a tároló Actions fülén -> "Kard és Mágia kiadás" -> "Run workflow"
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      verzio:
+        description: "A kiadás verziója (pl. v2.0)"
+        required: true
+        default: "v2.0"
 
 permissions:
-  contents: write
+  contents: write        # a kiadás közzétételéhez kell
+
+env:
+  GODOT_VERSION: "4.7.2"
 
 jobs:
-  windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Függőségek
-        run: npm install --no-audit --no-fund
-      - name: Csomagolás (Windows)
-        run: npx @electron/packager . KardEsMagia --platform=win32 --arch=x64 --out=dist --icon=build/icon.ico --overwrite --asar --ignore="^/dist" --ignore="^/\.github" --win32metadata.ProductName="Kard es Magia" --win32metadata.FileDescription="Kard es Magia"
-      - name: Zip
-        shell: pwsh
-        run: Compress-Archive -Path dist/KardEsMagia-win32-x64/* -DestinationPath kard_es_magia-windows.zip
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows
-          path: kard_es_magia-windows.zip
-
-  macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Függőségek
-        run: npm install --no-audit --no-fund
-      - name: Csomagolás (macOS, Intel és Apple Silicon)
-        run: npx @electron/packager . KardEsMagia --platform=darwin --arch=universal --out=dist --overwrite --asar --ignore="^/dist" --ignore="^/\.github"
-      - name: Zip
-        run: ditto -c -k --keepParent dist/KardEsMagia-darwin-universal/KardEsMagia.app kard_es_magia-macos.zip
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos
-          path: kard_es_magia-macos.zip
-
   kiadas:
-    needs: [windows, macos]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Kód letöltése
+        uses: actions/checkout@v4
+
+      - name: Godot és az export sablonok telepítése
+        run: |
+          set -e
+          BASE="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          wget -q "$BASE/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -O godot.zip
+          wget -q "$BASE/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -O templates.tpz
+          unzip -q godot.zip
+          chmod +x Godot_v${GODOT_VERSION}-stable_linux.x86_64
+          sudo mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          unzip -q templates.tpz
+          mv templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
+          godot --version
+
+      - name: Erőforrások előkészítése (import)
+        run: |
+          godot --headless --path . --import || true
+          godot --headless --path . --import || true
+
+      - name: Tesztek (pályák bejárhatósága, harc, tárgyak)
+        run: godot --headless --path . -s res://tests/run_tests.gd
+
+      - name: Exportálás Windowsra (a .pck az .exe-be ágyazva)
+        run: |
+          mkdir -p build/windows
+          godot --headless --path . --export-release "Windows Desktop" "$PWD/build/windows/KardEsMagia.exe"
+          ls -la build/windows
+
+      - name: Exportálás macOS-re (a Godot a .app csomagot zip-ként készíti el)
+        run: |
+          mkdir -p build/macos
+          godot --headless --path . --export-release "macOS" "$PWD/build/macos/kard_es_magia-macos.zip"
+          ls -la build/macos
+
+      - name: Csomagolás
+        run: |
+          cd build/windows && zip -r ../../kard_es_magia-windows.zip . && cd ../..
+          cp build/macos/kard_es_magia-macos.zip .
+          ls -la *.zip
+
+      - name: Kiadás közzététele
+        uses: softprops/action-gh-release@v2
         with:
-          path: out
-      - uses: softprops/action-gh-release@v2
-        with:
-          name: Kard és Mágia ${{ github.ref_name }}
+          tag_name: ${{ github.event.inputs.verzio || github.ref_name }}
+          name: Kard és Mágia ${{ github.event.inputs.verzio || github.ref_name }}
+          make_latest: true
           body: |
-            Kard és Mágia – roguelike kaland a katakombákban.
+            Kard és Mágia – roguelike kaland a katakombákban (Godot 4, natív változat).
             A legegyszerűbb a ParthLauncherből játszani: az letölti és frissíti.
 
-            - **kard_es_magia-windows.zip** – Windows (KardEsMagia.exe)
-            - **kard_es_magia-macos.zip** – macOS (Intel és Apple Silicon)
+            - **kard_es_magia-windows.zip** – Windows (KardEsMagia.exe, telepítés nélkül)
+            - **kard_es_magia-macos.zip** – macOS (Intel és Apple Silicon, univerzális)
+
+            Macen az első indításnál: jobb klikk az alkalmazáson → **Megnyitás** (az alkalmazás
+            nincs aláírva, ezért a rendszer rákérdez).
           files: |
-            out/windows/kard_es_magia-windows.zip
-            out/macos/kard_es_magia-macos.zip
+            kard_es_magia-windows.zip
+            kard_es_magia-macos.zip
