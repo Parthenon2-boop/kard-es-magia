@@ -24,11 +24,16 @@ var plvl := 1
 var xp_next := 60
 var alive := true
 var msgs: Array = []    # {t, c}
+var msg_seq := 0        # hányadik üzenet (a HUD ebből tudja, hogy változott a lista)
 var poison := 0
 var lunge := 0.0
 var lunge_dx := 0
 var lunge_dy := 0
 var on_level_up: Callable = Callable()
+var gold := 0            # a szörnyekből hulló, játékon belüli arany (a kereskedőnél költhető)
+var perks := {}          # képesség-azonosító -> hányszor vette fel
+var perk_seq := 0        # nő minden új képességnél (a HUD/táska ebből tudja, hogy változott)
+var steps := 0           # megtett lépések (a "Gyors léptek" képességhez)
 
 
 static func create(c: String) -> Player:
@@ -58,16 +63,30 @@ var mag: int:
 var def: int:
 	get: return base_def + (armor.def if armor else 0) + (shield.def if shield else 0)
 
-## regeneráció körönként (nagyon ritka / legendás páncél és pajzs összeadódik)
+## regeneráció körönként (nagyon ritka / legendás páncél és pajzs + a "Gyors gyógyulás" képesség)
 var regen: int:
-	get: return (armor.regen if armor else 0) + (shield.regen if shield else 0)
+	get: return (armor.regen if armor else 0) + (shield.regen if shield else 0) + perk("regen")
 
 var lifesteal: float:
-	get: return weapon.lifesteal if weapon else 0.0
+	get: return (weapon.lifesteal if weapon else 0.0) + 0.05 * perk("vamp")
+
+## a lovag pajzsa: alap 20% + a "Pajzsmester" képességenként 5%
+var block_chance: float:
+	get: return (0.20 + 0.05 * perk("blokk")) if cls == "Lovag" else 0.0
+
+## az íjász kritikusa: alap 30% + a "Sasszem" képességenként 8%
+var crit_chance: float:
+	get: return 0.30 + 0.08 * perk("sasszem")
+
+
+## hányszor van meg egy képesség
+func perk(id: String) -> int:
+	return int(perks.get(id, 0))
 
 
 func add_msg(t: String, c: String = "#c8a870") -> void:
 	msgs.append({"t": t, "c": c})
+	msg_seq += 1
 	if msgs.size() > 7:
 		msgs.pop_front()
 

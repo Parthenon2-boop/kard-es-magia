@@ -315,10 +315,14 @@ const FEATHER := 1.0
 var recording := false
 
 
+static var stat_polys := 0
+
+
 func flush() -> void:
 	if recording:
 		return
 	if _bi.size() > 0:
+		stat_polys += 1
 		RenderingServer.canvas_item_add_triangle_array(ci, _bi, _bp, _bc)
 	_bp = PackedVector2Array()
 	_bc = PackedColorArray()
@@ -658,9 +662,30 @@ static func font_for(mono: bool) -> Font:
 	return f
 
 
+## A szövegszélesség lekérdezése drága (betűkészlet-keresés, tartalékbetűk), ezért gyorsítótárazzuk:
+## ugyanaz a szöveg ugyanakkora mérettel képkockánként sokszor is előfordul (ftxt_fit, wrap, ls_text).
+static var _m_cache := {}
+
+
 static func measure(s: String, sz: float, mono := false) -> float:
+	var size := maxi(1, int(roundf(sz)))
+	var bucket: Dictionary = _m_cache.get(size * 2 + (1 if mono else 0), {})
+	var v: Variant = bucket.get(s)
+	if v != null:
+		return v
 	var f := font_for(mono)
-	return f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, maxi(1, int(roundf(sz)))).x
+	var w := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	if bucket.is_empty():
+		_m_cache[size * 2 + (1 if mono else 0)] = bucket
+	elif bucket.size() > 3000:
+		bucket.clear()
+	bucket[s] = w
+	return w
+
+
+## a betűkészlet cseréjekor (indítás) a gyorsítótár érvénytelen
+static func clear_font_cache() -> void:
+	_m_cache.clear()
 
 
 ## Az eredeti ftxt(str,x,y,col,sz,align,font): félkövér szöveg az alapvonalra.
@@ -669,13 +694,14 @@ func ftxt(s: String, x: float, y: float, c: Variant, sz: float, align := "left",
 		return
 	var f := font_for(mono)
 	var size := maxi(1, int(roundf(sz)))
-	var cc: Color = col(c) if not (col(c) is Grad) else (col(c) as Grad).cols[0]
+	var cv: Variant = col(c)
+	var cc: Color = (cv as Grad).cols[0] if cv is Grad else cv
 	cc.a *= alpha
 	if cc.a <= 0.003:
 		return
 	var ox := x
 	if align != "left":
-		var wd := f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		var wd := measure(s, sz, mono)
 		ox -= wd / 2.0 if align == "center" else wd
 	flush()
 	if xf != Transform2D.IDENTITY:
@@ -823,30 +849,111 @@ func ell(x: float, y: float, rx: float, ry: float, rot := 0.0) -> void:
 
 # ══════════ FELVÉTEL / VISSZAJÁTSZÁS (gyorsítótár a bonyolult, ritkán változó rajzokhoz) ══════════
 ## A felvétel a helyi (0,0) körüli koordinátákban készül; visszajátszáskor egy transzformációval kerül a helyére.
+var _rec_stash: Array = []
+
+
+## A felvétel nem üríti a folyamatban lévő köteget, csak félreteszi: így egy gyorsítótár-hiány
+## sem szakítja szét a képkocka kötegeit.
+## FIGYELEM: felvétel közben csak rajzolt alakzat készülhet — a szöveg (ftxt) és a textúra (tex)
+## közvetlenül a vászonra megy, így azok nem gyorsítótárazhatók.
 func rec_begin() -> void:
-	flush()
+	_rec_stash.append([_bp, _bc, _bi])
+	_bp = PackedVector2Array()
+	_bc = PackedColorArray()
+	_bi = PackedInt32Array()
 	recording = true
 	save()
 	xf = Transform2D.IDENTITY
 	alpha = 1.0
 
 
+## A felvételt "háromszög-levessé" alakítjuk (minden háromszögnek saját három csúcsa lesz).
+## Így visszajátszáskor nem kell indexeket eltolni — az kockánkénti GDScript-ciklust jelentene.
 func rec_end() -> Array:
-	var r := [_bp, _bc, _bi]
-	_bp = PackedVector2Array()
-	_bc = PackedColorArray()
-	_bi = PackedInt32Array()
-	recording = false
+	var n := _bi.size()
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
+	pts.resize(n)
+	cols.resize(n)
+	for i in n:
+		var k := _bi[i]
+		pts[i] = _bp[k]
+		cols[i] = _bc[k]
+	var r := [pts, cols]
+	var s: Array = _rec_stash.pop_back()
+	_bp = s[0]
+	_bc = s[1]
+	_bi = s[2]
+	recording = not _rec_stash.is_empty()
 	restore()
 	return r
 
 
-func replay(r: Array, t: Transform2D) -> void:
-	if (r[2] as PackedInt32Array).is_empty():
+# ── általános rajz-gyorsítótár: kulcs -> felvett háló ──
+static var _rec_cache := {}
+
+
+func rec_cached(key: Variant, builder: Callable) -> Array:
+	var r: Variant = _rec_cache.get(key)
+	if r == null:
+		if _rec_cache.size() > 2000:
+			_rec_cache.clear()
+		rec_begin()
+		builder.call()
+		r = rec_end()
+		_rec_cache[key] = r
+	return r
+
+
+## gyorsítótárazott rajz kirakása: a (0,0) körül felvett háló a megadott pontra tolva
+func blit(key: Variant, builder: Callable, x: float, y: float) -> void:
+	replay(rec_cached(key, builder), Transform2D(0.0, Vector2(x, y)))
+
+
+## Ugyanaz, de megadott erősséggel. Olyan (lüktető) színátmenetekhez való, amelyeknek MINDEN
+## színpontja arányosan halványul: ilyenkor elég teljes erővel felvenni a hálót, és a
+## pillanatnyi erősséget alfaként ráadni — a kép pontosan ugyanaz, de nem kell képkockánként
+## újraszámolni a színátmenet több száz csúcsát.
+func blit_a(key: Variant, builder: Callable, x: float, y: float, a: float) -> void:
+	if a <= 0.003:
 		return
-	flush()
-	var pts: PackedVector2Array = (xf * t) * (r[0] as PackedVector2Array)
-	RenderingServer.canvas_item_add_triangle_array(ci, r[2], pts, r[1])
+	var keep := alpha
+	alpha = a
+	replay(rec_cached(key, builder), Transform2D(0.0, Vector2(x, y)))
+	alpha = keep
+
+
+## Növekvő számsor (0,1,2,...): egy darabja pont a "base, base+1, base+2, ..." indexlistát adja,
+## így a visszajátszáshoz egyetlen GDScript-ciklus sem kell.
+static var _seq := PackedInt32Array()
+
+
+static func _seq_at_least(n: int) -> void:
+	var o := _seq.size()
+	if o >= n:
+		return
+	_seq.resize(maxi(n, o * 2))
+	for i in range(o, _seq.size()):
+		_seq[i] = i
+
+
+## A felvett háló a MOSTANI kötegbe kerül, nem külön rajzhívásként: egy köteg átadása a
+## grafikus meghajtónak (ANGLE/D3D11) nagyságrendekkel drágább, mint néhány ezer csúcs hozzáfűzése.
+## A felvétel háromszög-levesként (index nélkül) áll, ezért az összefűzés csak tömbmásolás.
+func replay(r: Array, t: Transform2D) -> void:
+	var pts: PackedVector2Array = r[0]
+	var n := pts.size()
+	if n == 0:
+		return
+	var base := _bp.size()
+	_bp.append_array((xf * t) * pts)
+	if alpha >= 0.999:
+		_bc.append_array(r[1])
+	else:
+		for cc in (r[1] as PackedColorArray):
+			_bc.append(Color(cc.r, cc.g, cc.b, cc.a * alpha))
+	_seq_at_least(base + n)
+	_bi.append_array(_seq.slice(base, base + n))
 
 
 ## bp + moveTo + lineTo + stroke
@@ -867,6 +974,45 @@ func poly(coords: Array) -> void:
 		i += 2
 	cp()
 	fill()
+
+
+# ══════════ GYORSÍTÓTÁRAZOTT ALAPFORMÁK ══════════
+## Egy lekerekített téglalap kirajzolása (útvonal, háromszögelés, élsimítás) sok apró lépés.
+## A listákban ugyanaz a forma sokszor ismétlődik, ezért egyszer vesszük fel, utána csak eltoljuk.
+func rrect_fill_c(x: float, y: float, w: float, h: float, r: float, colr: Variant) -> void:
+	var cc: Variant = col(colr)
+	if cc is Grad:   # színátmenetet nem gyorsítótárazunk (minden hívásnál új objektum)
+		fs(colr)
+		rrect(x, y, w, h, r)
+		fill()
+		return
+	blit("rf|%d|%d|%d|%s" % [int(roundf(w * 2)), int(roundf(h * 2)), int(roundf(r * 2)), cc],
+		func() -> void:
+			fs(colr)
+			rrect(0, 0, w, h, r)
+			fill(), x, y)
+
+
+func rrect_stroke_c(x: float, y: float, w: float, h: float, r: float, lwv: float, colr: Variant) -> void:
+	var cc: Variant = col(colr)
+	if cc is Grad:
+		ss(colr)
+		lw(lwv)
+		rrect(x, y, w, h, r)
+		stroke()
+		return
+	blit("rs|%d|%d|%d|%d|%s" % [int(roundf(w * 2)), int(roundf(h * 2)), int(roundf(r * 2)), int(roundf(lwv * 4)), cc],
+		func() -> void:
+			ss(colr)
+			lw(lwv)
+			rrect(0, 0, w, h, r)
+			stroke(), x, y)
+
+
+## panel (háttér + keret) gyorsítótárból
+func panel_c(x: float, y: float, w: float, h: float, bg: Variant, border: Variant, bw := 2.0, r := 8.0) -> void:
+	rrect_fill_c(x, y, w, h, r, bg)
+	rrect_stroke_c(x, y, w, h, r, bw, border)
 
 
 # ══════════ SEGÉDEK (panel, bar, orna) ══════════

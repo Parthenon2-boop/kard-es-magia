@@ -43,6 +43,7 @@ static func world_base(m: Node, c: Cv) -> void:
 	var c_wall := Color("#2e2218")
 	var c_floor := Color("#1c1610")
 	var c_stair := Color("#2a2050")
+	var moving := false
 	for sx in range(-1, cam_w + 1):
 		for sy in range(-1, cam_h + 1):
 			var tx := cx0 + sx
@@ -53,20 +54,41 @@ static func world_base(m: Node, c: Cv) -> void:
 			var is_vis := w.vis[fi] == 1
 			var is_exp := w.explored[fi] == 1
 			var target := 1.0 if is_vis else (0.36 if is_exp else 0.0)
-			fade[fi] += (target - fade[fi]) * fk
+			var dv := (target - fade[fi]) * fk
+			if absf(dv) > 0.0006:
+				moving = true
+			fade[fi] += dv
 			var lt := fade[fi]
 			if not is_exp and lt < 0.01:
 				continue
 			var tt := w.tiles[fi]
 			var px := (tx - cam.x) * T
 			var py := (ty - cam.y) * T
-			var col := c_wall if tt == Data.WALL else (c_floor if tt == Data.FLOOR else c_stair)
+			# a még meg nem talált titkos ajtó pontosan úgy néz ki, mint a fal
+			var is_wall := tt == Data.WALL or tt == Data.SECRET
+			# csempénkénti, determinisztikus árnyalat-változat (nem zaj: egy mező mindig ugyanazt
+			# kapja, így a kép nem "sercegik", de a falfelület nem lesz egyhangú)
+			var hsh := ((tx * 73856093) ^ (ty * 19349663)) & 7
+			var vv := 0.90 + float(hsh) * 0.032
+			var col := c_wall if is_wall else (c_floor if tt == Data.FLOOR else c_stair)
+			if tt != Data.STAIR:
+				col = Color(col.r * vv, col.g * vv, col.b * vv)
 			_quad(qp, qc, qi, px, py, T + 1, T + 1, col)
-			if tt == Data.WALL:
-				wall_lines.append_array([Vector2(px, py + T * 0.45), Vector2(px + T, py + T * 0.45),
-					Vector2(px + T * 0.5, py), Vector2(px + T * 0.5, py + T * 0.45),
-					Vector2(px + T * 0.25, py + T * 0.45), Vector2(px + T * 0.25, py + T),
-					Vector2(px + T * 0.75, py + T * 0.45), Vector2(px + T * 0.75, py + T)])
+			if is_wall:
+				# felső kőél (fény) és alsó árnyék: a fal így kiemelkedik a padlóból
+				_quad(qp, qc, qi, px, py, T + 1, T * 0.10, Color(col.r * 1.5, col.g * 1.46, col.b * 1.4))
+				_quad(qp, qc, qi, px, py + T * 0.88, T + 1, T * 0.12 + 1, Color(col.r * 0.5, col.g * 0.5, col.b * 0.54))
+				# futókötéses téglakötés: a függőleges hézagok soronként váltakoznak
+				if (ty & 1) == 1:
+					wall_lines.append_array([Vector2(px, py + T * 0.45), Vector2(px + T, py + T * 0.45),
+						Vector2(px + T * 0.3, py), Vector2(px + T * 0.3, py + T * 0.45),
+						Vector2(px + T * 0.7, py), Vector2(px + T * 0.7, py + T * 0.45),
+						Vector2(px + T * 0.5, py + T * 0.45), Vector2(px + T * 0.5, py + T * 0.88)])
+				else:
+					wall_lines.append_array([Vector2(px, py + T * 0.45), Vector2(px + T, py + T * 0.45),
+						Vector2(px + T * 0.5, py), Vector2(px + T * 0.5, py + T * 0.45),
+						Vector2(px + T * 0.25, py + T * 0.45), Vector2(px + T * 0.25, py + T * 0.88),
+						Vector2(px + T * 0.75, py + T * 0.45), Vector2(px + T * 0.75, py + T * 0.88)])
 			elif tt == Data.FLOOR:
 				var a := Vector2(px + 0.5, py + 0.5)
 				var b := Vector2(px + T - 0.5, py + T - 0.5)
@@ -77,6 +99,7 @@ static func world_base(m: Node, c: Cv) -> void:
 			if lt < 0.999:
 				_quad(op, oc, oi, px, py, T + 1, T + 1, rgba(8, 6, 4, (1.0 - lt) * 0.92))
 	w.fade = fade
+	m.world_fading = moving
 	c.flush()
 	var ci := c.ci
 	if qp.size() > 0:
@@ -154,10 +177,72 @@ static func world_mid(m: Node, c: Cv) -> void:
 			continue
 		var fl: float = 0.6 + 0.4 * sin(tick * 0.07 + tor["ph"])
 		c.ga(a)
-		c.ss("#5a3a10"); c.lw(2.5)
-		c.line(sx + T / 2, sy + T * 0.7, sx + T / 2, sy + T * 0.4)
-		c.fs(rgba(255, int(170 + 50 * fl), 40, 0.85 + 0.15 * fl))
-		c.ell(sx + T / 2, sy + T * 0.32, 3, 5 + 2 * fl)
+		# fáklyatartó: vaskonzol + nyél (kész hálóból)
+		c.blit("torch_h|%d" % int(T), func() -> void:
+			c.fs("#2a2018"); c.rrect(T * 0.42, T * 0.36, T * 0.16, T * 0.36, T * 0.05); c.fill()
+			c.fs("#4a3a24"); c.fill_rect(T * 0.46, T * 0.36, T * 0.06, T * 0.36)
+			c.fs("#3a2e1e")
+			c.poly([T * 0.30, T * 0.30, T * 0.70, T * 0.30, T * 0.62, T * 0.40, T * 0.38, T * 0.40])
+			c.fs("#5a4830")
+			c.poly([T * 0.30, T * 0.30, T * 0.70, T * 0.30, T * 0.68, T * 0.33, T * 0.32, T * 0.33]), sx, sy)
+		# láng: három tónus (külső vörös, sárga mag, fehér csúcsfény)
+		var fx0 := sx + T / 2
+		var fy0 := sy + T * 0.30
+		c.fs(rgba(196, 52, 10, 0.55 + 0.2 * fl))
+		c.ell(fx0, fy0 - T * 0.03, 4.4, (7.0 + 3.0 * fl))
+		c.fs(rgba(255, int(150 + 55 * fl), 28, 0.9))
+		c.ell(fx0, fy0 - T * 0.04, 3.0, (5.0 + 2.2 * fl))
+		c.fs(rgba(255, 238, 172, 0.85))
+		c.ell(fx0, fy0 - T * 0.06, 1.4, (2.2 + 1.0 * fl))
+		c.ga(1.0)
+	# megtalált csapdák és titkos ajtók, szentélyek, kereskedő (mind kész hálóból)
+	for tr in w.traps:
+		if not tr["found"]:
+			continue
+		var ta := seen_a(w, tr["x"], tr["y"])
+		if ta <= 0.01:
+			continue
+		var tsx: float = (tr["x"] - cam.x) * T
+		var tsy: float = (tr["y"] - cam.y) * T
+		if tsx < -T or tsx > W or tsy < -T or tsy > gh:
+			continue
+		c.ga(ta)
+		Sprites.trap(c, tr["type"], tsx, tsy, T, tr["sprung"])
+		c.ga(1.0)
+	for sd in w.secrets:
+		if not sd["found"]:
+			continue
+		var sa := seen_a(w, sd["x"], sd["y"])
+		if sa <= 0.01:
+			continue
+		var ssx: float = (sd["x"] - cam.x) * T
+		var ssy: float = (sd["y"] - cam.y) * T
+		if ssx < -T or ssx > W or ssy < -T or ssy > gh:
+			continue
+		c.ga(sa)
+		Sprites.secret_door(c, ssx, ssy, T)
+		c.ga(1.0)
+	for sh in w.shrines:
+		var ha := seen_a(w, sh["x"], sh["y"])
+		if ha <= 0.01:
+			continue
+		var hsx: float = (sh["x"] - cam.x) * T
+		var hsy: float = (sh["y"] - cam.y) * T
+		if hsx < -T or hsx > W or hsy < -T or hsy > gh:
+			continue
+		c.ga(ha)
+		Sprites.shrine(c, hsx, hsy, T, sh["kind"], sh["used"], tick)
+		c.ga(1.0)
+	for sp in w.shops:
+		var pa := seen_a(w, sp["x"], sp["y"])
+		if pa <= 0.01:
+			continue
+		var psx: float = (sp["x"] - cam.x) * T
+		var psy: float = (sp["y"] - cam.y) * T
+		if psx < -T or psx > W or psy < -T or psy > gh:
+			continue
+		c.ga(pa)
+		Sprites.merchant(c, psx, psy, T, tick)
 		c.ga(1.0)
 	# ládák
 	for ch in w.chests:
@@ -196,14 +281,14 @@ static func world_mid(m: Node, c: Cv) -> void:
 		if sx < -T * 2 or sx > W + T or sy < -T * 2 or sy > gh + T:
 			continue
 		c.ga(ma)
-		if mo.boss:
-			var pl := 0.2 + 0.2 * sin(tick * 0.05)
+		if mo.boss or mo.guard:
+			var pl := (0.2 + 0.2 * sin(tick * 0.05)) * (1.0 if mo.boss else 0.6)
 			c.tex(glow, Rect2(sx + T * 0.5 - T * 1.25, sy + T * 0.5 - T * 1.25, T * 2.5, T * 2.5), rgba(255, 200, 40, pl))
 		c.save()
 		if mo.facing < 0:
 			c.translate((sx + T / 2) * 2, 0)
 			c.scale(-1, 1)
-		Sprites.monster(c, mo.key, sx + T / 2, sy + T / 2, T * 0.85, tick, mo.seedv)
+		Sprites.monster_cached(c, mo.key, sx + T / 2, sy + T / 2, T * 0.85, tick, mo.seedv)
 		c.restore()
 		# életerő-csík
 		var bw := T - 6
@@ -223,7 +308,7 @@ static func world_mid(m: Node, c: Cv) -> void:
 	if p.facing < 0:
 		c.translate((px2 + T / 2) * 2, 0)
 		c.scale(-1, 1)
-	Sprites.hero_cached(c, p.cls, px2 + T / 2, py2 + T / 2, T * 0.72, tick)
+	Sprites.hero_cached(c, p.cls, px2 + T / 2, py2 + T / 2, T * 0.72, tick, m.skins)
 	c.restore()
 	if p.poison > 0:
 		c.ga(0.2 + 0.12 * sin(tick * 0.15))
@@ -328,6 +413,52 @@ static func fx(m: Node, c: Cv) -> void:
 		return
 
 
+# ══════════ AUTOMATA TÉRKÉP (Tab) ══════════
+## A bejárt mezők egy 80×60-as képpé (textúrává) gyűlnek, amely CSAK új felfedezéskor frissül
+## (lásd main.gd::_sync_map). Így a kirajzolás egyetlen textúra + néhány apró négyzet, és a
+## réteg is csak akkor rajzolódik újra, ha tényleg változott a felderített terület.
+const MAP_SCALE := 2.2
+const MAP_PAD := 6.0
+
+
+static func map_rect(m: Node) -> Rect2:
+	var w := Data.MAP_W * MAP_SCALE
+	var h := Data.MAP_H * MAP_SCALE
+	return Rect2(10, 10, w + MAP_PAD * 2, h + MAP_PAD * 2)
+
+
+static func minimap(m: Node, c: Cv) -> void:
+	if not m.map_on or m.map_tex == null:
+		return
+	var w: World = m.game.world
+	var p: Player = m.game.player
+	var r := map_rect(m)
+	c.fs(rgba(10, 8, 5, 0.82))
+	c.rrect(r.position.x, r.position.y, r.size.x, r.size.y, 6); c.fill()
+	c.ss(Data.P["hudBorder"]); c.lw(1.5)
+	c.rrect(r.position.x, r.position.y, r.size.x, r.size.y, 6); c.stroke()
+	var ox := r.position.x + MAP_PAD
+	var oy := r.position.y + MAP_PAD
+	c.tex(m.map_tex, Rect2(ox, oy, Data.MAP_W * MAP_SCALE, Data.MAP_H * MAP_SCALE))
+	# lépcső (ha már látta) és a hős
+	for i in w.rooms.size():
+		var kind: String = w.room_kind[i] if i < w.room_kind.size() else ""
+		if kind == "":
+			continue
+		var ct := Dungeon.center(w.rooms[i])
+		if not w.is_exp(ct.x, ct.y):
+			continue
+		c.fs(Data.ROOM_KINDS[kind]["col"])
+		c.circ(ox + (ct.x + 0.5) * MAP_SCALE, oy + (ct.y + 0.5) * MAP_SCALE, 2.2)
+	var st := Dungeon.center(w.rooms[w.rooms.size() - 1])
+	if w.is_exp(st.x, st.y):
+		c.fs("#b0a0ff")
+		c.circ(ox + (st.x + 0.5) * MAP_SCALE, oy + (st.y + 0.5) * MAP_SCALE, 2.6)
+	c.fs(p.col)
+	c.circ(ox + (p.x + 0.5) * MAP_SCALE, oy + (p.y + 0.5) * MAP_SCALE, 2.8)
+	c.ftxt("Tab: térkép  ·  %d. mélység" % w.dungeon_level, r.position.x + r.size.x / 2, r.position.y + r.size.y + 12, Data.P["inkDark"], 9, "center")
+
+
 # ══════════ HUD ══════════
 static func hud(m: Node, c: Cv) -> void:
 	var p: Player = m.game.player
@@ -345,7 +476,8 @@ static func hud(m: Node, c: Cv) -> void:
 	c.ftxt("Életerő %d/%d" % [p.hp, p.max_hp], 12, y0 + 20, "#ffffff", 9)
 	c.bar(10, y0 + 28, 170, 8, xp_pct, "#404090", "#141428")
 	c.ftxt("XP %d/%d" % [p.xp, p.xp_next], 12, y0 + 35, "#c0c0e0", 8, "left", true)
-	c.ftxt("♥".repeat(maxi(0, p.lives)) + "♡".repeat(maxi(0, 3 - p.lives)), 10, y0 + 58, P["vein"], 15)
+	c.ftxt_fit("♥".repeat(maxi(0, p.lives)) + "♡".repeat(maxi(0, 3 - p.lives)), 10, y0 + 58, P["vein"], 15, 120)
+	c.ftxt("◉ %d" % p.gold, 134, y0 + 58, P["parchGold"], 12)
 	# állapotok: méreg, regeneráció, életlopás
 	var st: Array[String] = []
 	if p.poison > 0: st.append("☠ Méreg %d" % p.poison)
@@ -369,7 +501,8 @@ static func hud(m: Node, c: Cv) -> void:
 	c.ftxt_fit("⚔ " + (p.weapon.label if p.weapon else "Puszta kéz"), c3, y0 + 18, p.weapon.border() if p.weapon else P["inkDark"], 10, colw)
 	c.ftxt_fit("🛡 " + (p.armor.label if p.armor else "Nincs páncél"), c3, y0 + 35, p.armor.border() if p.armor else P["inkDark"], 10, colw)
 	c.ftxt_fit("⛨ " + (p.shield.label if p.shield else "Nincs pajzs"), c3, y0 + 52, p.shield.border() if p.shield else P["inkDark"], 10, colw)
-	c.ftxt_fit("WASD · I:Táska · %s:Lépcső · M:Hang" % m.key_label(m.binds["stair"]), c3, y0 + 72, P["inkDark"], 9, colw)
+	c.ftxt_fit("WASD · I:Táska · %s:Lépcső" % m.key_label(m.binds["stair"]), c3, y0 + 70, P["inkDark"], 9, colw)
+	c.ftxt_fit("Tab:Térkép · K:Kutatás · Esc:Menü", c3, y0 + 84, P["inkDark"], 9, colw)
 	var mw := W - mx - 8
 	if mw > 100:
 		var msgs: Array = p.msgs.slice(maxi(0, p.msgs.size() - 4))

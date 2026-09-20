@@ -81,7 +81,9 @@ static func compute_fov(tiles: PackedByteArray, px: int, py: int) -> PackedByteA
 			if tx < 0 or tx >= W or ty < 0 or ty >= H:
 				break
 			vis[idx(tx, ty)] = 1
-			if tiles[idx(tx, ty)] == Data.WALL:
+			# a fal és a (még meg nem talált) titkos ajtó is elzárja a kilátást
+			var tv := tiles[idx(tx, ty)]
+			if tv == Data.WALL or tv == Data.SECRET:
 				break
 	return vis
 
@@ -229,6 +231,7 @@ static func ensure_open(tiles: PackedByteArray, rooms: Array[Rect2i], chests: Ar
 
 
 ## Ellenőrzés (tesztekhez): minden padló, a lépcső és minden láda elérhető-e.
+## A titkos ajtó átjárhatónak számít: kutatással (K) mindig kinyitható, így sosem zár el semmit.
 static func verify_open(tiles: PackedByteArray, rooms: Array[Rect2i], chests: Array) -> String:
 	var s := center(rooms[0])
 	var all := reach_map(tiles, s.x, s.y, {})
@@ -252,29 +255,221 @@ static func verify_open(tiles: PackedByteArray, rooms: Array[Rect2i], chests: Ar
 	return ""
 
 
-static func spawn_mons(rooms: Array[Rect2i], level: int, diff: String) -> Array[Mon]:
+# ══════════ KÜLÖNLEGES TERMEK ══════════
+## Néhány szoba kap egy szerepet (kincstár, szentély, kereskedő, csapdaterem). Ez CSAK a szoba
+## tartalmát változtatja meg — egyetlen csempe sem lesz fal tőle, így a bejárhatóság sértetlen.
+## A kezdőszoba (0.) és a lépcsős/boss szoba (utolsó) sosem kap szerepet.
+static func mark_rooms(rooms: Array[Rect2i]) -> Array[String]:
+	var kinds: Array[String] = []
+	kinds.resize(rooms.size())
+	kinds.fill("")
+	var cand: Array[int] = []
+	for i in range(1, rooms.size() - 1):
+		var r := rooms[i]
+		if r.size.x >= 5 and r.size.y >= 4:
+			cand.append(i)
+	cand.shuffle()
+	var k := 0
+	for kind in Data.ROOM_KIND_ORDER:
+		if k >= cand.size():
+			break
+		kinds[cand[k]] = kind
+		k += 1
+	return kinds
+
+
+static func _inner(r: Rect2i) -> Vector2i:
+	return Vector2i(Data.rnd(r.position.x + 1, r.position.x + r.size.x - 2), Data.rnd(r.position.y + 1, r.position.y + r.size.y - 2))
+
+
+static func spawn_mons(rooms: Array[Rect2i], level: int, diff: String, kinds: Array[String] = []) -> Array[Mon]:
 	var pool: Array = Data.POOL.get(level, ["goblin"])
 	var mons: Array[Mon] = []
 	for i in range(1, rooms.size() - 1):
 		var r := rooms[i]
+		var kind: String = kinds[i] if i < kinds.size() else ""
+		if kind == "kereskedo" or kind == "szentely":
+			continue   # a kereskedő és a szentély terme békés
 		var cnt := Data.rnd(1, 2 + int(level / 2))
 		for j in cnt:
-			mons.append(Mon.make(Data.pick(pool), Data.rnd(r.position.x + 1, r.position.x + r.size.x - 2), Data.rnd(r.position.y + 1, r.position.y + r.size.y - 2), diff))
+			var q := _inner(r)
+			mons.append(Mon.make(Data.pick(pool), q.x, q.y, diff))
 		if level >= 2 and randf() < 0.28:
-			mons.append(Mon.make(Data.pick(["vampire", "spider", "golem", "witch", "assassin"]), Data.rnd(r.position.x + 1, r.position.x + r.size.x - 2), Data.rnd(r.position.y + 1, r.position.y + r.size.y - 2), diff))
+			var q2 := _inner(r)
+			mons.append(Mon.make(Data.pick(["vampire", "spider", "golem", "witch", "assassin"]), q2.x, q2.y, diff))
+		if kind == "kincstar":
+			var g := center(r)
+			mons.append(Mon.make_guard(Data.pick(Data.GUARD_POOL.get(level, ["orc"])), g.x, g.y, diff))
 	var b := center(rooms[rooms.size() - 1])
 	mons.append(Mon.make(Data.BOSS_LVL[level], b.x, b.y, diff))
 	return mons
 
 
-static func spawn_chests(rooms: Array[Rect2i], lvl: int) -> Array:
+static func spawn_chests(rooms: Array[Rect2i], lvl: int, kinds: Array[String] = []) -> Array:
 	var chests: Array = []
 	for i in range(1, rooms.size()):
-		if randf() < 0.42:
-			var r := rooms[i]
-			chests.append({"x": Data.rnd(r.position.x + 1, r.position.x + r.size.x - 2), "y": Data.rnd(r.position.y + 1, r.position.y + r.size.y - 2),
-				"opened": false, "items": [Item.random(lvl), Item.random(lvl)]})
+		var r := rooms[i]
+		var kind: String = kinds[i] if i < kinds.size() else ""
+		var n := 0
+		var bonus := 0
+		if kind == "kincstar":
+			n = 2
+			bonus = 1        # a kincstárban értékesebb a zsákmány
+		elif kind == "csapda":
+			n = 1            # a csapdateremben egy láda garantált
+		elif kind == "kereskedo" or kind == "szentely":
+			n = 0
+		elif randf() < 0.42:
+			n = 1
+		for j in n:
+			var q := _inner(r)
+			chests.append({"x": q.x, "y": q.y, "opened": false, "items": [Item.random(lvl + bonus), Item.random(lvl + bonus)]})
 	return chests
+
+
+# ══════════ SZENTÉLY ÉS KERESKEDŐ ══════════
+## Mindkettő járható mezőn áll (rá lehet lépni), tehát egyiktől sem záródhat el semmi.
+static func spawn_shrines(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Array[String], used: Dictionary) -> Array:
+	var out: Array = []
+	for i in kinds.size():
+		if kinds[i] != "szentely":
+			continue
+		var c := _free_spot(tiles, rooms[i], used)
+		if c.x < 0:
+			continue
+		used[idx(c.x, c.y)] = true
+		out.append({"x": c.x, "y": c.y, "kind": Data.pick(Data.SHRINE_ORDER), "used": false})
+	return out
+
+
+static func spawn_shops(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Array[String], lvl: int, used: Dictionary) -> Array:
+	var out: Array = []
+	for i in kinds.size():
+		if kinds[i] != "kereskedo":
+			continue
+		var c := _free_spot(tiles, rooms[i], used)
+		if c.x < 0:
+			continue
+		used[idx(c.x, c.y)] = true
+		out.append({"x": c.x, "y": c.y, "stock": make_stock(lvl)})
+	return out
+
+
+## A kereskedő kínálata: egy bájital, egy véletlen tárgy és egy teljes gyógyítás (10–60 arany).
+static func make_stock(lvl: int) -> Array:
+	var stock: Array = []
+	var pot := Item.make(Item.find_base("Nagy gyógyital" if lvl >= 3 else "Gyógyital"), Item.roll_rarity(lvl), lvl)
+	stock.append({"kind": "item", "item": pot, "price": clampi(12 + lvl * 3, 10, 60), "sold": false})
+	var goods := Item.random(lvl + 1)
+	stock.append({"kind": "item", "item": goods, "price": clampi(int(Data.SHOP_PRICE[goods.rarity]) + lvl * 2, 10, 60), "sold": false})
+	stock.append({"kind": "heal", "item": null, "price": clampi(18 + lvl * 5, 10, 60), "sold": false})
+	return stock
+
+
+static func _free_spot(tiles: PackedByteArray, r: Rect2i, used: Dictionary) -> Vector2i:
+	for tries in 60:
+		var q := _inner(r)
+		var k := idx(q.x, q.y)
+		if tiles[k] == Data.FLOOR and not used.has(k):
+			return q
+	return Vector2i(-1, -1)
+
+
+# ══════════ CSAPDÁK ══════════
+## Csapda csak szoba belsejébe kerül (folyosóra soha), így sosem áll az EGYETLEN út közepén:
+## a szobán belül mindig ki lehet kerülni. A kezdőszoba csapdamentes.
+static func spawn_traps(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Array[String], level: int, used: Dictionary) -> Array:
+	var traps: Array = []
+	for i in range(1, rooms.size()):
+		var r := rooms[i]
+		var kind: String = kinds[i] if i < kinds.size() else ""
+		var n := 0
+		if kind == "csapda":
+			n = Data.rnd(4, 7)
+		elif kind == "szentely" or kind == "kereskedo":
+			n = 0
+		elif randf() < 0.34:
+			n = Data.rnd(1, 1 + int(level / 2))
+		for j in n:
+			var q := _free_spot(tiles, r, used)
+			if q.x < 0:
+				continue
+			used[idx(q.x, q.y)] = true
+			traps.append({"x": q.x, "y": q.y, "type": Data.pick(Data.TRAP_ORDER), "found": false, "sprung": false})
+	return traps
+
+
+# ══════════ TITKOS AJTÓK ══════════
+## Kétféle: (1) átjáró — két, már összekötött rész közötti falat nyit meg rövidítésnek;
+## (2) kamra — egy zsákutca-mezőt nyit, benne egy ládával.
+## Mindkettő SECRET csempe: a bejárhatóság-ellenőrzés átjárhatónak veszi (kutatással kinyitható),
+## a hős viszont csak a megtalálás után tud átmenni rajta.
+static func carve_secrets(tiles: PackedByteArray, rooms: Array[Rect2i], lvl: int, chests: Array) -> Array:
+	var secrets: Array = []
+	var s := center(rooms[0])
+	# (1) rövidítések: olyan fal, aminek két szemközti oldalán padló van
+	var shortcuts: Array[int] = []
+	for x in range(2, W - 2):
+		for y in range(2, H - 2):
+			var k := idx(x, y)
+			if tiles[k] != Data.WALL:
+				continue
+			var lr := tiles[k - H] == Data.FLOOR and tiles[k + H] == Data.FLOOR and tiles[k - 1] != Data.FLOOR and tiles[k + 1] != Data.FLOOR
+			var ud := tiles[k - 1] == Data.FLOOR and tiles[k + 1] == Data.FLOOR and tiles[k - H] != Data.FLOOR and tiles[k + H] != Data.FLOOR
+			if lr or ud:
+				shortcuts.append(k)
+	shortcuts.shuffle()
+	for i in mini(Data.rnd(1, 3), shortcuts.size()):
+		var k: int = shortcuts[i]
+		tiles[k] = Data.SECRET
+		secrets.append({"x": int(k / H), "y": k % H, "kind": "atjaro", "found": false})
+	# (2) kamrák: ajtó egy padló mellett, mögötte tömör fal -> abból lesz a kincseskamra
+	# Az a mező, ahonnan egy kamra nyílik, nem lehet láda alatt és nem lehet másik kamra sem:
+	# különben a rajta álló láda elvágná a kamrát (a "láda sosem zár el utat" szabály).
+	var noflow := {}
+	for ch in chests:
+		if not ch["opened"]:
+			noflow[idx(ch["x"], ch["y"])] = true
+	var made := 0
+	var want := Data.rnd(1, 2)
+	for tries in 400:
+		if made >= want:
+			break
+		var x := Data.rnd(3, W - 4)
+		var y := Data.rnd(3, H - 4)
+		var d: Vector2i = pick_dir()
+		var dk := idx(x, y)
+		if tiles[dk] != Data.WALL:
+			continue
+		var fk := idx(x - d.x, y - d.y)          # az ajtó előtti mező: szabad padló kell legyen
+		if tiles[fk] != Data.FLOOR or noflow.has(fk):
+			continue
+		var nx := x + d.x
+		var ny := y + d.y
+		# a kamra és a körülötte lévő minden mező (az ajtót kivéve) tömör fal
+		var solid := true
+		for ax in range(nx - 1, nx + 2):
+			for ay in range(ny - 1, ny + 2):
+				if ax == x and ay == y:
+					continue
+				if tiles[idx(ax, ay)] != Data.WALL:
+					solid = false
+		if not solid:
+			continue
+		if nx == s.x and ny == s.y:
+			continue
+		tiles[dk] = Data.SECRET
+		tiles[idx(nx, ny)] = Data.FLOOR
+		secrets.append({"x": x, "y": y, "kind": "kamra", "found": false})
+		chests.append({"x": nx, "y": ny, "opened": false, "items": [Item.random(lvl + 1), Item.random(lvl + 1)]})
+		noflow[idx(nx, ny)] = true
+		noflow[dk] = true
+		made += 1
+	return secrets
+
+
+static func pick_dir() -> Vector2i:
+	return DIRS[randi() % DIRS.size()]
 
 
 # ══════════ DEKORÁCIÓK (amfora, pókháló, repedés...) ══════════

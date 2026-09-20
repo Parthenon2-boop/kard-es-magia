@@ -12,6 +12,9 @@ const HUD_H := 96
 const WALL := 0
 const FLOOR := 1
 const STAIR := 3
+## titkos ajtó: falnak látszik és nem járható, amíg meg nem találják (utána FLOOR lesz).
+## A bejárhatóság-ellenőrzés átjárhatónak veszi, mert kutatással MINDIG kinyitható.
+const SECRET := 4
 
 # Egyenletes siklás: tartott gombnál a lépések üteme és a siklás sebessége
 const STEP_MS := 150.0
@@ -119,6 +122,50 @@ const CLASSES := {
 		"desc": "Fizikai sebzés messziről: íjjal indul, +1 lőtáv, gyakori kritikus. Közelről gyengébb."},
 }
 const MELEE_MULT := {"Lovag": 1.35, "Íjász": 0.7, "Mágus": 0.6}
+
+# ══════════ KÜLÖNLEGES TERMEK ══════════
+## A különleges termek csak a szoba tartalmát változtatják meg (láda, őr, csapda, szobor,
+## kereskedő) — egyik sem tesz falat sehova, így a „mindig bejárható" biztosíték sértetlen.
+const ROOM_KINDS := {
+	"kincstar": {"label": "Kincstár", "col": "#d4a84b", "icon": "⚜"},
+	"szentely": {"label": "Szentély", "col": "#70d0ff", "icon": "✛"},
+	"kereskedo": {"label": "Kereskedő", "col": "#60d080", "icon": "◉"},
+	"csapda": {"label": "Csapdaterem", "col": "#e05050", "icon": "⚠"},
+}
+const ROOM_KIND_ORDER := ["kincstar", "szentely", "kereskedo", "csapda"]
+## a kincstár őre: erős, aranyban gazdag szörny
+const GUARD_POOL := {1: ["orc", "skeleton"], 2: ["orc", "troll"], 3: ["troll", "golem"], 4: ["golem", "demon"], 5: ["demon", "vampire"]}
+
+# ══════════ CSAPDÁK ══════════
+## Rejtettek: rálépve sülnek el, vagy szomszédos mezőről észre lehet venni (az íjász jobban).
+const TRAPS := {
+	"tuske": {"label": "Tüskecsapda", "col": "#c0c8d8"},
+	"mereg": {"label": "Méregcsapda", "col": "#90c030"},
+	"riaszto": {"label": "Riasztó", "col": "#e0a030"},
+}
+const TRAP_ORDER := ["tuske", "mereg", "riaszto"]
+const TRAP_DMG_MIN := 0.08     # a max. életerő hányada
+const TRAP_DMG_MAX := 0.15
+const TRAP_SPOT := 0.10        # esély körönként egy szomszédos csapda észrevételére
+const TRAP_SPOT_ARCHER := 0.26
+const SEARCH_CHANCE := 0.75    # kutatás (K) sikere; az íjásznál biztos
+const ALARM_R := 10            # a riasztó ennyi mezőn belül ébreszt
+
+# ══════════ SZENTÉLY ══════════
+const SHRINES := {
+	"gyogyulas": {"label": "A Forrás áldása", "desc": "Teljes gyógyulás.", "col": "#50d080"},
+	"elet": {"label": "Az Őrző áldása", "desc": "+1 élet.", "col": "#e06080"},
+	"vedelem": {"label": "A Kő áldása", "desc": "+2 védelem örökre.", "col": "#5080e0"},
+	"varazs": {"label": "A Csillag áldása", "desc": "+3 varázserő örökre.", "col": "#8cc4ff"},
+}
+const SHRINE_ORDER := ["gyogyulas", "elet", "vedelem", "varazs"]
+
+# ══════════ ARANY (a szörnyekből hulló, játékon belüli pénz — nem a boltban vett érme) ══════════
+const GOLD_MIN := 2
+const GOLD_MAX := 7
+const GOLD_BOSS := [45, 80]
+## a kereskedő árai ritkaság szerint (10–60 arany között marad)
+const SHOP_PRICE := {"common": 14, "rare": 24, "epic": 38, "legendary": 56}
 
 
 static func rnd(a: int, b: int) -> int:

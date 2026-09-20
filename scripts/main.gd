@@ -8,12 +8,17 @@ const DEFAULT_BINDS := {"up": "ArrowUp", "down": "ArrowDown", "left": "ArrowLeft
 	"stair": "Control", "inventory": "i", "menu": "Escape"}
 const KEY_DIRS := {"ArrowUp": Vector2i(0, -1), "ArrowDown": Vector2i(0, 1), "ArrowLeft": Vector2i(-1, 0), "ArrowRight": Vector2i(1, 0),
 	"w": Vector2i(0, -1), "s": Vector2i(0, 1), "a": Vector2i(-1, 0), "d": Vector2i(1, 0)}
-const WORLD_STATES := ["play", "inv", "chest", "over", "win"]
+const WORLD_STATES := ["play", "inv", "chest", "over", "win", "perk", "shop", "pause"]
 
 var game := Game.new()
 var audio: Audio
+var fiok: Fiok
 var cv := Cv.new()
 var state := "menu"
+# kinézet (kozmetika): kasztonként a négy hely kiválasztott darabja
+var skins := Skins.alap_valasztas()
+var bolt_ui := {"cls": 0, "slot": 0, "opt": 0, "erme": false}
+var bolt_vissza := "menu"
 var W := 1280.0
 var H := 800.0
 var tick := 0.0
@@ -21,7 +26,15 @@ var dt := 16.0
 var char_sel := 0
 var diff_sel := 1
 var chest_ui: Variant = null       # {"chest": Dictionary, "sel": int}
+var perk_ui: Variant = null        # {"ids": Array[String], "sel": int}
+var shop_ui: Variant = null        # {"shop": Dictionary, "sel": int}
+var pause_sel := 0
 var inv_scroll := 0
+# automata térkép (Tab)
+var map_on := false
+var map_img: Image
+var map_tex: ImageTexture
+var _map_world := 0
 var hits: Array = []               # [Rect2, Callable]
 var binds := DEFAULT_BINDS.duplicate()
 var key_dirs_dyn := {}
@@ -32,6 +45,7 @@ var hold_start := 0.0
 var cam := Vector2.ZERO
 var layers := {}
 var _bg_size := Vector2.ZERO
+var _vign_ready := false
 
 # előre elkészített fény-textúrák (a canvas-os sugaras színátmenetek helyett)
 var tex_torch: Texture2D
@@ -50,23 +64,35 @@ var shot_path := ""
 var shot_scene := ""
 var shot_cls := "Lovag"
 var shot_frames := 45
+var shot_depth := 1
+var shot_size := Vector2i(1280, 800)   # --size=1024x768: más felbontású elrendezés ellenőrzése
 var _frame := 0
 var _shot_at := 0.0
+var _worst := 0.0        # a leghosszabb képkocka (akadás-keresés)
+var _over20 := 0         # hány kocka tartott 20 ms-nál tovább
 
 
 func _ready() -> void:
 	randomize()
 	_parse_args()
+	if shot_path != "":
+		seed(20240101)   # képernyőkép-módban ugyanaz a pálya készül minden futáskor
 	_setup_fonts()
 	_make_textures()
 	_make_layers()
 	_load_cfg()
 	_build_dir_map()
+	fiok = Fiok.new()
+	fiok.name = "Fiok"
+	add_child(fiok)
+	fiok.olvas()   # a ParthLauncher fiok.json-ja (ha nincs, a bolt ezt jelzi, más nem változik)
 	audio = Audio.new()
 	add_child(audio)
 	audio.setup(shot_path == "")
 	audio.set_muted(_cfg_muted)
 	game.sfx = func(n: String) -> void: audio.play(n)
+	game.autosave = shot_path == ""   # képernyőkép-módban nem írunk mentést
+	SaveGame.refresh()
 	get_window().min_size = Vector2i(900, 600)
 	if shot_path != "":
 		_setup_shot()
@@ -178,7 +204,7 @@ void fragment() {
 	var defs := [
 		["menu_bg", null], ["menu_clip", clip_mat], ["menu_front", null], ["menu_title", title_mat],
 		["world", null], ["glow", add_mat], ["mid", null], ["fx_add", add_mat], ["fx", null],
-		["hud", null], ["ui", null],
+		["map", null], ["hud", null], ["ui", null],
 	]
 	for d in defs:
 		var n: Node2D = LayerScript.new()
@@ -187,6 +213,8 @@ void fragment() {
 			n.material = d[1]
 		add_child(n)
 		layers[d[0]] = n
+	# a kis térkép képpontosan (nem elmosva) nagyítódik fel
+	layers["map"].texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	layers["menu_bg"].fn = func(rid: RID) -> void: _lay(rid, "menu_bg")
 	layers["menu_clip"].fn = func(rid: RID) -> void: _lay(rid, "menu_clip")
 	layers["menu_front"].fn = func(rid: RID) -> void: _lay(rid, "menu_front")
@@ -196,6 +224,7 @@ void fragment() {
 	layers["mid"].fn = func(rid: RID) -> void: _lay(rid, "mid")
 	layers["fx_add"].fn = func(rid: RID) -> void: _lay(rid, "fx_add")
 	layers["fx"].fn = func(rid: RID) -> void: _lay(rid, "fx")
+	layers["map"].fn = func(rid: RID) -> void: _lay(rid, "map")
 	layers["hud"].fn = func(rid: RID) -> void: _lay(rid, "hud")
 	layers["ui"].fn = func(rid: RID) -> void: _lay(rid, "ui")
 
@@ -207,12 +236,17 @@ func in_world() -> bool:
 var prof := {}
 
 
+var prof_poly := {}
+
+
 func _lay(rid: RID, which: String) -> void:
 	var _t0 := Time.get_ticks_usec()
+	var _p0 := Cv.stat_polys
 	_lay2(rid, which)
 	cv.flush()
 	if shot_path != "":   # mérés csak képernyőkép-módban
 		prof[which] = prof.get(which, 0) + Time.get_ticks_usec() - _t0
+		prof_poly[which] = prof_poly.get(which, 0) + Cv.stat_polys - _p0
 
 
 func _lay2(rid: RID, which: String) -> void:
@@ -228,8 +262,10 @@ func _lay2(rid: RID, which: String) -> void:
 		"mid": if in_world(): Render.world_mid(self, cv)
 		"fx_add": if in_world(): Render.fx_add(self, cv)
 		"fx": if in_world(): Render.fx(self, cv)
+		"map": if in_world(): Render.minimap(self, cv)
 		"hud": if in_world(): Render.hud(self, cv)
 		"ui":
+			hits.clear()   # a kattintható felületeket a felület-réteg gyűjti (csak ha újrarajzolódik)
 			match state:
 				"menu": Screens.menu_top(self, cv)
 				"help": Screens.help(self, cv)
@@ -237,6 +273,10 @@ func _lay2(rid: RID, which: String) -> void:
 				"char": Screens.char_sel(self, cv)
 				"inv": Screens.inventory(self, cv)
 				"chest": Screens.chest(self, cv)
+				"perk": Screens.perk_pick(self, cv)
+				"shop": Screens.shop(self, cv)
+				"bolt": Screens.bolt(self, cv)
+				"pause": Screens.pause(self, cv)
 				"over": Screens.game_over(self, cv, false)
 				"win": Screens.game_over(self, cv, true)
 			Screens.mute_button(self, cv)
@@ -253,17 +293,32 @@ func _load_cfg() -> void:
 		for k in DEFAULT_BINDS:
 			binds[k] = str(cf.get_value("binds", k, DEFAULT_BINDS[k]))
 		_cfg_muted = bool(cf.get_value("hang", "nemitva", false))
+		skins = Skins.betolt(cf)
 
 
 var _cfg_muted := false
 
 
 func save_cfg() -> void:
+	if shot_path != "":
+		return   # képernyőkép-módban nem írjuk felül a játékos beállításait
 	var cf := ConfigFile.new()
+	cf.load(CFG_PATH)
 	for k in binds:
 		cf.set_value("binds", k, binds[k])
 	cf.set_value("hang", "nemitva", audio.muted if audio else false)
+	Skins.ment(cf, skins)
 	cf.save(CFG_PATH)
+
+
+## a hős kinézetének megváltoztatása (csak külső — játékértéket soha nem érint)
+func set_skin(ck: String, slot: String, v: String) -> void:
+	if not Skins.ervenyes(ck, slot, v):
+		return
+	var d: Dictionary = skins.get(ck, {})
+	d[slot] = v
+	skins[ck] = d
+	save_cfg()
 
 
 func _build_dir_map() -> void:
@@ -343,7 +398,33 @@ func start_game(cls: String, diff: String) -> void:
 	game.start(cls, diff)
 	inv_scroll = 0
 	chest_ui = null
+	perk_ui = null
+	shop_ui = null
+	map_on = false
 	set_state("play")
+	if game.autosave:
+		SaveGame.save_run(game)
+
+
+## Folytatás: a mentett kaland visszatöltése (a főmenüben csak akkor látszik, ha van mentés)
+func continue_game() -> bool:
+	var g := SaveGame.load_run()
+	if g == null:
+		SaveGame.erase()
+		set_state("menu")
+		return false
+	game = g
+	game.sfx = func(n: String) -> void: audio.play(n)
+	game.autosave = shot_path == ""
+	inv_scroll = 0
+	chest_ui = null
+	perk_ui = null
+	shop_ui = null
+	map_on = false
+	_map_world = 0
+	game.player.add_msg("Folytatod a kalandot...", Data.P["parchGold"])
+	set_state("play")
+	return true
 
 
 func next_level() -> void:
@@ -364,6 +445,7 @@ func use_inv(i: int) -> void:
 	if i >= 0 and i < items.size():
 		game.use_item(items[i])
 		inv_scroll = clampi(inv_scroll, 0, maxi(0, game.player.inventory.size() - 1))
+		_check_perk()   # a tűzgömbbel is lehet szintet lépni
 
 
 func go_diff() -> void:
@@ -374,6 +456,10 @@ func go_diff() -> void:
 func go_char() -> void:
 	char_sel = 0
 	set_state("char")
+
+
+func close_pause() -> void:
+	set_state("play")
 
 
 func close_help() -> void:
@@ -391,9 +477,123 @@ func _after_move() -> void:
 		chest_ui = {"chest": game.pending_chest, "sel": 0}
 		game.pending_chest = null
 		set_state("chest")
+	elif game.pending_shop != null:
+		shop_ui = {"shop": game.pending_shop, "sel": 0}
+		game.pending_shop = null
+		set_state("shop")
 	if game.player and not game.player.alive:
+		if game.autosave:
+			SaveGame.erase()   # az elesett hőst nem lehet folytatni
 		set_state("over")
 		held["active"] = false
+		return
+	_check_perk()
+
+
+## Szintlépés után: három lap közül lehet választani (több szint egymás után is jöhet)
+func _check_perk() -> void:
+	if game.pending_perks <= 0 or state == "over" or state == "win":
+		return
+	var ids := Perks.offer(game.player)
+	if ids.is_empty():
+		game.pending_perks = 0   # már minden képesség ki van maxolva
+		return
+	perk_ui = {"ids": ids, "sel": 0}
+	held["active"] = false
+	set_state("perk")
+
+
+func pick_perk(i: int) -> void:
+	if perk_ui == null:
+		return
+	var ids: Array = perk_ui["ids"]
+	if i < 0 or i >= ids.size():
+		return
+	Perks.apply(game.player, ids[i])
+	game.pending_perks = maxi(0, game.pending_perks - 1)
+	perk_ui = null
+	set_state("play")
+	_check_perk()
+
+
+func buy_shop(i: int) -> void:
+	if shop_ui == null:
+		return
+	game.buy(shop_ui["shop"], i)
+
+
+func close_shop() -> void:
+	shop_ui = null
+	set_state("play")
+
+
+# ══════════ KINÉZET BOLT (kozmetika) ══════════
+func bolt_opciok(ck: String, slot: String) -> Array:
+	var o: Array = [""]
+	o.append_array((Skins.VARIANSOK[ck][slot] as Array))
+	return o
+
+
+func bolt_kaszt() -> String:
+	return Skins.CLS_ORDER[clampi(int(bolt_ui["cls"]), 0, 2)]
+
+
+func bolt_hely() -> String:
+	return Skins.SLOTS[clampi(int(bolt_ui["slot"]), 0, Skins.SLOTS.size() - 1)]
+
+
+func open_bolt(vissza: String) -> void:
+	bolt_vissza = vissza
+	var ci := 0
+	if game.player != null and Data.CLASS_ORDER.has(game.player.cls):
+		ci = Data.CLASS_ORDER.find(game.player.cls)
+	bolt_ui = {"cls": ci, "slot": 0, "opt": 0, "erme": false}
+	fiok.olvas()      # a bolt megnyitásakor újraolvassuk a fiok.json-t
+	fiok.frissit()    # érme + birtokolt darabok (aszinkron: offline sem akad meg)
+	set_state("bolt")
+
+
+func close_bolt() -> void:
+	set_state(bolt_vissza if bolt_vissza != "" else "menu")
+
+
+func bolt_valaszt(ck: String, slot: String, v: String) -> void:
+	var opts := bolt_opciok(ck, slot)
+	bolt_ui["cls"] = Skins.CLS_ORDER.find(ck)
+	bolt_ui["slot"] = Skins.SLOTS.find(slot)
+	bolt_ui["opt"] = maxi(0, opts.find(v))
+	if v == "" or fiok.birtokol(Skins.kulcs(ck, slot, v)):
+		set_skin(ck, slot, v)
+	else:
+		fiok.vasarol(Skins.kulcs(ck, slot, v), func(ok: bool, _u: String) -> void:
+			if ok:
+				set_skin(ck, slot, v))
+
+
+func bolt_enter() -> void:
+	var opts := bolt_opciok(bolt_kaszt(), bolt_hely())
+	bolt_valaszt(bolt_kaszt(), bolt_hely(), str(opts[clampi(int(bolt_ui["opt"]), 0, opts.size() - 1)]))
+
+
+# ══════════ JÁTÉK KÖZBENI MENÜ (Esc) ══════════
+func save_and_menu() -> void:
+	if game.autosave:
+		SaveGame.save_run(game)
+	held["active"] = false
+	set_state("menu")
+
+
+func abandon_run() -> void:
+	if game.autosave:
+		SaveGame.erase()
+	held["active"] = false
+	set_state("menu")
+
+
+func quit_app() -> void:
+	if in_world() and game.autosave and game.player and game.player.alive:
+		SaveGame.save_run(game)
+	get_tree().quit()
 
 
 # ══════════ EGYENLETES MOZGÁS: tartott irány ismétlése ══════════
@@ -472,8 +672,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	match state:
 		"menu":
 			if k == "Enter":
-				diff_sel = 1
-				set_state("diff")
+				if SaveGame.has_save():
+					continue_game()
+				else:
+					diff_sel = 1
+					set_state("diff")
+			elif k == "Escape":
+				quit_app()
 		"help":
 			if k == "Escape" or k == "Enter":
 				bind_edit = ""
@@ -497,13 +702,78 @@ func _unhandled_input(event: InputEvent) -> void:
 				press_dir(d.x, d.y)
 			if k == binds["inventory"] or k == "i":
 				set_state("inv")
+			if k == "Tab":
+				map_on = not map_on
+			if k == "k":
+				game.search()   # kutatás: titkos ajtók és csapdák a szomszédban
+				_after_move()
 			if k == binds["stair"] or k == "." or k == ">":
 				if game.on_stair():
 					next_level()
 			if k == binds["menu"] or k == "Escape":
-				set_state("menu")
+				pause_sel = 0
+				set_state("pause")
 			if game.player and not game.player.alive:
+				if game.autosave:
+					SaveGame.erase()
 				set_state("over")
+		"pause":
+			if k == "Escape" or k == binds["menu"]:
+				set_state("play")
+			elif k in ["ArrowUp", "w"]: pause_sel = (pause_sel + 3) % 4
+			elif k in ["ArrowDown", "s"]: pause_sel = (pause_sel + 1) % 4
+			elif k == "Enter":
+				match pause_sel:
+					0: set_state("play")
+					1: open_bolt("pause")
+					2: save_and_menu()
+					_: abandon_run()
+			elif k == "1": set_state("play")
+			elif k == "2": open_bolt("pause")
+			elif k == "3": save_and_menu()
+			elif k == "4": abandon_run()
+		"bolt":
+			var opts := bolt_opciok(bolt_kaszt(), bolt_hely())
+			if bool(bolt_ui["erme"]):
+				if k == "Escape" or k == "Enter": bolt_ui["erme"] = false
+				elif k in ["1", "2", "3"]: Fiok.bolt_megnyit(int(k) - 1)
+			elif k == "Escape" or k == binds["menu"]:
+				close_bolt()
+			elif k in ["ArrowUp", "w"]:
+				bolt_ui["slot"] = (int(bolt_ui["slot"]) + Skins.SLOTS.size() - 1) % Skins.SLOTS.size()
+				bolt_ui["opt"] = 0
+			elif k in ["ArrowDown", "s"]:
+				bolt_ui["slot"] = (int(bolt_ui["slot"]) + 1) % Skins.SLOTS.size()
+				bolt_ui["opt"] = 0
+			elif k in ["ArrowLeft", "a"]:
+				bolt_ui["opt"] = (int(bolt_ui["opt"]) + opts.size() - 1) % opts.size()
+			elif k in ["ArrowRight", "d"]:
+				bolt_ui["opt"] = (int(bolt_ui["opt"]) + 1) % opts.size()
+			elif k == "Tab":
+				bolt_ui["cls"] = (int(bolt_ui["cls"]) + 1) % 3
+				bolt_ui["slot"] = 0
+				bolt_ui["opt"] = 0
+			elif k == "Enter" or k == " ":
+				bolt_enter()
+			elif k == "e":
+				bolt_ui["erme"] = true
+			elif k in ["1", "2", "3", "4"]:
+				var ii := int(k) - 1
+				if ii < opts.size():
+					bolt_ui["opt"] = ii
+					bolt_enter()
+		"perk":
+			if perk_ui == null:
+				set_state("play")
+			elif k in ["ArrowLeft", "a"]: perk_ui["sel"] = (perk_ui["sel"] + (perk_ui["ids"] as Array).size() - 1) % (perk_ui["ids"] as Array).size()
+			elif k in ["ArrowRight", "d"]: perk_ui["sel"] = (perk_ui["sel"] + 1) % (perk_ui["ids"] as Array).size()
+			elif k == "Enter": pick_perk(perk_ui["sel"])
+			elif k in ["1", "2", "3"]: pick_perk(int(k) - 1)
+		"shop":
+			if k == "Escape" or k == binds["menu"] or k == "Enter":
+				close_shop()
+			elif k in ["1", "2", "3"]:
+				buy_shop(int(k) - 1)
 		"inv":
 			if k == binds["menu"] or k == binds["inventory"] or k == "Escape" or k == "i":
 				set_state("play")
@@ -546,7 +816,12 @@ var _pt := {"frame": 0.0, "proc": 0.0, "last": 0.0}
 
 func _process(delta: float) -> void:
 	var _p0 := Time.get_ticks_usec()
-	if _pt["last"] > 0: _pt["frame"] += _p0 - _pt["last"]
+	if _pt["last"] > 0:
+		var fms: float = (_p0 - _pt["last"]) / 1000.0
+		_pt["frame"] += _p0 - _pt["last"]
+		if _frame > 12:   # az indulás első kockái nem számítanak
+			_worst = maxf(_worst, fms)
+			if fms > 20.0: _over20 += 1
 	_pt["last"] = _p0
 	_process2(delta)
 	_pt["proc"] += Time.get_ticks_usec() - _p0
@@ -554,28 +829,164 @@ func _process(delta: float) -> void:
 
 func _process2(delta: float) -> void:
 	var sz := get_viewport_rect().size
-	if sz.x != W or sz.y != H or _bg_size == Vector2.ZERO:
+	if sz.x != W or sz.y != H or not _vign_ready:
 		W = sz.x
 		H = sz.y
+		_vign_ready = true
 		_update_vignette()
 	dt = minf(50.0, delta * 1000.0)
 	tick += dt / 16.67
+	if shot_path != "":
+		tick = _frame * 2.5   # képernyőkép-módban rögzített ütem: két futás képe összevethető
 	var now := Time.get_ticks_usec() / 1000.0
 	step_repeat(now)
 	if in_world():
 		_update_motion()
-	hits.clear()
-	# a menü statikus háttere csak méretváltáskor rajzolódik újra
+	_update_layers()
+	if shot_path != "":
+		_shot_tick()
+
+
+# ══════════ MELYIK RÉTEGET KELL ÚJRARAJZOLNI? ══════════
+## Egy köteg átadása a grafikus meghajtónak (ANGLE/D3D11) sokszorta drágább, mint a rajzolás maga,
+## ezért csak azt a réteget rajzoljuk újra, amelynek a tartalma tényleg változott. A rétegek
+## "aláírása" minden olyan értéket tartalmaz, amitől a kép függ (mozgó részeknél a fázisukat is).
+var _sig := {}
+var world_fading := true
+
+
+func _gate(which: String, sig: Variant) -> void:
+	if _sig.get(which) != sig:
+		_sig[which] = sig
+		layers[which].queue_redraw()
+
+
+func _show(which: String, vis: bool, redraw: bool) -> void:
+	layers[which].visible = vis
+	if vis and redraw:
+		layers[which].queue_redraw()
+
+
+func _update_layers() -> void:
 	var menu := state == "menu"
+	var wo := in_world()
+	# menü: a háttér csak átméretezéskor, az élő rétegek (sárkány, tűz, parázs) minden kockán
 	layers["menu_bg"].visible = menu
 	if menu and _bg_size != Vector2(W, H):
 		_bg_size = Vector2(W, H)
 		layers["menu_bg"].queue_redraw()
-	for k in layers:
-		if k != "menu_bg":
-			layers[k].queue_redraw()
-	if shot_path != "":
-		_shot_tick()
+	_show("menu_clip", menu, true)
+	_show("menu_front", menu, true)
+	_show("menu_title", menu, true)
+	# pálya: a fények, szörnyek és villanások mozognak, a csempék és a HUD ritkán változnak
+	_show("glow", wo, true)
+	_show("mid", wo, true)
+	_show("fx_add", wo, true)
+	_show("fx", wo, true)
+	layers["world"].visible = wo
+	layers["hud"].visible = wo
+	layers["map"].visible = wo and map_on
+	if wo:
+		var ws := [cam.x, cam.y, W, H, game.world.get_instance_id(), game.world.fov_version]
+		if world_fading or _sig.get("world") != ws:
+			_sig["world"] = ws
+			layers["world"].queue_redraw()
+		_gate("hud", _hud_sig())
+		if map_on:
+			_sync_map()
+			_gate("map", [W, H, game.world.explored_seq, game.player.x, game.player.y, game.world.dungeon_level, _map_world])
+	_gate("ui", _ui_sig())
+
+
+# ══════════ AUTOMATA TÉRKÉP: a bejárt mezők képe ══════════
+## A 80×60-as kép CSAK az újonnan felfedezett mezőkkel frissül (szintenként egyszer épül fel
+## teljesen), így a kirajzolás egyetlen textúra-hívás marad.
+func _sync_map() -> void:
+	var w := game.world
+	if map_img == null:
+		map_img = Image.create(Data.MAP_W, Data.MAP_H, false, Image.FORMAT_RGBA8)
+		map_tex = ImageTexture.create_from_image(map_img)
+	var id := int(w.get_instance_id())
+	var dirty := false
+	if _map_world != id:
+		_map_world = id
+		map_img.fill(Color(0, 0, 0, 0))
+		for i in w.explored.size():
+			if w.explored[i]:
+				map_img.set_pixel(int(i / Data.MAP_H), i % Data.MAP_H, _map_col(w, i))
+		w.new_explored.clear()
+		dirty = true
+	elif w.new_explored.size() > 0:
+		for i in w.new_explored:
+			map_img.set_pixel(int(i / Data.MAP_H), i % Data.MAP_H, _map_col(w, i))
+		w.new_explored.clear()
+		dirty = true
+	if dirty:
+		map_tex.update(map_img)
+
+
+const MAP_COL_WALL := Color(0.14, 0.12, 0.09, 0.92)
+const MAP_COL_FLOOR := Color(0.40, 0.35, 0.26, 0.92)
+const MAP_COL_STAIR := Color(0.70, 0.64, 1.0, 1.0)
+
+
+func _map_col(w: World, i: int) -> Color:
+	var t := w.tiles[i]
+	if t == Data.STAIR:
+		return MAP_COL_STAIR
+	if t == Data.WALL or t == Data.SECRET:
+		return MAP_COL_WALL
+	var k := w.kind_map[i] if i < w.kind_map.size() else 0
+	if k > 0:
+		var cc: Color = Cv.col(Data.ROOM_KINDS[Data.ROOM_KIND_ORDER[k - 1]]["col"])
+		return Color(cc.r * 0.62, cc.g * 0.62, cc.b * 0.62, 0.92)
+	return MAP_COL_FLOOR
+
+
+func _hud_sig() -> Array:
+	var p := game.player
+	var w := game.world
+	return [W, H, p.hp, p.max_hp, p.xp, p.xp_next, p.lives, p.poison, p.regen, p.lifesteal,
+		p.cls, p.plvl, p.atk, p.mag, p.def, p.msg_seq, w.turn, w.dungeon_level, w.diff,
+		p.weapon, p.armor, p.shield, game.on_stair(), binds["stair"], p.gold, p.perk_seq]
+
+
+func _ui_sig() -> Array:
+	var s: Array = [state, W, H, audio.muted if audio else false]
+	match state:
+		"menu":
+			s.append(audio.music_started if audio else false)
+			s.append(SaveGame.has_save())
+		"pause": s.append(pause_sel)
+		"bolt":
+			s.append_array([bolt_ui["cls"], bolt_ui["slot"], bolt_ui["opt"], bolt_ui["erme"],
+				fiok.seq if fiok else 0, Sprites.hero_phase(tick),
+				Skins.sig(skins, Data.CLASS_ORDER[clampi(int(bolt_ui["cls"]), 0, 2)])])
+		"perk":
+			if perk_ui != null:
+				s.append_array(perk_ui["ids"])
+				s.append(perk_ui["sel"])
+				s.append(game.player.plvl if game.player else 0)
+		"shop":
+			if shop_ui != null:
+				for e in (shop_ui["shop"]["stock"] as Array):
+					s.append(e["sold"])
+			s.append(game.player.gold if game.player else 0)
+			s.append(tick)
+		"help":
+			s.append(bind_edit)
+			for k in DEFAULT_BINDS:
+				s.append(binds[k])
+		"diff": s.append(diff_sel)
+		"char":
+			s.append(char_sel)
+			s.append(Sprites.hero_phase(tick))   # a hősök lebegése 16 fázisú
+		"over", "win":
+			if game.world:
+				s.append_array([game.player.plvl, game.world.turn, game.world.dungeon_level])
+		"inv", "chest":
+			s.append(tick)                       # a tárgy-ikonok élnek: minden képkockán kell
+	return s
 
 
 ## egyenletes sebességű siklás (nem lassul le minden lépés végén, így tartott gombnál folyamatos)
@@ -609,36 +1020,88 @@ func now_ms() -> float:
 	return Time.get_ticks_usec() / 1000.0
 
 
-# ══════════ KÉPERNYŐKÉP-MÓD (--shot=utvonal.png --scene=menu|diff|char|help|play|orb|inv|chest|over) ══════════
+# ══════════ KÉPERNYŐKÉP-MÓD ══════════
+## --shot=utvonal.png --scene=menu|diff|char|help|play|orb|walk|inv|chest|over|perk|shop|trap|map|pause|load
 func _parse_args() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shot="): shot_path = a.substr(7)
 		elif a.begins_with("--scene="): shot_scene = a.substr(8)
 		elif a.begins_with("--cls="): shot_cls = a.substr(6)
 		elif a.begins_with("--frames="): shot_frames = int(a.substr(9))
+		elif a.begins_with("--depth="): shot_depth = int(a.substr(8))
+		elif a.begins_with("--size="):
+			var wh := a.substr(7).split("x")
+			if wh.size() == 2:
+				shot_size = Vector2i(maxi(640, int(wh[0])), maxi(480, int(wh[1])))
 
 
 func _setup_shot() -> void:
 	audio.music_started = true
-	# a képernyőkép mindig 1280×800-as elrendezéssel készül (kisebb kijelzőn is)
+	# a képernyőkép rögzített elrendezéssel készül (alapból 1280×800, --size=…-szal más is)
 	var win := get_window()
 	win.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 	win.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
-	win.content_scale_size = Vector2i(1280, 800)
+	win.content_scale_size = shot_size
 	match shot_scene:
+		"blank": set_state("blank")
 		"diff": set_state("diff")
 		"char":
 			diff_sel = 1
 			char_sel = Data.CLASS_ORDER.find(shot_cls) if Data.CLASS_ORDER.has(shot_cls) else 0
 			set_state("char")
 		"help": set_state("help")
-		"play", "orb", "inv", "chest", "over", "walk":
+		"bolt", "bolt_preview", "shop_preview": _shot_bolt(shot_scene != "bolt")
+		"load", "folytat":
+			# mentett kaland a főmenü "Folytatás" gombjához (a "folytat" rögtön vissza is tölti)
 			start_game(shot_cls, "normal")
-			if shot_scene != "orb" and shot_scene != "walk":
+			game.player.gold = 148
+			Perks.apply(game.player, "eletero")
+			Perks.apply(game.player, "kincs")
+			for i in 30:
+				game.do_move([1, 0, -1, 0][i % 4], [0, 1, 0, -1][i % 4])
+			SaveGame.save_run(game)
+			SaveGame.refresh()
+			if shot_scene == "folytat":
+				continue_game()
+				map_on = true
+			else:
+				set_state("menu")
+		"play", "orb", "inv", "chest", "over", "walk", "perk", "shop", "trap", "map", "pause":
+			start_game(shot_cls, "normal")
+			# mérési célra mélyebb szint (ott sokkal több a szörny)
+			while game.world.dungeon_level < shot_depth:
+				game.player.plvl = game.world.dungeon_level * 3
+				game.player.max_hp = 500
+				game.player.hp = 500
+				game.next_level()
+			if shot_scene != "orb" and shot_scene != "walk" and shot_scene != "map":
 				_shot_populate()
 			if shot_scene == "inv":
 				_shot_items()
+				Perks.apply(game.player, "eletero")
+				Perks.apply(game.player, "eletero")
+				Perks.apply(game.player, "kincs")
+				Perks.apply(game.player, "regen")
+				game.player.gold = 214
 				set_state("inv")
+			elif shot_scene == "perk":
+				var ids: Array = ["eletero", "szivossag", "regen"]
+				match shot_cls:
+					"Lovag": ids = ["blokk", "dofes", "eletero"]
+					"Mágus": ids = ["fokusz", "atuto", "regen"]
+					"Íjász": ids = ["sasszem", "gyorslab", "kincs"]
+				game.player.plvl = 4
+				perk_ui = {"ids": ids, "sel": 0}
+				set_state("perk")
+			elif shot_scene == "shop":
+				_shot_shop()
+			elif shot_scene == "trap":
+				_shot_traps()
+			elif shot_scene == "map":
+				_shot_map()
+			elif shot_scene == "pause":
+				pause_sel = 1
+				set_state("pause")
 			elif shot_scene == "chest":
 				var ch := {"x": game.player.x, "y": game.player.y, "opened": false,
 					"items": [Item.make(Item.find_base("Holdfénypenge"), "legendary", 3), Item.make(Item.find_base("Rúnapajzs"), "epic", 3)]}
@@ -674,6 +1137,92 @@ func _shot_populate() -> void:
 			break
 
 
+## Kinézet bolt képernyőképe: bejelentkezett fiók, érmék és néhány már megvásárolt darab.
+## (Hálózat nélkül — a Fiok offline módban egyetlen kérést sem indít.)
+func _shot_bolt(felveve: bool) -> void:
+	fiok.offline_mod = true
+	open_bolt("menu")
+	fiok.betoltve = true
+	fiok.email = "hos@parthenon.hu"
+	fiok.erme = 240
+	fiok.erme_ismert = true
+	fiok.uzenet = ""
+	fiok.uzenet_hiba = false
+	fiok.folyamatban = false
+	for k in ["lovag_fej_sisak_arany", "lovag_fej_sisak_szarv", "lovag_test_pancel_arany",
+			"lovag_lab_vaslabvert", "lovag_fegyver_kard_lang",
+			"magus_fej_kalap_csillag", "magus_test_kontos_kek", "magus_lab_csizma_arany", "magus_fegyver_bot_kristaly",
+			"ijasz_fej_tollas_kalap", "ijasz_test_bor_vert", "ijasz_lab_csizma_magas", "ijasz_fegyver_szamszerij"]:
+		fiok.birtok[k] = true
+	if felveve:
+		skins["lovag"] = {"fej": "sisak_arany", "test": "pancel_arany", "lab": "vaslabvert", "fegyver": "kard_lang"}
+		skins["magus"] = {"fej": "kalap_csillag", "test": "kontos_kek", "lab": "csizma_arany", "fegyver": "bot_kristaly"}
+		skins["ijasz"] = {"fej": "tollas_kalap", "test": "bor_vert", "lab": "csizma_magas", "fegyver": "szamszerij"}
+		bolt_ui["slot"] = 3
+		bolt_ui["opt"] = 1
+	bolt_ui["cls"] = maxi(0, Data.CLASS_ORDER.find(shot_cls))
+
+
+## kereskedő a hős mezőjére, tele erszénnyel
+func _shot_shop() -> void:
+	var p := game.player
+	p.gold = 96
+	var sh := {"x": p.x, "y": p.y, "stock": Dungeon.make_stock(3)}
+	game.world.shops.append(sh)
+	shop_ui = {"shop": sh, "sel": 0}
+	set_state("shop")
+
+
+## csapdák és titkos ajtó a hős köré, egy el is sül
+func _shot_traps() -> void:
+	var w := game.world
+	var p := game.player
+	var spots := [[Vector2i(1, 0), "tuske"], [Vector2i(-1, 0), "mereg"], [Vector2i(0, 1), "riaszto"],
+		[Vector2i(2, 1), "tuske"], [Vector2i(-2, -1), "mereg"]]
+	for s in spots:
+		var d: Vector2i = s[0]
+		var x: int = p.x + d.x
+		var y: int = p.y + d.y
+		if not w.blocked(x, y) and w.trap_at(x, y) == null:
+			w.traps.append({"x": x, "y": y, "type": s[1], "found": true, "sprung": false})
+	# egy titkos ajtó a közelben, már megtalálva
+	for d in [Vector2i(0, -2), Vector2i(3, 0), Vector2i(-3, 0), Vector2i(0, 3)]:
+		var x: int = p.x + d.x
+		var y: int = p.y + d.y
+		if x > 1 and y > 1 and x < Data.MAP_W - 2 and y < Data.MAP_H - 2 and w.tile(x, y) == Data.WALL:
+			w.tiles[x * Data.MAP_H + y] = Data.FLOOR
+			w.secrets.append({"x": x, "y": y, "kind": "kamra", "found": true})
+			break
+	# a hős mezőjén is van egy, ami rögtön el is sül
+	w.traps.append({"x": p.x, "y": p.y, "type": "tuske", "found": false, "sprung": false})
+	game.trigger_trap()
+	w.update_fov()
+
+
+## sok felderített mező + bekapcsolt automata térkép
+func _shot_map() -> void:
+	var w := game.world
+	map_on = true
+	for i in mini(14, w.rooms.size()):
+		var r: Rect2i = w.rooms[i].grow(1)
+		for x in range(maxi(0, r.position.x), mini(Data.MAP_W, r.position.x + r.size.x)):
+			for y in range(maxi(0, r.position.y), mini(Data.MAP_H, r.position.y + r.size.y)):
+				var k := x * Data.MAP_H + y
+				if not w.explored[k]:
+					w.explored[k] = 1
+					w.explored_seq += 1
+					w.new_explored.append(k)
+	# az utolsó (lépcsős) szoba is legyen a térképen
+	var last: Rect2i = w.rooms[w.rooms.size() - 1].grow(1)
+	for x in range(maxi(0, last.position.x), mini(Data.MAP_W, last.position.x + last.size.x)):
+		for y in range(maxi(0, last.position.y), mini(Data.MAP_H, last.position.y + last.size.y)):
+			var k2 := x * Data.MAP_H + y
+			if not w.explored[k2]:
+				w.explored[k2] = 1
+				w.explored_seq += 1
+				w.new_explored.append(k2)
+
+
 func _shot_items() -> void:
 	var p := game.player
 	p.weapon = Item.make(Item.find_base("Rúnakard"), "epic", 3)
@@ -702,8 +1251,9 @@ func _shot_tick() -> void:
 		DirAccess.make_dir_recursive_absolute(shot_path.get_base_dir())
 		img.save_png(shot_path)
 		print("KÉP MENTVE: ", shot_path, "  (FPS: ", Engine.get_frames_per_second(), ")")
-		for k in prof: print("  ", k, ": ", prof[k] / 1000.0 / _frame, " ms/kocka")
+		for k in prof: print("  %-10s %7.3f ms/kocka   %6.2f poly/kocka" % [k, prof[k] / 1000.0 / _frame, float(prof_poly.get(k, 0)) / _frame])
 		print("  frame: ", _pt["frame"] / 1000.0 / _frame, " ms  _process: ", _pt["proc"] / 1000.0 / _frame, " ms")
+		print("  legrosszabb kocka: %.1f ms   20 ms feletti kockák: %d / %d" % [_worst, _over20, _frame])
 		print("  draw calls: ", Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), "  objects: ", Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), "  process ms: ", Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
 		get_tree().quit()
 

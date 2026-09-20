@@ -98,17 +98,26 @@ static func _arch_path(c: Cv, cx: float, spring: float, r: float, floor_y: float
 	c.lt(cx + r, floor_y); c.cp()
 
 
-static func torch(c: Cv, x: float, y: float, k: float, t: float, ph: float, glow_tex: Texture2D) -> void:
-	var fl := 0.65 + 0.35 * sin(t * 0.09 + ph) + 0.1 * sin(t * 0.29 + ph * 2)
-	# fényudvar (előre elkészített sugaras textúra, erősség = fl)
+static func torch_flicker(t: float, ph: float) -> float:
+	return 0.65 + 0.35 * sin(t * 0.09 + ph) + 0.1 * sin(t * 0.29 + ph * 2)
+
+
+## Csak a fényudvar (textúra). Külön hívható, hogy több fáklya fényudvara egymás után kerüljön ki.
+static func torch_glow(c: Cv, x: float, y: float, k: float, t: float, ph: float, glow_tex: Texture2D) -> void:
+	var fl := torch_flicker(t, ph)
 	c.tex(glow_tex, Rect2(x - 200 * k, y - 200 * k, 400 * k, 400 * k), Color(1, 1, 1, clampf(fl, 0.0, 1.5) / 1.1))
-	# tartó
-	c.fs("#2b2118"); menu_rrect(c, x - 9 * k, y + 7 * k, 18 * k, 42 * k, 3 * k); c.fill()
-	c.ss("#4a3a24"); c.lw(1.6 * k); menu_rrect(c, x - 9 * k, y + 7 * k, 18 * k, 42 * k, 3 * k); c.stroke()
-	c.fs("#3a2c1c")
-	c.bp(); c.mt(x - 16 * k, y + 3 * k); c.lt(x + 16 * k, y + 3 * k)
-	c.lt(x + 10 * k, y + 14 * k); c.lt(x - 10 * k, y + 14 * k); c.cp(); c.fill()
-	c.ss("#6a5230"); c.lw(1.6 * k); c.stroke()
+
+
+static func torch(c: Cv, x: float, y: float, k: float, t: float, ph: float) -> void:
+	var fl := torch_flicker(t, ph)
+	# tartó (mozdulatlan: kész hálóból)
+	c.blit("torch_base|%d" % int(roundf(k * 64.0)), func() -> void:
+		c.fs("#2b2118"); menu_rrect(c, -9 * k, 7 * k, 18 * k, 42 * k, 3 * k); c.fill()
+		c.ss("#4a3a24"); c.lw(1.6 * k); menu_rrect(c, -9 * k, 7 * k, 18 * k, 42 * k, 3 * k); c.stroke()
+		c.fs("#3a2c1c")
+		c.bp(); c.mt(-16 * k, 3 * k); c.lt(16 * k, 3 * k)
+		c.lt(10 * k, 14 * k); c.lt(-10 * k, 14 * k); c.cp(); c.fill()
+		c.ss("#6a5230"); c.lw(1.6 * k); c.stroke(), x, y)
 	# lángok
 	var cols := [rgba(200, 55, 8, 0.82), rgba(255, 140, 22, 0.92), rgba(255, 235, 160, 0.96)]
 	for i in 3:
@@ -139,22 +148,22 @@ static func dragon(c: Cv, cx: float, cy: float, sz: float, t: float) -> void:
 	for dir in [-1.0, 1.0]:
 		c.replay(_dcache["wing"], base * Transform2D(Vector2(dir, 0), Vector2(0, 1), Vector2.ZERO) * Transform2D(-flap, Vector2.ZERO))
 	c.replay(_dcache["a"], base)
-	c.save(); c.translate(cx, cy)
-	# nyitott száj izzása
+	# nyitott száj izzása (a színátmenet hálója gyorsítótárból, az erőssége élőben)
 	var th2 := 0.6 + 0.4 * sin(t * 0.14)
-	var tg := Cv.radial(0, -11.6 * s, 0.4 * s, 4.2 * s).stop(0, rgba(255, 235, 160, th2)).stop(0.5, rgba(255, 130, 18, 0.6 * th2)).stop(1, rgba(200, 40, 0, 0))
-	c.fs(tg); c.ell(0, -11.6 * s, 4.2 * s, 2.8 * s)
-	c.restore()
+	c.blit_a("drg_mouth|%d" % key, func() -> void:
+		var tg := Cv.radial(0, -11.6 * s, 0.4 * s, 4.2 * s).stop(0, rgba(255, 235, 160, 1.0)).stop(0.5, rgba(255, 130, 18, 0.6)).stop(1, rgba(200, 40, 0, 0))
+		c.fs(tg); c.ell(0, -11.6 * s, 4.2 * s, 2.8 * s), cx, cy, th2)
 	c.replay(_dcache["b"], base)
-	c.save(); c.translate(cx, cy)
 	# izzó szemek
 	var eg := 0.72 + 0.28 * sin(t * 0.11)
 	for d in [-1.0, 1.0]:
-		var g2 := Cv.radial(d * 2.4 * s, -19.4 * s, 0.2 * s, 3.4 * s).stop(0, rgba(255, 255, 180, eg)).stop(0.4, rgba(255, 195, 35, 0.8 * eg)).stop(1, rgba(255, 110, 0, 0))
-		c.fs(g2); c.circ(d * 2.4 * s, -19.4 * s, 3.4 * s)
-		c.fs("#fff6c0"); c.ell(d * 2.4 * s, -19.4 * s, 1.4 * s, 1.0 * s)
-		c.fs("#2a0a00"); c.ell(d * 2.4 * s, -19.4 * s, 0.4 * s, 1.0 * s)
-	c.restore()
+		var dd: float = d
+		c.blit_a("drg_eye|%d|%d" % [key, int(dd)], func() -> void:
+			var g2 := Cv.radial(dd * 2.4 * s, -19.4 * s, 0.2 * s, 3.4 * s).stop(0, rgba(255, 255, 180, 1.0)).stop(0.4, rgba(255, 195, 35, 0.8)).stop(1, rgba(255, 110, 0, 0))
+			c.fs(g2); c.circ(dd * 2.4 * s, -19.4 * s, 3.4 * s), cx, cy, eg)
+		c.blit("drg_pupil|%d|%d" % [key, int(dd)], func() -> void:
+			c.fs("#fff6c0"); c.ell(dd * 2.4 * s, -19.4 * s, 1.4 * s, 1.0 * s)
+			c.fs("#2a0a00"); c.ell(dd * 2.4 * s, -19.4 * s, 0.4 * s, 1.0 * s), cx, cy)
 
 
 static func _dragon_wing(c: Cv, s: float) -> void:
@@ -235,15 +244,20 @@ static func _dragon_body_b(c: Cv, s: float) -> void:
 		c.bp(); c.mt(d * 5.6 * s, -20 * s); c.qt(d * 10.5 * s, -20.5 * s, d * 12 * s, -24.5 * s); c.stroke()
 
 static func fire(c: Cv, cx: float, cy: float, s: float, t: float) -> void:
-	c.save(); c.translate(cx, cy)
 	var p := 0.5 + 0.5 * sin(t * 0.05)
 	var L := 22 * s * (0.85 + 0.22 * p)
-	var g := Cv.linear(0, 0, 0, L).stop(0, rgba(255, 242, 180, 0.94)).stop(0.22, rgba(255, 162, 28, 0.82)).stop(0.62, rgba(220, 60, 8, 0.4)).stop(1, rgba(130, 18, 0, 0))
-	c.fs(g)
-	c.bp(); c.mt(-1.4 * s, 0)
-	c.qt(-8 * s, L * 0.5, -6.5 * s, L)
-	c.qt(0, L * 1.05, 6.5 * s, L)
-	c.qt(8 * s, L * 0.5, 1.4 * s, 0); c.cp(); c.fill()
+	# A láng alakja és a színátmenete is csak függőlegesen nyúlik: elég egyszer felvenni
+	# (L0 hosszra), és a pillanatnyi L/L0 nyújtással visszajátszani — a kép ugyanaz.
+	var L0 := 22 * s
+	c.replay(c.rec_cached("fire|%d" % int(roundf(s * 8.0)), func() -> void:
+		var g := Cv.linear(0, 0, 0, L0).stop(0, rgba(255, 242, 180, 0.94)).stop(0.22, rgba(255, 162, 28, 0.82)).stop(0.62, rgba(220, 60, 8, 0.4)).stop(1, rgba(130, 18, 0, 0))
+		c.fs(g)
+		c.bp(); c.mt(-1.4 * s, 0)
+		c.qt(-8 * s, L0 * 0.5, -6.5 * s, L0)
+		c.qt(0, L0 * 1.05, 6.5 * s, L0)
+		c.qt(8 * s, L0 * 0.5, 1.4 * s, 0); c.cp(); c.fill()),
+		Transform2D(0.0, Vector2(cx, cy)) * Transform2D(Vector2(1, 0), Vector2(0, L / L0), Vector2.ZERO))
+	c.save(); c.translate(cx, cy)
 	for i in 18:
 		var q := fmod(t * 0.012 + Data.rnd_seed_m(i * 3.3), 1.0)
 		var y := q * L

@@ -19,6 +19,9 @@ var xp := 0
 var sp := ""
 var boss := false
 var alive := true
+var guard := false   # a kincstár őre: erősebb és több aranyat ejt
+var awake := false   # riasztó ébresztette fel: a látótéren kívülről is a hős felé tart
+var stun := 0        # hány körig nem léphet (pajzsdöfés)
 
 
 static func make(k: String, px: int, py: int, diff: String) -> Mon:
@@ -41,4 +44,17 @@ static func make(k: String, px: int, py: int, diff: String) -> Mon:
 	m.xp = t["xp"]
 	m.sp = t.get("sp", "")
 	m.boss = t.get("boss", false)
+	return m
+
+
+## A kincstár őre: másfélszeres életerő, erősebb ütés, több tapasztalat.
+static func make_guard(k: String, px: int, py: int, diff: String) -> Mon:
+	var m := make(k, px, py, diff)
+	m.guard = true
+	m.max_hp = Data.jround(m.max_hp * 1.5)
+	m.hp = m.max_hp
+	m.atk = Data.jround(m.atk * 1.2)
+	m.def += 2
+	m.xp = Data.jround(m.xp * 1.5)
+	m.name = "Kincstár őre (%s)" % m.name
 	return m

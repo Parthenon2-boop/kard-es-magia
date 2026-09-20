@@ -23,6 +23,15 @@ window/size/viewport_width=1280
 window/size/viewport_height=800
 window/size/resizable=true
 window/stretch/mode="disabled"
+; Függőleges szinkron bekapcsolva: szakadásmentes, egyenletes 60 kép/mp.
+; Egy képkocka rajzolása most ~7-14 ms, tehát bőven belefér a 16,6 ms-os keretbe.
+window/vsync/vsync_mode=1
+
+[physics]
+
+; A játék körökre osztott, fizikát egyáltalán nem használ: elég a legritkább ütem.
+common/physics_ticks_per_second=20
+common/max_physics_steps_per_frame=2
 
 [rendering]
 
