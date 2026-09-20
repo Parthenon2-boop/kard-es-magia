@@ -163,7 +163,37 @@ static func menu_title(m: Node, c: Cv) -> void:
 	MenuArt.ls_text(c, "KARD ÉS MÁGIA", W / 2, ty - 1 * k, Color.WHITE, tsz, tsz * 0.055, "center")
 
 
+## Borítókép: ugyanaz a menü, csak gombok nélkül, és minden hős SAJÁT neve áll alatta
+## (a régi borítón fel volt cserélve a lovag és a mágus neve — itt ez nem fordulhat elő,
+## mert a felirat ugyanabból a sorrendből készül, amiből a figurák rajzolódnak).
+static func menu_borito(m: Node, c: Cv) -> void:
+	var g := _menu_geo(m)
+	var W: float = g["W"]
+	var H: float = g["H"]
+	var k: float = g["k"]
+	var spread := W * 0.22
+	var feet_y := H * 0.88
+	var names := [["Mágus", W / 2 - spread, "#c9a6ff"], ["Lovag", W / 2, "#e8d8a0"], ["Íjász", W / 2 + spread, "#a8e090"]]
+	for n in names:
+		var nx: float = n[1]
+		var sz := minf(17 * k, 18.0)
+		c.ftxt(str(n[0]).to_upper(), nx + 1.2 * k, feet_y + 30 * k + 1.2 * k, "#140c04", sz, "center")
+		c.ftxt(str(n[0]).to_upper(), nx, feet_y + 30 * k, n[2], sz, "center")
+	var fw := minf(100 * k, W * 0.1)
+	MenuArt.flourish(c, 22 * k, 28 * k, fw, "#c8a03a", k, false)
+	MenuArt.flourish(c, W - 22 * k, 28 * k, fw, "#c8a03a", k, true)
+	MenuArt.flourish(c, 22 * k, H - 28 * k, fw, "#c8a03a", k, false)
+	MenuArt.flourish(c, W - 22 * k, H - 28 * k, fw, "#c8a03a", k, true)
+	c.ss(rgba(212, 168, 75, 0.65)); c.lw(2.4 * k)
+	c.stroke_rect(14 * k, 14 * k, W - 28 * k, H - 28 * k)
+	c.ss(rgba(212, 168, 75, 0.22)); c.lw(1 * k)
+	c.stroke_rect(22 * k, 22 * k, W - 44 * k, H - 44 * k)
+
+
 static func menu_top(m: Node, c: Cv) -> void:
+	if m.borito_mod:
+		menu_borito(m, c)
+		return
 	var g := _menu_geo(m)
 	var W: float = g["W"]
 	var H: float = g["H"]
@@ -216,6 +246,7 @@ static func help(m: Node, c: Cv) -> void:
 	c.fs("#080604"); c.fill_rect(0, 0, W, H)
 	var info := [
 		["Mozgás / Támadás", "WASD vagy nyilak — tartsd lenyomva a folyamatos járáshoz"],
+		["A katakomba él", "Ha megállsz, a szörnyek akkor is lépnek: ne késlekedj sokáig!"],
 		["Íj / Ágyú / Varázsgömb", "Lő az irányba, ha szörny van a vonalban"],
 		["Láda · Szentély · Kereskedő", "Sétálj rá: tárgyat választasz, áldást kérsz vagy aranyért vásárolsz"],
 		["Tab: térkép  ·  K: kutatás", "Bejárt mezők kis térképen; titkos ajtók és rejtett csapdák felfedése"],

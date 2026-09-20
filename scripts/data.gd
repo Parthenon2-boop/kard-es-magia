@@ -21,6 +21,13 @@ const STEP_MS := 150.0
 const FIRST_DELAY := 150.0
 const MOVE_SPD := 1000.0 / STEP_MS * 1.1   # mező/másodperc
 
+## A katakomba akkor is él, ha te nem mozdulsz: ennyi ezredmásodpercenként eltelik egy kör,
+## tehát a szörnyek közelednek és támadnak. Így nem lehet nyugodtan kivárni őket — de
+## a hősnek marad ideje gondolkodni. (Ablakban, halál után és képernyőkép-módban áll az idő.)
+const IDLE_MS := 1100.0
+## Az első várakozó kör kicsit később jön, hogy egy pillanatnyi megtorpanás még ne számítson.
+const IDLE_FIRST_MS := 1600.0
+
 const MAGE_RANGE := 5
 
 # ══════════ PALETTA ══════════

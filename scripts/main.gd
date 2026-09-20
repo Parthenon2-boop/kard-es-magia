@@ -66,6 +66,9 @@ var shot_cls := "Lovag"
 var shot_frames := 45
 var shot_depth := 1
 var shot_size := Vector2i(1280, 800)   # --size=1024x768: más felbontású elrendezés ellenőrzése
+## borítókép-mód (--scene=borito): a főmenü gombok és súgósor nélkül, a hősök neve alájuk írva.
+## Így a ParthLauncher borítója mindig a játék MOSTANI rajzait mutatja.
+var borito_mod := false
 var _frame := 0
 var _shot_at := 0.0
 var _worst := 0.0        # a leghosszabb képkocka (akadás-keresés)
@@ -279,7 +282,7 @@ func _lay2(rid: RID, which: String) -> void:
 				"pause": Screens.pause(self, cv)
 				"over": Screens.game_over(self, cv, false)
 				"win": Screens.game_over(self, cv, true)
-			Screens.mute_button(self, cv)
+			if not borito_mod: Screens.mute_button(self, cv)
 
 
 func add_hit(x: float, y: float, w: float, h: float, fn: Callable) -> void:
@@ -392,6 +395,10 @@ func set_state(s: String) -> void:
 	state = s
 	if s != "play":
 		held["active"] = false
+	else:
+		# ablakból (táska, szünet, láda) visszatérve ne peregjen le azonnal egy kör
+		_idle_at = now_ms()
+		_idle_first = true
 
 
 func start_game(cls: String, diff: String) -> void:
@@ -611,6 +618,37 @@ func press_dir(dx: int, dy: int) -> void:
 func release_dir(d: Vector2i) -> void:
 	if held["dx"] == d.x and held["dy"] == d.y:
 		held = {"dx": 0, "dy": 0, "active": false}
+
+
+# ══════════ ÉLŐ KATAKOMBA ══════════
+## A szörnyek akkor is lépnek, ha a hős áll: ha eltelik IDLE_MS úgy, hogy nem történt kör,
+## magától lepereg egy „várakozás” kör. A hős bármikor közbeléphet — az ő lépése azonnal
+## újraindítja a számlálót, mert a világ körszámlálója megváltozik.
+var _idle_turn := -1
+var _idle_at := 0.0
+var _idle_first := true    # a megtorpanás utáni ELSŐ várakozó kör kicsit később jön
+
+func idle_tick(now: float) -> void:
+	if shot_path != "":
+		return                                     # képernyőkép-módban álljon az idő
+	if state != "play" or game.world == null or held["active"]:
+		return
+	if game.player == null or not game.player.alive:
+		return
+	if game.pending_chest != null or game.pending_shop != null or game.pending_perks > 0:
+		return
+	if int(game.world.turn) != _idle_turn:         # a hős tett valamit: újraindul a várakozás
+		_idle_turn = int(game.world.turn)
+		_idle_at = now
+		_idle_first = true
+		return
+	if now - _idle_at < (Data.IDLE_FIRST_MS if _idle_first else Data.IDLE_MS):
+		return
+	_idle_first = false
+	game.advance_turn()
+	_idle_turn = int(game.world.turn)
+	_idle_at = now
+	_after_move()
 
 
 func step_repeat(now: float) -> void:
@@ -840,6 +878,7 @@ func _process2(delta: float) -> void:
 		tick = _frame * 2.5   # képernyőkép-módban rögzített ütem: két futás képe összevethető
 	var now := Time.get_ticks_usec() / 1000.0
 	step_repeat(now)
+	idle_tick(now)
 	if in_world():
 		_update_motion()
 	_update_layers()
@@ -1044,6 +1083,10 @@ func _setup_shot() -> void:
 	win.content_scale_size = shot_size
 	match shot_scene:
 		"blank": set_state("blank")
+		"borito":
+			borito_mod = true
+			skins = Skins.alap_valasztas()   # a borítón mindenki az alap kinézetét viselje
+			set_state("menu")
 		"diff": set_state("diff")
 		"char":
 			diff_sel = 1
