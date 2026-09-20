@@ -1023,9 +1023,14 @@ static func _i_fegyver(c: Cv, s: float, v: String) -> void:
 
 
 static func _i_ij(c: Cv, s: float, alap: Variant, vilc: Variant, sotc: Variant) -> void:
-	var cxp := 10.4 * s
+	# Az íj ívét a MARKOLAT helyéhez igazítjuk: a húr a kéznél van, nem a test mellett lebeg.
+	var r := 9.4 * s
+	var gx := 8.1 * s                      # a markoló kéz helye (a test előtt)
 	var cyp := -1.0 * s
-	var r := 10.6 * s
+	var cxp := gx - r * cos(PI * 0.44)     # így az ív húrja pont a kézhez kerül
+	# alkar a vállból a markolatig, hogy látszódjon: a hős fogja az íjat
+	c.ss(BOR); c.lw(2.2 * s)
+	c.bp(); c.mt(3.6 * s, -3.0 * s); c.qt(5.6 * s, -1.6 * s, gx, cyp + 0.4 * s); c.stroke()
 	c.ss(sotc); c.lw(2.3 * s)
 	c.bp(); c.arc(cxp, cyp, r, -PI * 0.44, PI * 0.44); c.stroke()
 	c.ss(alap); c.lw(1.5 * s)
@@ -1040,15 +1045,17 @@ static func _i_ij(c: Cv, s: float, alap: Variant, vilc: Variant, sotc: Variant) 
 	c.fs(ARANY)
 	c.circ(ex, ey, 0.75 * s)
 	c.circ(ex, ey2, 0.75 * s)
-	# markolat
-	c.fs(sotc); c.rrect(cxp - r - 0.9 * s, cyp - 2.6 * s, 2.4 * s, 5.2 * s, 0.9 * s); c.fill()
-	c.fs("#3a2a12"); c.rrect(cxp - r - 0.6 * s, cyp - 2.2 * s, 1.8 * s, 4.4 * s, 0.8 * s); c.fill()
-	# nyíl
+	# markolat: az ív közepén, a kéz alatt
+	c.fs(sotc); c.rrect(ex - 1.2 * s, cyp - 2.6 * s, 2.4 * s, 5.2 * s, 0.9 * s); c.fill()
+	c.fs("#3a2a12"); c.rrect(ex - 0.9 * s, cyp - 2.2 * s, 1.8 * s, 4.4 * s, 0.8 * s); c.fill()
+	# nyíl: a markolattól előre
 	c.ss("#c9b58a"); c.lw(0.65 * s)
-	c.line(cxp - r + 0.4 * s, cyp, cxp + 5.2 * s, cyp)
+	c.line(ex - 2.6 * s, cyp, ex + 7.4 * s, cyp)
 	c.fs("#e8eef6")
-	c.poly([cxp + 6.4 * s, cyp, cxp + 4.6 * s, cyp - 1.1 * s, cxp + 4.6 * s, cyp + 1.1 * s])
-	c.fs(BOR); c.circ(cxp - r + 0.2 * s, cyp + 0.6 * s, 1.6 * s)
+	c.poly([ex + 8.6 * s, cyp, ex + 6.8 * s, cyp - 1.1 * s, ex + 6.8 * s, cyp + 1.1 * s])
+	# a markoló kéz a fogantyún
+	c.fs(BOR); c.circ(ex, cyp + 0.4 * s, 1.7 * s)
+	c.fs(sot(BOR, 0.18)); c.circ(ex + 0.5 * s, cyp + 1.1 * s, 0.9 * s)
 	rim(c, [cxp + r * cos(-PI * 0.30) - 0.6 * s, cyp + r * sin(-PI * 0.30), cxp + r - 0.6 * s, cyp,
 		cxp + r * cos(PI * 0.30) - 0.6 * s, cyp + r * sin(PI * 0.30)], 0.6 * s)
 
