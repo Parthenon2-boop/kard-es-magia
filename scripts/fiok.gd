@@ -155,10 +155,27 @@ static func _json(t: String) -> Dictionary:
 
 
 ## Token-frissítés; a végén meghívja a kész-visszahívást (siker igaz/hamis).
+## Ha több kérés is egyszerre ütközik lejárt belépésbe, CSAK EGY frissítés indul:
+## a többi megvárja az eredményét (a kiszolgáló a frissítő kulcsot minden használatkor lecseréli,
+## így a párhuzamos második kérés elbukna, és üresen maradna pl. a megvett részek listája).
+var _token_frissul := false
+var _token_varok: Array[Callable] = []
+
 func frissit_token(kesz: Callable) -> void:
 	if refresh == "":
 		kesz.call(false)
 		return
+	if _token_frissul:
+		_token_varok.append(kesz)
+		return
+	_token_frissul = true
+	var kesz_mind := func(ok: bool) -> void:
+		_token_frissul = false
+		var varok := _token_varok.duplicate()
+		_token_varok.clear()
+		kesz.call(ok)
+		for v in varok:
+			v.call(ok)
 	_keres(HTTPClient.METHOD_POST, "%s/auth/v1/token?grant_type=refresh_token" % url,
 		PackedStringArray(["apikey: " + anon, "Content-Type: application/json"]),
 		JSON.stringify({"refresh_token": refresh}),
@@ -169,9 +186,9 @@ func frissit_token(kesz: Callable) -> void:
 				if str(d.get("refresh_token", "")) != "":
 					refresh = str(d["refresh_token"])
 				ment_tokenek()
-				kesz.call(true)
+				kesz_mind.call(true)
 			else:
-				kesz.call(false))
+				kesz_mind.call(false))
 
 
 ## GET, 401 esetén egyszeri token-frissítéssel újrapróbálva
@@ -224,17 +241,22 @@ func frissit() -> void:
 		else:
 			uzenet = "Nincs kapcsolat a kiszolgálóval."
 			uzenet_hiba = true
-		_valt())
-	_get_auth("/rest/v1/cosmetics?select=item_key", func(kod: int, t: String) -> void:
-		if kod != 200:
-			return
-		var j: Variant = json(t)
-		if j is Array:
-			birtok = {}
-			for e in (j as Array):
-				if e is Dictionary:
-					birtok[str((e as Dictionary).get("item_key", ""))] = true
-		_valt())
+		_valt()
+		# a megvett részek CSAK az egyenleg után indulnak (egy kérés, egy token-frissítés)
+		_get_auth("/rest/v1/cosmetics?select=item_key", func(kod2: int, t2: String) -> void:
+			if kod2 != 200:
+				if kod == 200:
+					uzenet = "A megvásárolt részeket nem sikerült lekérni."
+					uzenet_hiba = true
+				_valt()
+				return
+			var j2: Variant = json(t2)
+			if j2 is Array:
+				birtok = {}
+				for e in (j2 as Array):
+					if e is Dictionary:
+						birtok[str((e as Dictionary).get("item_key", ""))] = true
+			_valt()))
 
 
 func birtokol(kulcs: String) -> bool:
