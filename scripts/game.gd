@@ -24,6 +24,23 @@ func add_fx(o: Dictionary) -> void:
 	fx.append(o)
 
 
+## A lejárt látványelemek törlése (a képkocka-hurok hívja).
+##
+## Enélkül az fx tömb SOHA nem ürült: csak új kaland és szintváltás törölte.
+## A rajzoló 1.0-ra vágja a haladást, ezért a becsapódott varázsgömb ott
+## maradt a célpontja fölött a mélység végéig – és a tömb is nőtt körről
+## körre, minden sebzésszámmal és villanással együtt.
+func prune_fx() -> void:
+	if fx.is_empty():
+		return
+	var now: float = now_ms.call()
+	var maradt: Array = []
+	for f in fx:
+		if now - float(f["t0"]) < float(f.get("delay", 0.0)) + float(f["dur"]):
+			maradt.append(f)
+	fx = maradt
+
+
 func start(cls: String, diff: String) -> void:
 	player = Player.create(cls)
 	player.on_level_up = _level_up
@@ -286,20 +303,29 @@ func try_ranged_attack(dx: int, dy: int) -> int:
 
 
 # ══════════ KÖRÖK ══════════
-func advance_turn() -> void:
+## Egy kör lepergetése.
+##
+## `idle` = a hős NEM tett semmit, csak telt az idő (élő katakomba). Ilyenkor a
+## szörnyek lépnek – ez a feature lényege –, de a hőst érő, KÖRÖNKÉNTI hatások
+## nem futnak le. Enélkül a méreg a valós időben marta le a gyógyitalt, amíg a
+## játékos gondolkodott: hat várakozó kör alatt a 25 HP-s italból 20 elfogyott,
+## ezért tűnt úgy, hogy a gyógyital nem tölt semmit. A regeneráció ugyanígy
+## kimarad, különben álldogálással ingyen lehetne gyógyulni.
+func advance_turn(idle := false) -> void:
 	var w := world
 	var p := player
 	w.turn += 1
-	if p.poison > 0:
-		p.poison -= 1
-		var d := Data.rnd(2, 5)
-		p.hp = maxi(1, p.hp - d)
-		p.add_msg(("☠ Méreg -%d" % d) if p.poison > 0 else "Méreg lejárt", "#90c030")
-	# regeneráció (nagyon ritka / legendás páncél és pajzs)
-	var rg := p.regen
-	if rg > 0 and p.alive and p.hp > 0 and p.hp < p.max_hp:
-		p.hp = mini(p.max_hp, p.hp + rg)
-	spot_hidden()
+	if not idle:
+		if p.poison > 0:
+			p.poison -= 1
+			var d := Data.rnd(2, 5)
+			p.hp = maxi(1, p.hp - d)
+			p.add_msg(("☠ Méreg -%d" % d) if p.poison > 0 else "Méreg lejárt", "#90c030")
+		# regeneráció (nagyon ritka / legendás páncél és pajzs)
+		var rg := p.regen
+		if rg > 0 and p.alive and p.hp > 0 and p.hp < p.max_hp:
+			p.hp = mini(p.max_hp, p.hp + rg)
+		spot_hidden()
 	for m in w.mons:
 		if not m.alive or not p.alive:
 			continue
@@ -317,9 +343,23 @@ func advance_turn() -> void:
 			var ny := m.y + dy
 			if nx == p.x and ny == p.y:
 				mon_attack(m)
-			elif not w.blocked(nx, ny) and w.mon_at(nx, ny) == null:
-				m.x = nx
-				m.y = ny
+			else:
+				# A szörnynek nincs útkeresése: a hős felé tesz egy lépést. Ha ott
+				# fal van, eddig egyszerűen MEGÁLLT – a folyosókon ezért látszott
+				# úgy, hogy a szörnyek meg sem mozdulnak. Most megkerüli: előbb
+				# az átlós lépés, aztán a két tengely menti irány.
+				for l: Vector2i in [Vector2i(dx, dy), Vector2i(dx, 0), Vector2i(0, dy)]:
+					if l.x == 0 and l.y == 0:
+						continue
+					var lx: int = m.x + l.x
+					var ly: int = m.y + l.y
+					if lx == p.x and ly == p.y:
+						mon_attack(m)
+						break
+					if not w.blocked(lx, ly) and w.mon_at(lx, ly) == null:
+						m.x = lx
+						m.y = ly
+						break
 		elif randf() < 0.22:
 			var d: Vector2i = Data.pick(Dungeon.DIRS)
 			if d.x != 0:

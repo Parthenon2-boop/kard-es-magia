@@ -645,7 +645,7 @@ func idle_tick(now: float) -> void:
 	if now - _idle_at < (Data.IDLE_FIRST_MS if _idle_first else Data.IDLE_MS):
 		return
 	_idle_first = false
-	game.advance_turn()
+	game.advance_turn(true)     # várakozó kör: a szörnyek lépnek, de a méreg nem marja a hőst
 	_idle_turn = int(game.world.turn)
 	_idle_at = now
 	_after_move()
@@ -879,6 +879,8 @@ func _process2(delta: float) -> void:
 	var now := Time.get_ticks_usec() / 1000.0
 	step_repeat(now)
 	idle_tick(now)
+	if game != null:
+		game.prune_fx()      # a lejárt lövedékek és villanások eltűnnek
 	if in_world():
 		_update_motion()
 	_update_layers()
