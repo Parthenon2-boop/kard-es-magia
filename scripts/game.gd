@@ -574,11 +574,15 @@ func use_item(item: Item) -> bool:
 		return false
 	match item.subtype:
 		"heal":
-			var h := mini(item.heal, p.max_hp - p.hp)
+			# Teli életerőnél NEM isszuk meg: régen elfogyott a fiola, kiírta a
+			# "+0 HP"-t, és a játékos joggal hitte, hogy a gyógyital nem működik.
+			if p.hp >= p.max_hp:
+				p.add_msg("Tele van az életerőd – a fiola marad.", "#c0c8d0")
+				return false
+			var h := maxi(0, mini(item.heal, p.max_hp - p.hp))
 			p.hp += h
 			p.add_msg("+%d HP" % h, "#40c860")
-			if h > 0:
-				add_fx({"type": "dmgnum", "x": p.x, "y": p.y, "txt": "+%d" % h, "col": "#50e070", "dur": 700.0})
+			add_fx({"type": "dmgnum", "x": p.x, "y": p.y, "txt": "+%d" % h, "col": "#50e070", "dur": 700.0})
 		"maxheal":
 			# Életerő töltő: nagyobb max. életerő ÉS teljes gyógyulás
 			p.max_hp += item.max_hp_up

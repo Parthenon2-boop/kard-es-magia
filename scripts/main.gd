@@ -628,6 +628,12 @@ var _idle_turn := -1
 var _idle_at := 0.0
 var _idle_first := true    # a megtorpanás utáni ELSŐ várakozó kör kicsit később jön
 
+# A szörnyek siklásához: mennyi idő telik el két kör között (mérve, simítva).
+# Ennyi idő alatt tesznek meg egy mezőt, így nem villannak és nem állnak meg.
+var _kor_hossz_ms := 400.0
+var _mozgas_kor := -1
+var _mozgas_kor_ms := 0.0
+
 func idle_tick(now: float) -> void:
 	if shot_path != "":
 		return                                     # képernyőkép-módban álljon az idő
@@ -882,7 +888,7 @@ func _process2(delta: float) -> void:
 	if game != null:
 		game.prune_fx()      # a lejárt lövedékek és villanások eltűnnek
 	if in_world():
-		_update_motion()
+		_update_motion(now)
 	_update_layers()
 	if shot_path != "":
 		_shot_tick()
@@ -1031,15 +1037,31 @@ func _ui_sig() -> Array:
 
 
 ## egyenletes sebességű siklás (nem lassul le minden lépés végén, így tartott gombnál folyamatos)
-func _update_motion() -> void:
+func _update_motion(now: float) -> void:
 	var p := game.player
 	var step_d := Data.MOVE_SPD * dt / 1000.0
 	p.rx = _glide(p.rx, p.x, step_d)
 	p.ry = _glide(p.ry, p.y, step_d)
+	# A SZÖRNYEK a kör HOSSZÁHOZ igazodnak, nem a hős sebességéhez.
+	#
+	# Régen ugyanazzal a fix sebességgel siklottak, mint a hős: egy mezőt ~136 ms
+	# alatt tettek meg, a várakozó körök viszont 1,1 másodpercenként jönnek –
+	# vagyis villantak egyet, aztán majdnem egy teljes másodpercig álltak. Ettől
+	# volt szaggatott. Most megmérjük, mennyi idő telik el két kör között, és a
+	# lépést pont ennyi idő alatt teszik meg: így folyamatosan, egyenletesen
+	# közelednek. Ha a játékos rohan, a körök sűrűbbek, és velük együtt gyorsulnak.
+	var kor := int(game.world.turn)
+	if kor != _mozgas_kor:
+		if _mozgas_kor >= 0:
+			var telt := now - _mozgas_kor_ms
+			_kor_hossz_ms = clampf(lerpf(_kor_hossz_ms, telt, 0.5), float(Data.STEP_MS), float(Data.IDLE_MS))
+		_mozgas_kor = kor
+		_mozgas_kor_ms = now
+	var mon_d := dt / maxf(1.0, _kor_hossz_ms)
 	for m in game.world.mons:
 		if m.alive:
-			m.rx = _glide(m.rx, m.x, step_d)
-			m.ry = _glide(m.ry, m.y, step_d)
+			m.rx = _glide(m.rx, m.x, mon_d)
+			m.ry = _glide(m.ry, m.y, mon_d)
 	if p.lunge > 0:
 		p.lunge = maxf(0.0, p.lunge - dt * 0.008)
 	var t := float(Data.TILE)

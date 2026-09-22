@@ -61,6 +61,17 @@ func test_heal() -> void:
 	g.use_item(it2)
 	ok(p.hp == 100, "95 HP-ról a maximumig tölt, nem tovább (lett: %d)" % p.hp)
 
+	# TELI életerőnél a fiola maradjon meg: eddig elfogyott "+0 HP"-val, és a
+	# játékos joggal hitte, hogy a gyógyital nem működik
+	var itx := mk("Gyógyital", "common")
+	p.hp = p.max_hp
+	p.inventory.append(itx)
+	var hasznalt: bool = g.use_item(itx)
+	ok(not hasznalt, "teli életerőnél az ital nem használódik el")
+	ok(p.inventory.has(itx), "és a fiola a táskában marad")
+	ok(p.hp == p.max_hp, "az életerő teli marad (%d/%d)" % [p.hp, p.max_hp])
+	p.inventory.erase(itx)
+
 	# nagy gyógyital
 	var it3 := mk("Nagy gyógyital", "common")
 	p.hp = 20
