@@ -61,7 +61,7 @@ static func _read() -> Variant:
 static func item_to(it: Item) -> Variant:
 	if it == null:
 		return null
-	return {"name": it.name, "label": it.label, "slot": it.slot, "subtype": it.subtype, "glyph": it.glyph,
+	return {"name": it.name, "slot": it.slot, "subtype": it.subtype, "glyph": it.glyph,
 		"rarity": it.rarity, "dmg": it.dmg, "def": it.def, "heal": it.heal, "max_hp_up": it.max_hp_up,
 		"atk_up": it.atk_up, "def_up": it.def_up, "damage": it.damage, "reach": it.reach,
 		"lifesteal": it.lifesteal, "regen": it.regen}
@@ -72,8 +72,10 @@ static func item_from(v: Variant) -> Item:
 		return null
 	var d: Dictionary = v
 	var it := Item.new()
+	# a régi mentésekben a tárgy magyar neve áll: ebből lesz a belső azonosító (a "label" mezőt,
+	# a régi megjelenített nevet, már nem olvassuk — a nevet a nyelvi fájl adja)
 	it.name = str(d.get("name", ""))
-	it.label = str(d.get("label", it.name))
+	it.name = str(Data.LEGACY_ITEM_IDS.get(it.name, it.name))
 	it.slot = str(d.get("slot", "use"))
 	it.subtype = str(d.get("subtype", ""))
 	it.glyph = str(d.get("glyph", "?"))
@@ -114,7 +116,7 @@ static func save_run(g: Game) -> bool:
 		kinds.append(k)
 	var mons: Array = []
 	for m in w.mons:
-		mons.append({"key": m.key, "name": m.name, "x": m.x, "y": m.y, "seedv": m.seedv, "facing": m.facing,
+		mons.append({"key": m.key, "x": m.x, "y": m.y, "seedv": m.seedv, "facing": m.facing,
 			"max_hp": m.max_hp, "hp": m.hp, "atk": m.atk, "def": m.def, "mres": m.mres, "xp": m.xp,
 			"sp": m.sp, "boss": m.boss, "alive": m.alive, "guard": m.guard, "awake": m.awake, "stun": m.stun})
 	var chests: Array = []
@@ -219,8 +221,10 @@ static func load_run() -> Game:
 	p.msgs.clear()
 	if hs.get("msgs") is Array:
 		for v in (hs["msgs"] as Array):
-			if v is Dictionary and (v as Dictionary).has("t"):
-				p.msgs.append({"t": str((v as Dictionary)["t"]), "c": str((v as Dictionary).get("c", Data.P["ink"]))})
+			# csak a fordítási hivatkozások maradnak meg; a régi mentések kész (magyar) szövegei nem
+			# fordíthatók, ezért kimaradnak — a napló a "Folytatod a kalandot..." sorral indul újra
+			if v is Dictionary and Lang.ervenyes_ref((v as Dictionary).get("t")):
+				p.msgs.append({"t": (v as Dictionary)["t"], "c": str((v as Dictionary).get("c", Data.P["ink"]))})
 	p.msg_seq = p.msgs.size()
 
 	var w := World.new()
@@ -253,7 +257,6 @@ static func load_run() -> Game:
 				continue
 			var m := Mon.new()
 			m.key = str(md["key"])
-			m.name = str(md.get("name", Data.MONS[m.key]["name"]))
 			m.x = int(md.get("x", 0))
 			m.y = int(md.get("y", 0))
 			m.rx = m.x
@@ -286,7 +289,7 @@ static func load_run() -> Game:
 					if ii != null:
 						items.append(ii)
 			while items.size() < 2:
-				items.append(Item.make(Item.find_base("Gyógyital"), "common", 1))
+				items.append(Item.make(Item.find_base("healing_potion"), "common", 1))
 			w.chests.append({"x": int(cd.get("x", 0)), "y": int(cd.get("y", 0)), "opened": bool(cd.get("opened", false)), "items": items})
 	w.shops = []
 	if mp.get("shops") is Array:

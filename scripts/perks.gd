@@ -6,30 +6,36 @@ extends RefCounted
 
 const LIST := {
 	# ── közös ──
-	"eletero": {"n": "Vas szervezet", "d": "+10 maximum életerő, és rögtön gyógyít is ennyit.", "cls": "", "max": 5, "ic": "♥", "col": "#d04030"},
-	"szivossag": {"n": "Szívósság", "d": "+2 védelem örökre.", "cls": "", "max": 4, "ic": "🛡", "col": "#5080e0"},
-	"vamp": {"n": "Vérszívás", "d": "+5% életlopás minden sebzésed után.", "cls": "", "max": 3, "ic": "♥", "col": "#d03030"},
-	"regen": {"n": "Gyors gyógyulás", "d": "Körönként +1 életerő.", "cls": "", "max": 3, "ic": "✚", "col": "#40c860"},
-	"kincs": {"n": "Kincsvadász", "d": "+50% arany a legyőzött szörnyekből.", "cls": "", "max": 2, "ic": "◉", "col": "#d4a84b"},
+	"eletero": {"cls": "", "max": 5, "ic": "♥", "col": "#d04030"},
+	"szivossag": {"cls": "", "max": 4, "ic": "🛡", "col": "#5080e0"},
+	"vamp": {"cls": "", "max": 3, "ic": "♥", "col": "#d03030"},
+	"regen": {"cls": "", "max": 3, "ic": "✚", "col": "#40c860"},
+	"kincs": {"cls": "", "max": 2, "ic": "◉", "col": "#d4a84b"},
 	# ── Lovag ──
-	"blokk": {"n": "Pajzsmester", "d": "+5% esély, hogy pajzzsal felfogd az ütés felét.", "cls": "Lovag", "max": 4, "ic": "⛨", "col": "#80a8e0"},
-	"vertezet": {"n": "Vértezet", "d": "+3 védelem örökre.", "cls": "Lovag", "max": 3, "ic": "🛡", "col": "#5080e0"},
-	"dofes": {"n": "Pajzsdöfés", "d": "25% eséllyel egy körre elkábítod a szörnyet.", "cls": "Lovag", "max": 2, "ic": "⚔", "col": "#e0a040"},
+	"blokk": {"cls": "Lovag", "max": 4, "ic": "⛨", "col": "#80a8e0"},
+	"vertezet": {"cls": "Lovag", "max": 3, "ic": "🛡", "col": "#5080e0"},
+	"dofes": {"cls": "Lovag", "max": 2, "ic": "⚔", "col": "#e0a040"},
 	# ── Íjász ──
-	"sasszem": {"n": "Sasszem", "d": "+8% kritikus esély az íjjal.", "cls": "Íjász", "max": 3, "ic": "🏹", "col": "#70d860"},
-	"hosszuij": {"n": "Hosszú íj", "d": "+1 lőtáv.", "cls": "Íjász", "max": 2, "ic": "↔", "col": "#70d860"},
-	"gyorslab": {"n": "Gyors léptek", "d": "Minden 5. lépésed ingyen van: nem telik vele kör.", "cls": "Íjász", "max": 1, "ic": "»", "col": "#a0e090"},
+	"sasszem": {"cls": "Íjász", "max": 3, "ic": "🏹", "col": "#70d860"},
+	"hosszuij": {"cls": "Íjász", "max": 2, "ic": "↔", "col": "#70d860"},
+	"gyorslab": {"cls": "Íjász", "max": 1, "ic": "»", "col": "#a0e090"},
 	# ── Mágus ──
-	"fokusz": {"n": "Mágikus fókusz", "d": "+2 varázserő örökre.", "cls": "Mágus", "max": 4, "ic": "✦", "col": "#8cc4ff"},
-	"messzi": {"n": "Messzi gömb", "d": "A varázsgömb 1 mezővel tovább repül.", "cls": "Mágus", "max": 2, "ic": "↔", "col": "#6aa8ff"},
-	"atuto": {"n": "Átütő gömb", "d": "20% eséllyel a gömb átüt a célponton, és tovább repül.", "cls": "Mágus", "max": 2, "ic": "✳", "col": "#a0d0ff"},
+	"fokusz": {"cls": "Mágus", "max": 4, "ic": "✦", "col": "#8cc4ff"},
+	"messzi": {"cls": "Mágus", "max": 2, "ic": "↔", "col": "#6aa8ff"},
+	"atuto": {"cls": "Mágus", "max": 2, "ic": "✳", "col": "#a0d0ff"},
 }
 const ORDER := ["eletero", "szivossag", "vamp", "regen", "kincs",
 	"blokk", "vertezet", "dofes", "sasszem", "hosszuij", "gyorslab", "fokusz", "messzi", "atuto"]
 
 
+## A képesség adatai; "n" (név) és "d" (leírás) a mostani nyelven (perk.<id>, perk.<id>.d).
 static func info(id: String) -> Dictionary:
-	return LIST.get(id, {"n": id, "d": "", "cls": "", "max": 1, "ic": "•", "col": "#c8a870"})
+	if not LIST.has(id):
+		return {"n": id, "d": "", "cls": "", "max": 1, "ic": "•", "col": "#c8a870"}
+	var d: Dictionary = (LIST[id] as Dictionary).duplicate()
+	d["n"] = Lang.T("perk." + id)
+	d["d"] = Lang.T("perk." + id + ".d")
+	return d
 
 
 ## A hős számára még választható képességek (kaszt szerint szűrve, a határt elérteket kihagyva).
@@ -71,7 +77,7 @@ static func apply(p: Player, id: String) -> bool:
 		"fokusz":
 			p.base_mag += 2
 	p.perk_seq += 1
-	p.add_msg("⬆ %s %s!" % [LIST[id]["ic"], LIST[id]["n"]], Data.P["parchGold"])
+	p.add_msg(Lang.ref("msg.perk", LIST[id]["ic"], Lang.ref("perk." + id)), Data.P["parchGold"])
 	return true
 
 
@@ -82,5 +88,5 @@ static func labels(p: Player) -> Array[String]:
 		var n := int(p.perks.get(id, 0))
 		if n <= 0:
 			continue
-		out.append("%s %s%s" % [LIST[id]["ic"], LIST[id]["n"], (" ×%d" % n) if n > 1 else ""])
+		out.append("%s %s%s" % [LIST[id]["ic"], Lang.T("perk." + id), (" ×%d" % n) if n > 1 else ""])
 	return out

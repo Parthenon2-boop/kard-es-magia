@@ -1,4 +1,4 @@
-﻿class_name Fiok
+class_name Fiok
 extends Node
 ## Fiók és kozmetika-bolt kiszolgáló (Supabase). A ParthLauncher írja a
 ## `<Godot felhasználói mappa>/fiok.json` fájlt: {url, anon, email, access_token, refresh_token, mentve}.
@@ -12,16 +12,17 @@ const FAJL := "user://fiok.json"
 const TARTALEK := "Godot/app_userdata/Kard és Mágia/fiok.json"
 
 const GUMROAD := [
-	{"erme": 100, "ar": "0,99 $", "url": "https://parthenon62.gumroad.com/l/iszcby"},
-	{"erme": 220, "ar": "1,99 $", "url": "https://parthenon62.gumroad.com/l/zwaqr"},
-	{"erme": 600, "ar": "4,99 $", "url": "https://parthenon62.gumroad.com/l/bnjaw"},
+	{"erme": 100, "cent": 99, "url": "https://parthenon62.gumroad.com/l/iszcby"},
+	{"erme": 220, "cent": 199, "url": "https://parthenon62.gumroad.com/l/zwaqr"},
+	{"erme": 600, "cent": 499, "url": "https://parthenon62.gumroad.com/l/bnjaw"},
 ]
 
+## a kiszolgáló hibakódja → a barátságos üzenet fordítási kulcsa (a szöveg a nyelvi fájlokban)
 const HIBA_SZOVEG := {
-	"keves_erme": "Nincs elég érméd — vegyél a „Érmét veszek” gombbal!",
-	"mar_megvan": "Ez a darab már a tiéd.",
-	"unknown_item": "Ismeretlen darab — frissítsd a játékot.",
-	"not_logged_in": "Jelentkezz be a ParthLauncherben.",
+	"keves_erme": "fiok.err.keves_erme",
+	"mar_megvan": "fiok.err.mar_megvan",
+	"unknown_item": "fiok.err.unknown_item",
+	"not_logged_in": "fiok.err.not_logged_in",
 }
 
 var url := ""
@@ -33,7 +34,9 @@ var betoltve := false         # van-e érvényes fiok.json
 var erme := 0
 var erme_ismert := false
 var birtok := {}              # item_key -> true
+## az üzenet FORDÍTÁSI KULCSA (üres: nincs üzenet) és a paraméterei — a bolt a mostani nyelven írja ki
 var uzenet := ""
+var uzenet_arg: Array = []
 var uzenet_hiba := false
 var folyamatban := false
 var seq := 0                  # minden változásnál nő (a rajzréteg ebből tudja, hogy frissíteni kell)
@@ -43,6 +46,22 @@ var offline_mod := false
 
 func _valt() -> void:
 	seq += 1
+
+
+func _uz(kulcs: String, arg: Array = []) -> void:
+	uzenet = kulcs
+	uzenet_arg = arg
+
+
+## a mostani üzenet a játék nyelvén (üres, ha nincs)
+func uzenet_szoveg() -> String:
+	return "" if uzenet == "" else Lang.Ta(uzenet, uzenet_arg)
+
+
+## egy érmecsomag ára a nyelv pénzformátumával ("0,99 $" / "$0.99")
+static func ar_szoveg(i: int) -> String:
+	var c := int(GUMROAD[i]["cent"])
+	return Lang.T("pack.price", floori(c / 100.0), "%02d" % (c % 100))
 
 
 # ══════════ fiok.json ══════════
@@ -102,7 +121,7 @@ func olvas() -> bool:
 		betoltve = true
 		break
 	if not betoltve:
-		uzenet = "Jelentkezz be a ParthLauncherben"
+		_uz("fiok.login")
 		uzenet_hiba = false
 		erme_ismert = false
 	_valt()
@@ -224,7 +243,7 @@ func frissit() -> void:
 	if not betoltve:
 		return
 	folyamatban = true
-	uzenet = "Betöltés…"
+	_uz("fiok.loading")
 	uzenet_hiba = false
 	_valt()
 	_get_auth("/rest/v1/my_coins?select=coins", func(kod: int, t: String) -> void:
@@ -237,16 +256,16 @@ func frissit() -> void:
 			else:
 				erme = 0
 				erme_ismert = true
-			uzenet = ""
+			_uz("")
 		else:
-			uzenet = "Nincs kapcsolat a kiszolgálóval."
+			_uz("fiok.no_server")
 			uzenet_hiba = true
 		_valt()
 		# a megvett részek CSAK az egyenleg után indulnak (egy kérés, egy token-frissítés)
 		_get_auth("/rest/v1/cosmetics?select=item_key", func(kod2: int, t2: String) -> void:
 			if kod2 != 200:
 				if kod == 200:
-					uzenet = "A megvásárolt részeket nem sikerült lekérni."
+					_uz("fiok.owned_fail")
 					uzenet_hiba = true
 				_valt()
 				return
@@ -263,17 +282,17 @@ func birtokol(kulcs: String) -> bool:
 	return birtok.has(kulcs)
 
 
-## Vásárlás. A `kesz` visszahívás: (siker: bool, uzenet: String)
+## Vásárlás. A `kesz` visszahívás: (siker: bool, uzenet: String — az üzenet fordítási kulcsa)
 func vasarol(kulcs: String, kesz := Callable()) -> void:
 	if not betoltve:
-		uzenet = HIBA_SZOVEG["not_logged_in"]
+		_uz(HIBA_SZOVEG["not_logged_in"])
 		uzenet_hiba = true
 		_valt()
 		if kesz.is_valid():
 			kesz.call(false, uzenet)
 		return
 	folyamatban = true
-	uzenet = "Vásárlás…"
+	_uz("fiok.buying")
 	uzenet_hiba = false
 	_valt()
 	_post_auth("/functions/v1/buy-cosmetic", JSON.stringify({"item": kulcs}), func(kod: int, t: String) -> void:
@@ -284,17 +303,20 @@ func vasarol(kulcs: String, kesz := Callable()) -> void:
 			erme = int(d.get("coins", erme))
 			erme_ismert = true
 			birtok[kulcs] = true
-			uzenet = "Megvetted! A darab felkerült a hősödre."
+			_uz("fiok.bought")
 			uzenet_hiba = false
 			siker = true
 		elif d.has("error"):
-			uzenet = str(HIBA_SZOVEG.get(str(d["error"]), "Ismeretlen hiba: " + str(d["error"])))
+			if HIBA_SZOVEG.has(str(d["error"])):
+				_uz(HIBA_SZOVEG[str(d["error"])])
+			else:
+				_uz("fiok.err.other", [str(d["error"])])
 			uzenet_hiba = true
 		elif kod == 0:
-			uzenet = "Nincs internetkapcsolat — próbáld újra később."
+			_uz("fiok.no_net")
 			uzenet_hiba = true
 		else:
-			uzenet = "A kiszolgáló nem válaszolt (%d)." % kod
+			_uz("fiok.http", [kod])
 			uzenet_hiba = true
 		_valt()
 		if kesz.is_valid():

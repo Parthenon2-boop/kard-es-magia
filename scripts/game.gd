@@ -49,7 +49,7 @@ func start(cls: String, diff: String) -> void:
 	pending_perks = 0
 	pending_chest = null
 	pending_shop = null
-	player.add_msg("Kaland kezdete! ♥♥♥", Data.P["parchGold"])
+	player.add_msg(Lang.ref("msg.start"), Data.P["parchGold"])
 
 
 ## szintlépés: hang + egy képességválasztás a sorba
@@ -65,7 +65,7 @@ func next_level() -> bool:
 		if autosave:
 			SaveGame.erase()   # a befejezett kalandot nincs mit folytatni
 		return true
-	player.add_msg("%d. mélység..." % n, "#9060d0")
+	player.add_msg(Lang.ref("msg.depth", n), "#9060d0")
 	world = World.create(player, n, world.diff)
 	fx.clear()
 	if autosave:
@@ -93,25 +93,25 @@ func mon_special(m: Mon) -> void:
 	if m.sp == "lifesteal":
 		var h := maxi(1, int(floorf(m.atk * 0.4)))
 		m.hp = mini(m.max_hp, m.hp + h)
-		p.add_msg("%s vért szív (+%d)" % [m.name, h], Data.P["vein"])
+		p.add_msg(Lang.ref("msg.lifesteal", m.ref(), h), Data.P["vein"])
 	elif m.sp == "poison" and randf() < 0.38:
 		p.poison = maxi(p.poison, 4)
-		p.add_msg("Megmérgeztek!", "#90c030")
+		p.add_msg(Lang.ref("msg.poisoned"), "#90c030")
 	elif m.sp == "regen" and randf() < 0.28:
 		m.hp = mini(m.max_hp, m.hp + int(floorf(m.max_hp * 0.05)))
 	elif m.sp == "crit" and randf() < 0.3:
 		var x := int(floorf(m.atk * 0.9))
 		p.hp -= x
-		p.add_msg("KRITIKUS! -%d" % x, Data.P["vein"])
+		p.add_msg(Lang.ref("msg.crit_in", x), Data.P["vein"])
 	elif m.sp == "fireball" and randf() < 0.22:
 		var d := Data.rnd(12, 20)
 		p.hp -= d
-		p.add_msg("Tűzgömb! -%d" % d, "#e06020")
+		p.add_msg(Lang.ref("msg.fireball_in", d), "#e06020")
 		add_fx({"type": "boom", "x": p.x, "y": p.y, "dur": 400.0})
 	elif m.sp == "aoe" and randf() < 0.18:
 		var d := Data.rnd(8, 16)
 		p.hp -= d
-		p.add_msg("Robbanás! -%d" % d, "#e08020")
+		p.add_msg(Lang.ref("msg.explosion", d), "#e08020")
 		add_fx({"type": "boom", "x": p.x, "y": p.y, "dur": 400.0})
 	elif m.sp == "summon" and randf() < 0.18:
 		var pool: Array = Data.POOL.get(w.dungeon_level, ["goblin"])
@@ -120,7 +120,7 @@ func mon_special(m: Mon) -> void:
 		# az idézett szörny csak járható, szabad mezőre kerülhet (falba nem)
 		if not w.blocked(sx, sy) and w.mon_at(sx, sy) == null and not (sx == p.x and sy == p.y):
 			w.mons.append(Mon.make(Data.pick(pool), sx, sy, w.diff))
-			p.add_msg("%s idéz!" % m.name, Data.P["vein"])
+			p.add_msg(Lang.ref("msg.summon", m.ref()), Data.P["vein"])
 	elif m.sp == "teleport" and randf() < 0.22:
 		var r: Rect2i = Data.pick(w.rooms)
 		var c := Dungeon.center(r)
@@ -129,7 +129,7 @@ func mon_special(m: Mon) -> void:
 			m.y = c.y
 			m.rx = c.x
 			m.ry = c.y
-			p.add_msg("%s teleportál!" % m.name, "#9060d0")
+			p.add_msg(Lang.ref("msg.teleport", m.ref()), "#9060d0")
 	elif m.sp == "revive" and m.hp < m.max_hp * 0.3 and randf() < 0.15:
 		var dead: Array = []
 		for mm in w.mons:
@@ -139,7 +139,7 @@ func mon_special(m: Mon) -> void:
 			var rev: Mon = Data.pick(dead)
 			rev.alive = true
 			rev.hp = int(floorf(rev.max_hp * 0.4))
-			p.add_msg("%s feltámaszt!" % m.name, "#9060d0")
+			p.add_msg(Lang.ref("msg.revive", m.ref()), "#9060d0")
 
 
 func mon_attack(m: Mon) -> void:
@@ -148,9 +148,9 @@ func mon_attack(m: Mon) -> void:
 	# lovag: 20% eséllyel pajzzsal felfogja az ütés felét (a Pajzsmester képesség növeli)
 	if randf() < p.block_chance:
 		dmg = int(ceilf(dmg / 2.0))
-		p.add_msg("🛡 Pajzs! Felfogtad az ütés felét.", "#80a8e0")
+		p.add_msg(Lang.ref("msg.block"), "#80a8e0")
 	p.hp -= dmg
-	p.add_msg("%s: -%d" % [m.name, dmg], Data.P["vein"])
+	p.add_msg(Lang.ref("msg.hit", m.ref(), dmg), Data.P["vein"])
 	add_fx({"type": "dmgnum", "x": p.x, "y": p.y, "txt": "-%d" % dmg, "col": "#ff5040", "dur": 700.0})
 	play("growl")
 	play("hit")
@@ -164,7 +164,7 @@ func check_death() -> void:
 		p.lives -= 1
 		if p.lives > 0:
 			p.hp = int(floorf(p.max_hp * 0.5))
-			p.add_msg("💔 Elestél! %d élet maradt." % p.lives, Data.P["vein"])
+			p.add_msg(Lang.ref("msg.fell", p.lives), Data.P["vein"])
 			play("death")
 		else:
 			p.hp = 0
@@ -205,11 +205,11 @@ func kill_check(m: Mon, dmg: int, hit_msg: String, hit_col: String) -> void:
 	var p := player
 	if m.hp <= 0:
 		var g := kill_reward(m)
-		p.add_msg("%s elesett! +%dxp, +%d arany" % [m.name, m.xp, g], Data.P["parchGold"])
+		p.add_msg(Lang.ref("msg.killed", m.ref(), m.xp, g), Data.P["parchGold"])
 		if m.boss:
-			p.add_msg("⚜ BOSS LEGYŐZVE!", Data.P["legendary"])
+			p.add_msg(Lang.ref("msg.boss"), Data.P["legendary"])
 	else:
-		p.add_msg(hit_msg % [m.name, dmg], hit_col)
+		p.add_msg(Lang.ref(hit_msg, m.ref(), dmg), hit_col)
 		play("growl")
 
 
@@ -228,8 +228,8 @@ func p_attack(m: Mon) -> int:
 	# Pajzsdöfés (lovag képesség): esély egy környi kábításra
 	if m.hp > 0 and p.perk("dofes") > 0 and randf() < 0.25 * p.perk("dofes"):
 		m.stun = 1
-		p.add_msg("⛨ Pajzsdöfés! %s elkábult." % m.name, "#80a8e0")
-	kill_check(m, dmg, "%s: -%d", "#e0a040")
+		p.add_msg(Lang.ref("msg.stun", m.ref()), "#80a8e0")
+	kill_check(m, dmg, "msg.hit", "#e0a040")
 	return dmg
 
 
@@ -276,7 +276,7 @@ func try_ranged_attack(dx: int, dy: int) -> int:
 			dmg = calc_dmg(p.atk, m.def)
 			if p.cls == "Íjász" and wep.subtype == "bow" and randf() < p.crit_chance:
 				dmg = int(floorf(dmg * 2.2))
-				p.add_msg("🏹 Kritikus!", Data.P["parchGold"])
+				p.add_msg(Lang.ref("msg.crit"), Data.P["parchGold"])
 			var is_cannon := wep.subtype == "cannon"
 			add_fx({"type": "ball" if is_cannon else "arrow", "x0": p.x, "y0": p.y, "x1": m.x, "y1": m.y, "dur": 300.0 if is_cannon else 200.0})
 			if is_cannon:
@@ -289,11 +289,11 @@ func try_ranged_attack(dx: int, dy: int) -> int:
 		if dx != 0:
 			p.facing = dx
 		apply_lifesteal(dmg)
-		kill_check(m, dmg, ("Varázsgömb: %s -%d" if mage else "Lövés: %s -%d"), ("#8cc4ff" if mage else "#e0a040"))
+		kill_check(m, dmg, ("msg.orb_hit" if mage else "msg.shot_hit"), ("#8cc4ff" if mage else "#e0a040"))
 		total += dmg
 		# "Átütő gömb": a mágus gömbje eséllyel továbbrepül a célponton
 		if mage and p.perk("atuto") > 0 and randf() < 0.2 * p.perk("atuto") and d < rng:
-			p.add_msg("✳ A gömb átüt!", "#a0d0ff")
+			p.add_msg(Lang.ref("msg.pierce"), "#a0d0ff")
 			continue
 		advance_turn()
 		return total
@@ -320,7 +320,7 @@ func advance_turn(idle := false) -> void:
 			p.poison -= 1
 			var d := Data.rnd(2, 5)
 			p.hp = maxi(1, p.hp - d)
-			p.add_msg(("☠ Méreg -%d" % d) if p.poison > 0 else "Méreg lejárt", "#90c030")
+			p.add_msg(Lang.ref("msg.poison_tick", d) if p.poison > 0 else Lang.ref("msg.poison_end"), "#90c030")
 		# regeneráció (nagyon ritka / legendás páncél és pajzs)
 		var rg := p.regen
 		if rg > 0 and p.alive and p.hp > 0 and p.hp < p.max_hp:
@@ -383,14 +383,14 @@ func spot_hidden() -> void:
 			continue
 		if randf() < pc:
 			t["found"] = true
-			p.add_msg("👁 %s! Észrevetted." % Data.TRAPS[t["type"]]["label"], "#e0c060")
+			p.add_msg(Lang.ref("msg.spot", Lang.ref("trap." + str(t["type"]))), "#e0c060")
 	for s in w.secrets:
 		if s["found"] or absi(s["x"] - p.x) > 1 or absi(s["y"] - p.y) > 1:
 			continue
 		if randf() < pc * 0.6:
 			w.open_secret(s)
 			play("chest")
-			p.add_msg("🚪 Titkos ajtó nyílt ki!", Data.P["parchGold"])
+			p.add_msg(Lang.ref("msg.secret_open"), Data.P["parchGold"])
 
 
 ## Kutatás (K): a szomszédos mezők átvizsgálása. Egy kört vesz igénybe.
@@ -405,15 +405,15 @@ func search() -> bool:
 		if not t["found"] and absi(t["x"] - p.x) <= 1 and absi(t["y"] - p.y) <= 1 and randf() < pc:
 			t["found"] = true
 			found += 1
-			p.add_msg("👁 %s a közelben!" % Data.TRAPS[t["type"]]["label"], "#e0c060")
+			p.add_msg(Lang.ref("msg.search_trap", Lang.ref("trap." + str(t["type"]))), "#e0c060")
 	for s in w.secrets:
 		if not s["found"] and absi(s["x"] - p.x) <= 1 and absi(s["y"] - p.y) <= 1 and randf() < pc:
 			w.open_secret(s)
 			found += 1
 			play("chest")
-			p.add_msg("🚪 Titkos ajtót találtál!", Data.P["parchGold"])
+			p.add_msg(Lang.ref("msg.secret_found"), Data.P["parchGold"])
 	if found == 0:
-		p.add_msg("🔍 Kutatsz... semmi.", Data.P["inkDark"])
+		p.add_msg(Lang.ref("msg.search_none"), Data.P["inkDark"])
 	advance_turn()
 	return true
 
@@ -430,14 +430,14 @@ func trigger_trap() -> bool:
 		"tuske":
 			var d := maxi(3, Data.rnd(Data.jround(p.max_hp * Data.TRAP_DMG_MIN), Data.jround(p.max_hp * Data.TRAP_DMG_MAX)))
 			p.hp -= d
-			p.add_msg("⚠ Tüskecsapda! -%d" % d, Data.P["vein"])
+			p.add_msg(Lang.ref("msg.spike", d), Data.P["vein"])
 			add_fx({"type": "dmgnum", "x": p.x, "y": p.y, "txt": "-%d" % d, "col": "#ff5040", "dur": 700.0})
 			play("hit")
 		"mereg":
 			var d2 := maxi(2, Data.jround(p.max_hp * Data.TRAP_DMG_MIN * 0.6))
 			p.hp -= d2
 			p.poison = maxi(p.poison, 5)
-			p.add_msg("☠ Méregcsapda! -%d és megmérgeztek." % d2, "#90c030")
+			p.add_msg(Lang.ref("msg.poison_trap", d2), "#90c030")
 			add_fx({"type": "boom", "x": p.x, "y": p.y, "dur": 400.0})
 			play("hit")
 		"riaszto":
@@ -446,7 +446,7 @@ func trigger_trap() -> bool:
 				if m.alive and not m.awake and absi(m.x - p.x) <= Data.ALARM_R and absi(m.y - p.y) <= Data.ALARM_R:
 					m.awake = true
 					n += 1
-			p.add_msg("🔔 Riasztó! %d szörny felriadt." % n, "#e0a030")
+			p.add_msg(Lang.ref("msg.alarm", n), "#e0a030")
 			play("growl")
 	check_death()
 	return true
@@ -463,16 +463,16 @@ func trigger_shrine() -> bool:
 	match s["kind"]:
 		"gyogyulas":
 			p.hp = p.max_hp
-			p.add_msg("✛ %s: teljesen meggyógyultál." % Data.SHRINES["gyogyulas"]["label"], "#50d080")
+			p.add_msg(Lang.ref("msg.shrine.gyogyulas", Lang.ref("shrine.gyogyulas")), "#50d080")
 		"elet":
 			p.lives += 1
-			p.add_msg("✛ %s: +1 élet!" % Data.SHRINES["elet"]["label"], "#e06080")
+			p.add_msg(Lang.ref("msg.shrine.elet", Lang.ref("shrine.elet")), "#e06080")
 		"vedelem":
 			p.base_def += 2
-			p.add_msg("✛ %s: +2 védelem örökre." % Data.SHRINES["vedelem"]["label"], "#5080e0")
+			p.add_msg(Lang.ref("msg.shrine.vedelem", Lang.ref("shrine.vedelem")), "#5080e0")
 		"varazs":
 			p.base_mag += 3
-			p.add_msg("✛ %s: +3 varázserő örökre." % Data.SHRINES["varazs"]["label"], "#8cc4ff")
+			p.add_msg(Lang.ref("msg.shrine.varazs", Lang.ref("shrine.varazs")), "#8cc4ff")
 	return true
 
 
@@ -487,18 +487,18 @@ func buy(shop: Dictionary, i: int) -> bool:
 		return false
 	var price := int(s["price"])
 	if p.gold < price:
-		p.add_msg("Nincs elég aranyad (%d arany kell)." % price, Data.P["vein"])
+		p.add_msg(Lang.ref("msg.poor", price), Data.P["vein"])
 		return false
 	p.gold -= price
 	s["sold"] = true
 	play("chest")
 	if s["kind"] == "heal":
 		p.hp = p.max_hp
-		p.add_msg("−%d arany: teljes gyógyulás." % price, "#40c860")
+		p.add_msg(Lang.ref("msg.bought_heal", price), "#40c860")
 	else:
 		var it: Item = s["item"]
 		p.inventory.append(it)
-		p.add_msg("−%d arany: %s a táskádba került." % [price, it.label], it.glow())
+		p.add_msg(Lang.ref("msg.bought_item", price, it.ref()), it.glow())
 	return true
 
 
@@ -563,7 +563,7 @@ func equip(item: Item) -> void:
 	if old:
 		p.inventory.append(old)
 	var c := {"weapon": "#a0c8e0", "armor": "#8090c0", "shield": "#80a0c0"}
-	p.add_msg("Felvéve: %s" % item.label, c[item.slot])
+	p.add_msg(Lang.ref("msg.equipped", item.ref()), c[item.slot])
 
 
 ## Tárgy használata a táskából. true, ha elhasználódott / felvette.
@@ -577,17 +577,17 @@ func use_item(item: Item) -> bool:
 			# Teli életerőnél NEM isszuk meg: régen elfogyott a fiola, kiírta a
 			# "+0 HP"-t, és a játékos joggal hitte, hogy a gyógyital nem működik.
 			if p.hp >= p.max_hp:
-				p.add_msg("Tele van az életerőd – a fiola marad.", "#c0c8d0")
+				p.add_msg(Lang.ref("msg.full_hp"), "#c0c8d0")
 				return false
 			var h := maxi(0, mini(item.heal, p.max_hp - p.hp))
 			p.hp += h
-			p.add_msg("+%d HP" % h, "#40c860")
+			p.add_msg(Lang.ref("msg.heal", h), "#40c860")
 			add_fx({"type": "dmgnum", "x": p.x, "y": p.y, "txt": "+%d" % h, "col": "#50e070", "dur": 700.0})
 		"maxheal":
 			# Életerő töltő: nagyobb max. életerő ÉS teljes gyógyulás
 			p.max_hp += item.max_hp_up
 			p.hp = p.max_hp
-			p.add_msg("MaxHP +%d! Teljesen meggyógyultál." % item.max_hp_up, "#40c860")
+			p.add_msg(Lang.ref("msg.maxhp", item.max_hp_up), "#40c860")
 		"fireball":
 			var c := 0
 			var bonus := p.mag if p.cls == "Mágus" else 0
@@ -601,22 +601,22 @@ func use_item(item: Item) -> bool:
 				if m.hp <= 0:
 					kill_reward(m)
 					if m.boss:
-						p.add_msg("⚜ BOSS LEGYŐZVE!", Data.P["legendary"])
+						p.add_msg(Lang.ref("msg.boss"), Data.P["legendary"])
 				c += 1
-			p.add_msg("🔥 Tűzgömb! %d szörny" % c, "#e06020")
+			p.add_msg(Lang.ref("msg.fireball", c), "#e06020")
 			play("cannon")
 		"atk_up":
 			if p.cls == "Mágus":
 				var up := item.atk_up * 2
 				p.base_mag += up
-				p.add_msg("VARÁZSERŐ +%d örökre!" % up, "#8cc4ff")
+				p.add_msg(Lang.ref("msg.mag_up", up), "#8cc4ff")
 			else:
 				p.base_atk += item.atk_up
-				p.add_msg("ATK +%d örökre!" % item.atk_up, "#e05050")
+				p.add_msg(Lang.ref("msg.atk_up", item.atk_up), "#e05050")
 		"def_up":
 			var up := item.def_up + (2 if p.cls == "Lovag" else 0)
 			p.base_def += up
-			p.add_msg("DEF +%d örökre!" % up, "#5080e0")
+			p.add_msg(Lang.ref("msg.def_up", up), "#5080e0")
 		_:
 			if item.slot in ["weapon", "armor", "shield"]:
 				equip(item)
@@ -635,5 +635,5 @@ func take_chest_item(chest: Dictionary, sel: int) -> Item:
 	elif it.slot == "armor" and p.armor == null: p.armor = it
 	elif it.slot == "shield" and p.shield == null: p.shield = it
 	else: p.inventory.append(it)
-	p.add_msg("Elveszed: %s" % it.label, it.glow())
+	p.add_msg(Lang.ref("msg.take", it.ref()), it.glow())
 	return it

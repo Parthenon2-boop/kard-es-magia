@@ -21,6 +21,7 @@ func ok(cond: bool, what: String) -> void:
 
 func _init() -> void:
 	seed(12345)
+	Lang.set_lang("hu")   # a szöveges ellenőrzések a magyar szövegekre épülnek
 	print("══════ 1. PÁLYÁK (300 db) ══════")
 	test_levels()
 	print("══════ 2. HARC ══════")
@@ -35,6 +36,9 @@ func _init() -> void:
 	test_save()
 	print("══════ 7. KOZMETIKA (KINÉZET BOLT) ══════")
 	test_kozmetika()
+	print("══════ 8. NYELVEK (HU / EN / DE) ══════")
+	test_nyelvek()
+	Lang.set_lang("hu")
 	print("══════ ÖSSZESEN: %d ellenőrzés, %d hiba ══════" % [checks, fails])
 	quit(1 if fails > 0 else 0)
 
@@ -175,8 +179,8 @@ func test_combat() -> void:
 				var d := before - m.hp
 				tot += d
 				for msg in g.player.msgs:
-					if "Kritikus" in msg["t"]: crits += 1
-					if "Pajzs" in msg["t"]: blocks += 1
+					if "Kritikus" in Lang.txt(msg["t"]): crits += 1
+					if "Pajzs" in Lang.txt(msg["t"]): blocks += 1
 				# bejövő sebzés: a szörny egy ütése
 				g.player.hp = 100000
 				var hb := g.player.hp
@@ -187,7 +191,7 @@ func test_combat() -> void:
 			var extra := ""
 			if cls == "Íjász": extra = " · kritikus: %.0f%%" % (100.0 * crits / N)
 			if cls == "Lovag": extra = " · pajzs-blokk: %.0f%%" % (100.0 * blocks / N)
-			print("  %-6s vs %-7s  átl. sebzés: %6.2f   · kapott ütés átl.: %5.2f%s" % [cls, Data.MONS[key]["name"], avg, float(taken) / N, extra])
+			print("  %-6s vs %-7s  átl. sebzés: %6.2f   · kapott ütés átl.: %5.2f%s" % [cls, Lang.T("mon." + key), avg, float(taken) / N, extra])
 			fx_clear(g)
 	# mágus közvetlen szomszédra is varázsol (gömb), közelharc nélkül
 	var gm := arena("Mágus")
@@ -210,7 +214,7 @@ func test_combat() -> void:
 	ok(m6.hp == m6.max_hp, "a mágus 6 mezőre már nem lő")
 	# íjász: Faíj (táv 3) + 1 = 4 mező
 	var ga := arena("Íjász")
-	ok(ga.player.weapon != null and ga.player.weapon.name == "Faíj", "az íjász Faíjjal indul")
+	ok(ga.player.weapon != null and ga.player.weapon.name == "wooden_bow", "az íjász Faíjjal indul")
 	ok(ga.ranged_range() == 4, "az íjász lőtávja íj + 1 (%d)" % ga.ranged_range())
 	var ma := place(ga, "goblin", 4)
 	ga.do_move(1, 0)
@@ -1000,3 +1004,262 @@ func test_kozmetika() -> void:
 			print("  a játékszabályok hivatkoznak a kozmetikára: ", fajl)
 	ok(tiszta, "a játékszabályok (hős, harc, tárgyak, mentés) nem ismerik a kozmetikát")
 	print("  Kozmetika: %d megvásárolható darab, 3 kaszt × 4 hely" % kat.size())
+
+
+# ══════════ 8. NYELVEK (HU / EN / DE) ══════════
+## a kulcsok, amelyekre a kód hivatkozik: a szkriptekben szó szerint álló kulcsok
+## (Lang.T / Lang.Ta / Lang.ref / _uz hívások és minden "csoport.valami" alakú szöveg),
+## valamint a táblákból összerakott kulcsok (tárgyak, szörnyek, képességek, kinézet...)
+const KULCS_CSOPORTOK := "menu|help|bind|key|common|diff|char|cls|stat|inv|chest|rarity|rar|perk|shop|bolt|coins|pack|slot|skin|fiok|pause|over|hud|map|st|sh|msg|item|mon|room|trap|shrine"
+
+
+func kod_kulcsai() -> Dictionary:
+	var out := {}
+	var re_hivas := RegEx.create_from_string('(?:Lang\\.(?:T|Ta|ref)|_uz)\\(\\s*"([^"]+)"')
+	var re_kulcs := RegEx.create_from_string('"((?:' + KULCS_CSOPORTOK + ')\\.[A-Za-z0-9_.]*[A-Za-z0-9_])"')
+	for fajl in DirAccess.get_files_at("res://scripts/"):
+		if not fajl.ends_with(".gd"):
+			continue
+		var txt := FileAccess.get_file_as_string("res://scripts/" + fajl)
+		for sor in txt.split("\n"):
+			var s := sor.strip_edges()
+			if s.begins_with("#"):
+				continue   # megjegyzés
+			for mm in re_hivas.search_all(sor):
+				if not mm.get_string(1).ends_with("."):   # "perk." + id: a táblákból rakjuk össze (lent)
+					out[mm.get_string(1)] = fajl
+			for mm in re_kulcs.search_all(sor):
+				out[mm.get_string(1)] = fajl
+	# a táblákból összerakott kulcsok
+	for b in Data.ITEM_BASES:
+		out["item." + str(b["id"])] = "data.gd"
+	for k in Data.MONS:
+		out["mon." + str(k)] = "data.gd"
+	for k in Data.RARITY:
+		out["rarity." + str(k)] = "data.gd"
+		out["rar.pre." + str(k)] = "lang.gd"
+	for k in Data.DIFF:
+		out["diff." + str(k)] = "data.gd"
+		out["diff." + str(k) + ".d"] = "screens.gd"
+	for c in Data.CLASS_ORDER:
+		out["cls." + str(Lang.CLS_KULCS[c])] = "lang.gd"
+		out["cls." + str(Lang.CLS_KULCS[c]) + ".d"] = "lang.gd"
+	for k in Data.ROOM_KINDS:
+		out["room." + str(k)] = "data.gd"
+	for k in Data.TRAPS:
+		out["trap." + str(k)] = "game.gd"
+	for k in Data.SHRINES:
+		out["shrine." + str(k)] = "game.gd"
+		out["shrine." + str(k) + ".d"] = "data.gd"
+		out["msg.shrine." + str(k)] = "game.gd"
+	for id in Perks.ORDER:
+		out["perk." + str(id)] = "perks.gd"
+		out["perk." + str(id) + ".d"] = "perks.gd"
+	for sl in Skins.SLOTS:
+		out["slot." + str(sl)] = "skins.gd"
+	for e in Skins.katalogus():
+		out["skin." + str(e["key"])] = "skins.gd"
+	for kod in Fiok.HIBA_SZOVEG:
+		out[str(Fiok.HIBA_SZOVEG[kod])] = "fiok.gd"
+	return out
+
+
+## a {0}, {1}... helyőrzők halmaza
+func helyorzok(s: String) -> Array:
+	var re := RegEx.create_from_string("\\{(\\d+)\\}")
+	var h := {}
+	for mm in re.search_all(s):
+		h[mm.get_string(1)] = true
+	var l := h.keys()
+	l.sort()
+	return l
+
+
+## lefordítatlan-e egy megjelenített szöveg (kulcs maradt benne, vagy helyőrző)
+func nyers(s: String) -> bool:
+	if s.contains("{0}") or s.contains("{1}"):
+		return true
+	var re := RegEx.create_from_string("^(?:" + KULCS_CSOPORTOK + ")\\.[a-z0-9_.]+$")
+	return re.search(s) != null or s.contains("msg.") or s.contains("item.") or s.contains("mon.")
+
+
+func test_nyelvek() -> void:
+	# ── 8.1 a három nyelvi fájl érvényes, BOM nélküli UTF-8 JSON
+	var tablak := {}
+	for kod in Lang.NYELVEK:
+		var ut := Lang.MAPPA % kod
+		ok(FileAccess.file_exists(ut), "a nyelvi fájl megvan: " + ut)
+		var nyers_b := FileAccess.get_file_as_bytes(ut)
+		ok(nyers_b.size() > 3 and not (nyers_b[0] == 0xEF and nyers_b[1] == 0xBB and nyers_b[2] == 0xBF), "%s: nincs BOM" % ut)
+		var j := JSON.new()
+		ok(j.parse(nyers_b.get_string_from_utf8()) == OK and j.data is Dictionary, "%s: érvényes JSON" % ut)
+		tablak[kod] = Lang.tabla(kod)
+		ok((tablak[kod] as Dictionary).size() > 300, "%s: %d kulcs" % [kod, (tablak[kod] as Dictionary).size()])
+	var hu: Dictionary = tablak["hu"]
+	# ── 8.2 mindhárom nyelvben ugyanazok a kulcsok, üres szöveg nélkül, azonos helyőrzőkkel
+	for kod in Lang.NYELVEK:
+		var t: Dictionary = tablak[kod]
+		var hianyzik: Array = []
+		var folos: Array = []
+		var ures: Array = []
+		var rossz_h: Array = []
+		for k in hu:
+			if not t.has(k):
+				hianyzik.append(k)
+			elif str(t[k]).strip_edges() == "":
+				ures.append(k)
+			elif helyorzok(str(t[k])) != helyorzok(str(hu[k])):
+				rossz_h.append(k)
+		for k in t:
+			if not hu.has(k):
+				folos.append(k)
+		ok(hianyzik.is_empty(), "%s: minden kulcs megvan (hiányzik: %s)" % [kod, str(hianyzik)])
+		ok(folos.is_empty(), "%s: nincs fölös kulcs (%s)" % [kod, str(folos)])
+		ok(ures.is_empty(), "%s: nincs üres szöveg (%s)" % [kod, str(ures)])
+		ok(rossz_h.is_empty(), "%s: a helyőrzők ({0}, {1}...) egyeznek a magyarral (%s)" % [kod, str(rossz_h)])
+	# ── 8.3 minden kulcs, amire a kód hivatkozik, mindhárom nyelvben létezik
+	var kulcsok := kod_kulcsai()
+	ok(kulcsok.size() > 250, "a kódban talált kulcsok száma: %d" % kulcsok.size())
+	for kod in Lang.NYELVEK:
+		var t: Dictionary = tablak[kod]
+		var nincs: Array = []
+		for k in kulcsok:
+			if not t.has(k):
+				nincs.append("%s (%s)" % [k, kulcsok[k]])
+		ok(nincs.is_empty(), "%s: a kód minden kulcsa le van fordítva (hiányzik: %s)" % [kod, str(nincs)])
+	# és fordítva: nincs olyan kulcs, amit semmi sem használ
+	var hasznalatlan: Array = []
+	for k in hu:
+		if not kulcsok.has(k) and k != "title" and k != "window_title":
+			hasznalatlan.append(k)
+	ok(hasznalatlan.is_empty(), "nincs használatlan kulcs (%s)" % str(hasznalatlan))
+	ok(Lang.T("nincs.ilyen.kulcs") == "nincs.ilyen.kulcs", "hiányzó kulcsnál maga a kulcs látszik (ezt keresi a teszt)")
+
+	# ── 8.4 játék közben sehol sem marad lefordítatlan kulcs vagy helyőrző (mindhárom nyelven)
+	for kod in Lang.NYELVEK:
+		Lang.set_lang(kod)
+		var rossz: Array = []
+		# tárgyak (minden alaptárgy, minden ritkaság, minden kaszt)
+		for b in Data.ITEM_BASES:
+			for r in Data.RARITY_ORDER:
+				var it := Item.make(b, r, 3)
+				var szovegek: Array[String] = [it.label, it.short_stats("Mágus", 12), it.short_stats("Lovag"), Lang.T("rarity." + r)]
+				for cls in Data.CLASS_ORDER:
+					szovegek.append_array(it.stat_lines(cls, 12))
+				for s in szovegek:
+					if nyers(s):
+						rossz.append(s)
+		# szörnyek (a kincstár őre is), kasztok, képességek, kinézet
+		for k in Data.MONS:
+			var m := Mon.make(k, 0, 0, "normal")
+			var g := Mon.make_guard(k, 0, 0, "normal")
+			for s in [m.name, g.name]:
+				if nyers(s): rossz.append(s)
+		for c in Data.CLASS_ORDER:
+			for s in [Lang.cls(c), Lang.cls_desc(c)]:
+				if nyers(s): rossz.append(s)
+		for id in Perks.ORDER:
+			var inf := Perks.info(id)
+			for s in [str(inf["n"]), str(inf["d"])]:
+				if nyers(s): rossz.append(s)
+		for e in Skins.katalogus():
+			if nyers(str(e["nev"])): rossz.append(str(e["nev"]))
+		for sl in Skins.SLOTS:
+			if nyers(Skins.hely_nev(sl)): rossz.append(Skins.hely_nev(sl))
+		for i in Fiok.GUMROAD.size():
+			if nyers(Fiok.ar_szoveg(i)): rossz.append(Fiok.ar_szoveg(i))
+		# egy igazi kaland üzenetnaplója: harc, csapdák, szentélyek, kereskedő, tárgyak, szintlépés
+		var ga := arena("Mágus")
+		var p := ga.player
+		var naplo: Array = []
+		p.hp = 5000
+		p.max_hp = 5000
+		for key in ["goblin", "vampire", "spider", "witch", "assassin", "demon", "goblin_king", "necromancer", "shadow_lord"]:
+			var mo := place(ga, key, 2)
+			mo.hp = 3
+			ga.do_move(1, 0)
+			var mo2 := place(ga, key, 1)
+			mo2.guard = true
+			for i in 6:
+				ga.mon_attack(mo2)
+			naplo.append_array(p.msgs)
+			p.msgs.clear()
+		for tt in Data.TRAP_ORDER:
+			ga.world.traps.append({"x": p.x, "y": p.y, "type": tt, "found": false, "sprung": false})
+			ga.trigger_trap()
+			ga.world.traps.clear()
+		for sk in Data.SHRINE_ORDER:
+			ga.world.shrines.append({"x": p.x, "y": p.y, "kind": sk, "used": false})
+			ga.trigger_shrine()
+			ga.world.shrines.clear()
+		naplo.append_array(p.msgs)
+		p.msgs.clear()
+		var bolt := {"x": 0, "y": 0, "stock": Dungeon.make_stock(3)}
+		p.gold = 0
+		ga.buy(bolt, 0)
+		p.gold = 500
+		for i in 3:
+			ga.buy(bolt, i)
+		for b in Data.ITEM_BASES:
+			ga.use_item(Item.make(b, "epic", 2))
+		ga.search()
+		p.gain_xp(5000, 1.0)
+		Perks.apply(p, "fokusz")
+		p.poison = 2
+		ga.advance_turn()
+		ga.advance_turn()
+		naplo.append_array(p.msgs)
+		ok(naplo.size() > 40, "%s: a próbakaland sok üzenetet írt (%d)" % [kod, naplo.size()])
+		for e in naplo:
+			ok(Lang.ervenyes_ref(e["t"]), "%s: az üzenet fordítási hivatkozás, nem kész szöveg" % kod)
+			var s := Lang.txt(e["t"])
+			if nyers(s) or s == "":
+				rossz.append(s)
+		ok(rossz.is_empty(), "%s: sehol sem látszik lefordítatlan kulcs (%s)" % [kod, str(rossz)])
+		# a HUD / menük dinamikus sorai
+		for s in [Lang.T("hud.depth", 3, 5, Lang.T("diff.hard"), 120), Lang.T("perk.title", 4), Lang.T("over.stats", 7, 900, 5, 5),
+				Lang.T("inv.scroll", 1, 8, 12), Lang.T("bolt.buy", 20), Lang.T("fiok.http", 503)]:
+			ok(not nyers(s), "%s: kitöltött sor: %s" % [kod, s])
+	Lang.set_lang("hu")
+
+	# ── 8.5 élő nyelvváltás: a már kiírt üzenet is az új nyelven látszik
+	var hiv := Lang.ref("msg.killed", Lang.ref("mon.guard", Lang.ref("mon.orc")), 45, 12)
+	Lang.set_lang("hu")
+	var s_hu := Lang.txt(hiv)
+	var seq0 := Lang.seq
+	Lang.set_lang("en")
+	var s_en := Lang.txt(hiv)
+	Lang.set_lang("de")
+	var s_de := Lang.txt(hiv)
+	ok(s_hu == "Kincstár őre (Ork) elesett! +45xp, +12 arany", "magyar: " + s_hu)
+	ok(s_en == "Treasury Guard (Orc) is slain! +45xp, +12 gold", "angol: " + s_en)
+	ok(s_de == "Schatzwächter (Ork) ist besiegt! +45 EP, +12 Gold", "német: " + s_de)
+	ok(Lang.seq > seq0, "nyelvváltáskor nő a Lang.seq (a rétegek újrarajzolódnak)")
+	# a mentésből float-ként visszajövő számok is egészként látszanak
+	var vissza: Variant = JSON.parse_string(JSON.stringify(hiv))
+	ok(Lang.ervenyes_ref(vissza) and Lang.txt(vissza) == s_de, "JSON-körút után is ugyanaz: " + Lang.txt(vissza))
+	Lang.set_lang("xx")
+	ok(Lang.nyelv() in Lang.NYELVEK, "ismeretlen nyelvkód helyett a rendszer nyelve / angol")
+	Lang.set_lang("hu")
+
+	# ── 8.6 mentés-kompatibilitás: a régi mentés magyar tárgyneve azonosítóvá alakul
+	var regi := SaveGame.item_from({"name": "Holdfénypenge", "label": "✦ Holdfénypenge", "slot": "weapon", "subtype": "sword",
+		"glyph": "†", "rarity": "legendary", "dmg": 80})
+	ok(regi != null and regi.name == "moonlight_blade", "régi mentés: Holdfénypenge -> moonlight_blade (%s)" % (regi.name if regi else "-"))
+	Lang.set_lang("en")
+	ok(regi.label == "✦ Moonlight Blade", "régi tárgy angolul: " + regi.label)
+	Lang.set_lang("hu")
+	var uj: Dictionary = SaveGame.item_to(Item.make(Item.find_base("steel_shield"), "rare", 2))
+	ok(str(uj["name"]) == "steel_shield" and not uj.has("label"), "az új mentésbe nem kerül megjelenített (lefordított) név")
+	var gm := arena("Lovag")
+	var mo3 := place(gm, "orc", 1)
+	mo3.guard = true
+	gm.mon_attack(mo3)
+	var mentett: Variant = JSON.parse_string(JSON.stringify(gm.player.msgs))
+	var csak_ref := true
+	for e in (mentett as Array):
+		if not Lang.ervenyes_ref((e as Dictionary)["t"]):
+			csak_ref = false
+	ok(csak_ref, "a mentett üzenetnaplóban csak fordítási hivatkozások vannak (nincs lefordított szöveg)")
+	ok(not Lang.ervenyes_ref("Goblin elesett! +12xp, +3 arany"), "a régi mentés kész szövege nem hivatkozás (betöltéskor kimarad)")
+	print("  Nyelvek: %d kulcs nyelvenként, a kódban %d hivatkozott kulcs" % [hu.size(), kulcsok.size()])

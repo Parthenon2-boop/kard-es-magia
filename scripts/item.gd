@@ -2,8 +2,10 @@ class_name Item
 extends RefCounted
 ## Egy tárgy (fegyver, páncél, pajzs, bájital, tekercs) a kiszámolt értékeivel.
 
-var name := ""
-var label := ""
+var name := ""        # belső azonosító (Data.ITEM_BASES "id"), pl. "wooden_bow" — a mentésben is ez áll
+## a megjelenített név ritkaság-jellel, a mostani nyelven ("✦ Holdfénypenge")
+var label: String:
+	get: return Lang.txt(ref())
 var slot := ""        # weapon / armor / shield / use
 var subtype := ""
 var glyph := ""
@@ -48,7 +50,7 @@ static func make(base: Dictionary, rar_key: String, lvl: int) -> Item:
 	var it := Item.new()
 	var m: float = Data.RARITY[rar_key]["mult"] * (1.0 + lvl * 0.12)
 	var tier: float = Data.TIER[rar_key]
-	it.name = base["name"]
+	it.name = base["id"]
 	it.slot = base["slot"]
 	it.subtype = base["subtype"]
 	it.glyph = base["glyph"]
@@ -65,15 +67,19 @@ static func make(base: Dictionary, rar_key: String, lvl: int) -> Item:
 		it.lifesteal = Data.LIFESTEAL[rar_key]
 	if (it.slot == "armor" or it.slot == "shield") and Data.REGEN.has(rar_key):
 		it.regen = Data.REGEN[rar_key]
-	if rar_key == "legendary": it.label = "✦ " + it.name
-	elif rar_key == "epic": it.label = "★ " + it.name
-	else: it.label = it.name
 	return it
 
 
+## a tárgy neve később fordítandó hivatkozásként (üzenetnaplóhoz)
+func ref() -> Dictionary:
+	return Lang.item_ref(name, rarity)
+
+
+## Alaptárgy azonosító szerint; a régi mentések magyar tárgynevét is elfogadja.
 static func find_base(nm: String) -> Dictionary:
+	var id := str(Data.LEGACY_ITEM_IDS.get(nm, nm))
 	for b in Data.ITEM_BASES:
-		if b["name"] == nm:
+		if b["id"] == id:
 			return b
 	return {}
 
@@ -90,26 +96,26 @@ func col() -> String:
 func stat_lines(cls: String, mag := 0) -> Array[String]:
 	var s: Array[String] = []
 	var mage := cls == "Mágus"
-	if dmg > 0: s.append("⚔ Támadás +%d" % dmg)
-	if slot == "weapon" and mage: s.append("✦ Varázserő +%d" % int(floorf(dmg * 0.5)))
+	if dmg > 0: s.append(Lang.T("st.atk", dmg))
+	if slot == "weapon" and mage: s.append(Lang.T("st.mag", int(floorf(dmg * 0.5))))
 	if reach > 0:
-		if cls == "Íjász" and subtype == "bow": s.append("↔ Táv %d (+1 íjász)" % reach)
-		else: s.append("↔ Táv %d" % reach)
-	if lifesteal > 0.0: s.append("♥ Életlopás %d%%" % int(roundf(lifesteal * 100)))
-	if def > 0: s.append("🛡 Védelem +%d" % def)
-	if regen > 0: s.append("✚ Regeneráció +%d HP/kör" % regen)
-	if heal > 0: s.append("♥ Gyógyít +%d" % heal)
+		if cls == "Íjász" and subtype == "bow": s.append(Lang.T("st.range_archer", reach))
+		else: s.append(Lang.T("st.range", reach))
+	if lifesteal > 0.0: s.append(Lang.T("st.steal", int(roundf(lifesteal * 100))))
+	if def > 0: s.append(Lang.T("st.def", def))
+	if regen > 0: s.append(Lang.T("st.regen", regen))
+	if heal > 0: s.append(Lang.T("st.heal", heal))
 	if max_hp_up > 0:
-		s.append("♥ MaxHP +%d" % max_hp_up)
-		s.append("♥ Teljes gyógyulás")
+		s.append(Lang.T("st.maxhp", max_hp_up))
+		s.append(Lang.T("st.fullheal"))
 	if atk_up > 0:
-		if mage: s.append("✦ Varázserő +%d örökre" % (atk_up * 2))
-		else: s.append("⚡ ATK +%d örökre" % atk_up)
+		if mage: s.append(Lang.T("st.mag_perm", atk_up * 2))
+		else: s.append(Lang.T("st.atk_perm", atk_up))
 	if def_up > 0:
-		s.append("❈ DEF +%d örökre" % (def_up + (2 if cls == "Lovag" else 0)))
+		s.append(Lang.T("st.def_perm", def_up + (2 if cls == "Lovag" else 0)))
 	if damage > 0:
-		if mage: s.append("✳ Tűz %d (+✦%d)" % [damage, mag])
-		else: s.append("✳ Tűz %d" % damage)
+		if mage: s.append(Lang.T("st.fire_mage", damage, mag))
+		else: s.append(Lang.T("st.fire", damage))
 	return s
 
 
@@ -120,12 +126,12 @@ func short_stats(cls: String, mag := 0) -> String:
 	if dmg > 0: s.append("⚔+%d" % dmg)
 	if slot == "weapon" and mage: s.append("✦+%d" % int(floorf(dmg * 0.5)))
 	if reach > 0: s.append("↔%d" % (reach + (1 if cls == "Íjász" and subtype == "bow" else 0)))
-	if lifesteal > 0.0: s.append("Életlopás %d%%" % int(roundf(lifesteal * 100)))
+	if lifesteal > 0.0: s.append(Lang.T("sh.steal", int(roundf(lifesteal * 100))))
 	if def > 0: s.append("🛡+%d" % def)
-	if regen > 0: s.append("✚+%d/kör" % regen)
+	if regen > 0: s.append(Lang.T("sh.regen", regen))
 	if heal > 0: s.append("+%d♥" % heal)
-	if max_hp_up > 0: s.append("MaxHP +%d, teljes gyógyulás" % max_hp_up)
-	if atk_up > 0: s.append(("✦+%d örökre" % (atk_up * 2)) if mage else ("⚡+%d örökre" % atk_up))
-	if def_up > 0: s.append("❈+%d örökre" % (def_up + (2 if cls == "Lovag" else 0)))
+	if max_hp_up > 0: s.append(Lang.T("sh.maxhp", max_hp_up))
+	if atk_up > 0: s.append(Lang.T("sh.mag_perm", atk_up * 2) if mage else Lang.T("sh.atk_perm", atk_up))
+	if def_up > 0: s.append(Lang.T("sh.def_perm", def_up + (2 if cls == "Lovag" else 0)))
 	if damage > 0: s.append(("✳%d+%d" % [damage, mag]) if mage else ("✳%d" % damage))
 	return "  ·  ".join(s)

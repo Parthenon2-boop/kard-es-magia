@@ -3,7 +3,9 @@ extends RefCounted
 ## Egy szörny a pályán.
 
 var key := ""
-var name := ""
+## a megjelenített név a mostani nyelven (a kincstár őrénél "Kincstár őre (Ork)")
+var name: String:
+	get: return Lang.txt(ref())
 var x := 0
 var y := 0
 var rx := 0.0   # kirajzolt (sikló) helyzet
@@ -33,7 +35,6 @@ static func make(k: String, px: int, py: int, diff: String) -> Mon:
 	m.y = py
 	m.rx = px
 	m.ry = py
-	m.name = t["name"]
 	m.seedv = randf() * 100.0
 	m.facing = Data.pick([-1, 1])
 	m.max_hp = Data.jround(t["hp"] * d["monHp"])
@@ -56,5 +57,11 @@ static func make_guard(k: String, px: int, py: int, diff: String) -> Mon:
 	m.atk = Data.jround(m.atk * 1.2)
 	m.def += 2
 	m.xp = Data.jround(m.xp * 1.5)
-	m.name = "Kincstár őre (%s)" % m.name
 	return m
+
+
+## a szörny neve később fordítandó hivatkozásként (üzenetnaplóhoz)
+func ref() -> Dictionary:
+	if guard:
+		return Lang.ref("mon.guard", Lang.ref("mon." + key))
+	return Lang.ref("mon." + key)

@@ -456,7 +456,7 @@ static func minimap(m: Node, c: Cv) -> void:
 		c.circ(ox + (st.x + 0.5) * MAP_SCALE, oy + (st.y + 0.5) * MAP_SCALE, 2.6)
 	c.fs(p.col)
 	c.circ(ox + (p.x + 0.5) * MAP_SCALE, oy + (p.y + 0.5) * MAP_SCALE, 2.8)
-	c.ftxt("Tab: térkép  ·  %d. mélység" % w.dungeon_level, r.position.x + r.size.x / 2, r.position.y + r.size.y + 12, Data.P["inkDark"], 9, "center")
+	c.ftxt(Lang.T("map.hint", w.dungeon_level), r.position.x + r.size.x / 2, r.position.y + r.size.y + 12, Data.P["inkDark"], 9, "center")
 
 
 # ══════════ HUD ══════════
@@ -473,41 +473,41 @@ static func hud(m: Node, c: Cv) -> void:
 	var xp_pct := clampf(float(p.xp) / p.xp_next, 0.0, 1.0)
 	var hp_col := "#b03020" if hp_pct > 0.5 else ("#d05010" if hp_pct > 0.25 else "#f03010")
 	c.bar(10, y0 + 10, 170, 12, hp_pct, hp_col, "#2a0808")
-	c.ftxt("Életerő %d/%d" % [p.hp, p.max_hp], 12, y0 + 20, "#ffffff", 9)
+	c.ftxt_fit(Lang.T("hud.hp", p.hp, p.max_hp), 12, y0 + 20, "#ffffff", 9, 164)
 	c.bar(10, y0 + 28, 170, 8, xp_pct, "#404090", "#141428")
-	c.ftxt("XP %d/%d" % [p.xp, p.xp_next], 12, y0 + 35, "#c0c0e0", 8, "left", true)
+	c.ftxt_fit(Lang.T("hud.xp", p.xp, p.xp_next), 12, y0 + 35, "#c0c0e0", 8, 164, "left", true)
 	c.ftxt_fit("♥".repeat(maxi(0, p.lives)) + "♡".repeat(maxi(0, 3 - p.lives)), 10, y0 + 58, P["vein"], 15, 120)
 	c.ftxt("◉ %d" % p.gold, 134, y0 + 58, P["parchGold"], 12)
 	# állapotok: méreg, regeneráció, életlopás
 	var st: Array[String] = []
-	if p.poison > 0: st.append("☠ Méreg %d" % p.poison)
-	if p.regen > 0: st.append("✚ +%d/kör" % p.regen)
-	if p.lifesteal > 0: st.append("♥ Lopás %d%%" % int(roundf(p.lifesteal * 100)))
+	if p.poison > 0: st.append(Lang.T("hud.poison", p.poison))
+	if p.regen > 0: st.append(Lang.T("hud.regen", p.regen))
+	if p.lifesteal > 0: st.append(Lang.T("hud.steal", int(roundf(p.lifesteal * 100))))
 	if not st.is_empty():
 		c.ftxt_fit("  ".join(st), 10, y0 + 80, "#80c870", 9, 190)
 	var c2 := 210.0
-	c.ftxt("%s  ·  Lv.%d" % [p.cls, p.plvl], c2, y0 + 22, P["parchGold"], 12)
+	c.ftxt_fit(Lang.T("hud.lv", Lang.cls(p.cls), p.plvl), c2, y0 + 22, P["parchGold"], 12, 250)
 	if p.cls == "Mágus":
 		c.ftxt("✦ %d    🛡 %d" % [p.mag, p.def], c2, y0 + 42, P["ink"], 11)
 	else:
 		c.ftxt("⚔ %d    🛡 %d" % [p.atk, p.def], c2, y0 + 42, P["ink"], 11)
-	c.ftxt_fit("Mélység %d/%d · %s · Kör %d" % [w.dungeon_level, Data.MAX_LEVEL, Data.DIFF[w.diff]["label"], w.turn], c2, y0 + 62, P["inkDark"], 10, 250)
+	c.ftxt_fit(Lang.T("hud.depth", w.dungeon_level, Data.MAX_LEVEL, Lang.T("diff." + w.diff), w.turn), c2, y0 + 62, P["inkDark"], 10, 250)
 	if m.game.on_stair():
-		var sl := "▼ Lépcső: %s" % m.key_label(m.binds["stair"])
-		c.ftxt(sl, c2, y0 + 82, "#c0b0ff", 10)
+		var sl := Lang.T("hud.stair", m.key_label(m.binds["stair"]))
+		c.ftxt_fit(sl, c2, y0 + 82, "#c0b0ff", 10, 250)
 	var c3 := 470.0
 	var mx := maxf(c3 + 230, W * 0.62)
 	var colw := mx - c3 - 12
-	c.ftxt_fit("⚔ " + (p.weapon.label if p.weapon else "Puszta kéz"), c3, y0 + 18, p.weapon.border() if p.weapon else P["inkDark"], 10, colw)
-	c.ftxt_fit("🛡 " + (p.armor.label if p.armor else "Nincs páncél"), c3, y0 + 35, p.armor.border() if p.armor else P["inkDark"], 10, colw)
-	c.ftxt_fit("⛨ " + (p.shield.label if p.shield else "Nincs pajzs"), c3, y0 + 52, p.shield.border() if p.shield else P["inkDark"], 10, colw)
-	c.ftxt_fit("WASD · I:Táska · %s:Lépcső" % m.key_label(m.binds["stair"]), c3, y0 + 70, P["inkDark"], 9, colw)
-	c.ftxt_fit("Tab:Térkép · K:Kutatás · Esc:Menü", c3, y0 + 84, P["inkDark"], 9, colw)
+	c.ftxt_fit("⚔ " + (p.weapon.label if p.weapon else Lang.T("hud.bare")), c3, y0 + 18, p.weapon.border() if p.weapon else P["inkDark"], 10, colw)
+	c.ftxt_fit("🛡 " + (p.armor.label if p.armor else Lang.T("inv.no_armor")), c3, y0 + 35, p.armor.border() if p.armor else P["inkDark"], 10, colw)
+	c.ftxt_fit("⛨ " + (p.shield.label if p.shield else Lang.T("inv.no_shield")), c3, y0 + 52, p.shield.border() if p.shield else P["inkDark"], 10, colw)
+	c.ftxt_fit(Lang.T("hud.keys1", m.key_label(m.binds["stair"])), c3, y0 + 70, P["inkDark"], 9, colw)
+	c.ftxt_fit(Lang.T("hud.keys2"), c3, y0 + 84, P["inkDark"], 9, colw)
 	var mw := W - mx - 8
 	if mw > 100:
 		var msgs: Array = p.msgs.slice(maxi(0, p.msgs.size() - 4))
 		for i in msgs.size():
 			var a := 0.4 + 0.6 * (float(i) / maxf(1.0, msgs.size() - 1))
 			c.ga(a)
-			c.ftxt_fit(msgs[i]["t"], mx, y0 + 16 + i * 19, msgs[i]["c"], 10, mw)
+			c.ftxt_fit(Lang.txt(msgs[i]["t"]), mx, y0 + 16 + i * 19, msgs[i]["c"], 10, mw)
 			c.ga(1.0)

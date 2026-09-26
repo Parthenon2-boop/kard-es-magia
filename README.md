@@ -9,6 +9,22 @@ csapdaterem** vár, rejtett csapdák és titkos ajtók lapulnak a falakban, a `T
 A játék **Godot 4.7** (GDScript) natív változata; a korábbi böngészős/Electron kiadás
 forrása referenciaként a `reference/index.html` fájlban maradt (az exportba nem kerül bele).
 
+## Nyelvek (magyar / angol / német)
+
+A játék teljes egészében játszható **magyarul, angolul és németül**. A főmenü bal felső sarkában
+(és az *Irányítás* képernyőn) a **HU / EN / DE** gombbal, a főmenüben az `L` billentyűvel is
+válthatsz — azonnal, újraindítás nélkül (a már kiírt üzenetnapló is átvált). A választás a
+`user://beallitasok.cfg` fájlba mentődik; első indításkor a rendszer nyelve dönt (ha nem
+magyar/angol/német, akkor angol).
+
+- Minden látható szöveg a `lang/hu.json`, `lang/en.json`, `lang/de.json` fájlban van
+  (kulcs → szöveg, `{0}`, `{1}` helyőrzőkkel); a kód csak kulcsot használ: `Lang.T("menu.quit")`.
+- Az üzenetnaplóba és a mentésbe **nem kerül lefordított szöveg**, csak hivatkozás
+  (`Lang.ref(kulcs, ...)`), a tárgyak pedig belső azonosítóval mentődnek (pl. `moonlight_blade`).
+  A régi mentések magyar tárgynevei betöltéskor azonosítóvá alakulnak.
+- Új szövegnél elég a három JSON-ba felvenni a kulcsot; a teszt (8. rész) jelzi, ha valamelyik
+  nyelvből hiányzik, ha fölösleges, vagy ha a helyőrzők nem egyeznek.
+
 ## Irányítás
 
 | Billentyű | Mit csinál |
@@ -159,13 +175,14 @@ felderített terület — így a kirajzolása egyetlen textúra-hívás.
 | `scripts/game.gd`, `world.gd`, `player.gd`, `mon.gd`, `item.gd` | játékszabályok |
 | `scripts/perks.gd` | a szintlépéskor választható képességek táblája és hatásai |
 | `scripts/save.gd` | mentés és betöltés (`user://mentes.json`, verziószámmal) |
+| `scripts/lang.gd`, `lang/*.json` | nyelvek: fordítás (`Lang.T`), későbbi fordítású hivatkozás (`Lang.ref`), nyelvváltás |
 | `scripts/cv.gd` | a canvas 2D rajzoló utánzata (útvonalak, ívek, görbék, színátmenetek, élsimítás) |
 | `scripts/sprites.gd`, `menu_art.gd` | a rajzolt figurák, tárgyak, díszek és a menü borítóképe |
 | `scripts/skins.gd` | a kinézet-alkatrészek (fej/test/láb/fegyver) katalógusa, mentése és rajza |
 | `scripts/fiok.gd` | fiók (`fiok.json`), érme-egyenleg, birtokolt darabok, vásárlás (aszinkron HTTP) |
 | `scripts/render.gd`, `screens.gd` | pálya + fények + HUD, illetve a menük és ablakok |
 | `scripts/audio.gd` | szintetizált hangeffektek és háttérzene (hangfájlok nélkül) |
-| `tests/run_tests.gd` | fej nélküli tesztek (pályák, harc, tárgyak, termek/csapdák, képességek, mentés, kozmetika) |
+| `tests/run_tests.gd` | fej nélküli tesztek (pályák, harc, tárgyak, termek/csapdák, képességek, mentés, kozmetika, nyelvek) |
 
 A pályák mindig bejárhatók: generálás után a játék ellenőrzi, hogy a kezdőpontról minden
 mező, a lépcső és minden láda elérhető-e; ha nem, folyosót vág, a láda pedig sosem zárhat el
@@ -187,9 +204,9 @@ godot --path . -- --shot=_shots/terkep.png --scene=map --size=1024x768
 
 A `--scene` lehet: `menu`, `diff`, `char`, `help`, `play`, `orb`, `walk`, `inv`, `chest`,
 `over`, valamint **`perk`** (képességválasztó), **`shop`** (a játékon belüli **kereskedő**),
-**`bolt`** (a **kinézet bolt** alaphelyzetben), **`bolt_preview`** (kinézet bolt felvett
+**`win`** (győzelem), **`bolt`** (a **kinézet bolt** alaphelyzetben), **`bolt_preview`** (kinézet bolt felvett
 összeállítással — `shop_preview` néven is), **`trap`** (csapdák és titkos ajtó), **`map`**
-(automata térkép), **`pause`** (szünet-menü) és **`load`** (főmenü mentéssel). A `--cls=Lovag|Mágus|Íjász` a hőst választja ki, a `--size=SZÉLESSÉGxMAGASSÁG`
+(automata térkép), **`pause`** (szünet-menü) és **`load`** (főmenü mentéssel). A `--cls=Lovag|Mágus|Íjász` a hőst, a `--lang=hu|en|de` a nyelvet választja ki, a `--size=SZÉLESSÉGxMAGASSÁG`
 pedig az elrendezést (alapból 1280×800) — ezzel ellenőrizhető, hogy semmi nem lóg ki
 kisebb képernyőn sem.
 

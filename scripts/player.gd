@@ -23,7 +23,7 @@ var xp := 0
 var plvl := 1
 var xp_next := 60
 var alive := true
-var msgs: Array = []    # {t, c}
+var msgs: Array = []    # {t, c} — t: fordítási hivatkozás (Lang.ref), a kirajzoláskor fordul le
 var msg_seq := 0        # hányadik üzenet (a HUD ebből tudja, hogy változott a lista)
 var poison := 0
 var lunge := 0.0
@@ -48,7 +48,7 @@ static func create(c: String) -> Player:
 	p.base_def = s["def"]
 	# az íjász íjjal kezdi a kalandot
 	if c == "Íjász":
-		p.weapon = Item.make(Item.find_base("Faíj"), "common", 1)
+		p.weapon = Item.make(Item.find_base("wooden_bow"), "common", 1)
 	return p
 
 
@@ -84,7 +84,8 @@ func perk(id: String) -> int:
 	return int(perks.get(id, 0))
 
 
-func add_msg(t: String, c: String = "#c8a870") -> void:
+## t: Lang.ref(...) hivatkozás (vagy kész szöveg); a HUD a mostani nyelven írja ki
+func add_msg(t: Variant, c: String = "#c8a870") -> void:
 	msgs.append({"t": t, "c": c})
 	msg_seq += 1
 	if msgs.size() > 7:
@@ -106,6 +107,6 @@ func gain_xp(n: int, xm: float) -> void:
 		else:
 			base_atk += 2
 		base_def += 1
-		add_msg("⬆ Szint %d!" % plvl, Data.P["parchGold"])
+		add_msg(Lang.ref("msg.level", plvl), Data.P["parchGold"])
 		if on_level_up.is_valid():
 			on_level_up.call()

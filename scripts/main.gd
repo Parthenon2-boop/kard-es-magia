@@ -66,6 +66,7 @@ var shot_cls := "Lovag"
 var shot_frames := 45
 var shot_depth := 1
 var shot_size := Vector2i(1280, 800)   # --size=1024x768: más felbontású elrendezés ellenőrzése
+var shot_lang := ""                    # --lang=en|de|hu: a képernyőkép nyelve
 ## borítókép-mód (--scene=borito): a főmenü gombok és súgósor nélkül, a hősök neve alájuk írva.
 ## Így a ParthLauncher borítója mindig a játék MOSTANI rajzait mutatja.
 var borito_mod := false
@@ -84,6 +85,9 @@ func _ready() -> void:
 	_make_textures()
 	_make_layers()
 	_load_cfg()
+	if shot_lang != "":
+		Lang.set_lang(shot_lang)   # képernyőkép-módban a parancssor dönt (a beállítás nem íródik felül)
+	_apply_lang()
 	_build_dir_map()
 	fiok = Fiok.new()
 	fiok.name = "Fiok"
@@ -292,7 +296,10 @@ func add_hit(x: float, y: float, w: float, h: float, fn: Callable) -> void:
 # ══════════ BEÁLLÍTÁSOK (billentyűk, némítás) ══════════
 func _load_cfg() -> void:
 	var cf := ConfigFile.new()
+	# a nyelv: a mentett választás, ennek híján a rendszeré (hu/en/de), különben angol
+	Lang.set_lang(Lang.alap())
 	if cf.load(CFG_PATH) == OK:
+		Lang.set_lang(str(cf.get_value("nyelv", "kod", Lang.alap())))
 		for k in DEFAULT_BINDS:
 			binds[k] = str(cf.get_value("binds", k, DEFAULT_BINDS[k]))
 		_cfg_muted = bool(cf.get_value("hang", "nemitva", false))
@@ -310,8 +317,21 @@ func save_cfg() -> void:
 	for k in binds:
 		cf.set_value("binds", k, binds[k])
 	cf.set_value("hang", "nemitva", audio.muted if audio else false)
+	cf.set_value("nyelv", "kod", Lang.nyelv())
 	Skins.ment(cf, skins)
 	cf.save(CFG_PATH)
+
+
+## Nyelvváltás (HU / EN / DE gomb vagy L billentyű a főmenüben): azonnal, újraindítás nélkül.
+## A rajzrétegek aláírása tartalmazza a Lang.seq-et, így minden felület magától újrarajzolódik.
+func set_nyelv(code: String) -> void:
+	Lang.set_lang(code)
+	_apply_lang()
+	save_cfg()
+
+
+func _apply_lang() -> void:
+	get_window().title = Lang.T("window_title")
 
 
 ## a hős kinézetének megváltoztatása (csak külső — játékértéket soha nem érint)
@@ -352,7 +372,7 @@ static func key_label(k: String) -> String:
 		"ArrowDown": return "↓"
 		"ArrowLeft": return "←"
 		"ArrowRight": return "→"
-		" ": return "Szóköz"
+		" ": return Lang.T("key.space")
 	return k.to_upper() if k.length() == 1 else k
 
 
@@ -429,7 +449,7 @@ func continue_game() -> bool:
 	shop_ui = null
 	map_on = false
 	_map_world = 0
-	game.player.add_msg("Folytatod a kalandot...", Data.P["parchGold"])
+	game.player.add_msg(Lang.ref("msg.continue"), Data.P["parchGold"])
 	set_state("play")
 	return true
 
@@ -723,6 +743,8 @@ func _unhandled_input(event: InputEvent) -> void:
 					set_state("diff")
 			elif k == "Escape":
 				quit_app()
+			elif k == "l":
+				set_nyelv(Lang.kovetkezo())
 		"help":
 			if k == "Escape" or k == "Enter":
 				bind_edit = ""
@@ -995,18 +1017,18 @@ func _hud_sig() -> Array:
 	var w := game.world
 	return [W, H, p.hp, p.max_hp, p.xp, p.xp_next, p.lives, p.poison, p.regen, p.lifesteal,
 		p.cls, p.plvl, p.atk, p.mag, p.def, p.msg_seq, w.turn, w.dungeon_level, w.diff,
-		p.weapon, p.armor, p.shield, game.on_stair(), binds["stair"], p.gold, p.perk_seq]
+		p.weapon, p.armor, p.shield, game.on_stair(), binds["stair"], p.gold, p.perk_seq, Lang.seq]
 
 
 func _ui_sig() -> Array:
-	var s: Array = [state, W, H, audio.muted if audio else false]
+	var s: Array = [state, W, H, audio.muted if audio else false, Lang.seq]
 	match state:
 		"menu":
 			s.append(audio.music_started if audio else false)
 			s.append(SaveGame.has_save())
 		"pause": s.append(pause_sel)
 		"bolt":
-			s.append_array([bolt_ui["cls"], bolt_ui["slot"], bolt_ui["opt"], bolt_ui["erme"],
+			s.append_array([bolt_ui["cls"], bolt_ui["slot"], bolt_ui["opt"], bolt_ui["erme"], fiok.uzenet if fiok else "",
 				fiok.seq if fiok else 0, Sprites.hero_phase(tick),
 				Skins.sig(skins, Data.CLASS_ORDER[clampi(int(bolt_ui["cls"]), 0, 2)])])
 		"perk":
@@ -1092,6 +1114,7 @@ func _parse_args() -> void:
 		elif a.begins_with("--cls="): shot_cls = a.substr(6)
 		elif a.begins_with("--frames="): shot_frames = int(a.substr(9))
 		elif a.begins_with("--depth="): shot_depth = int(a.substr(8))
+		elif a.begins_with("--lang="): shot_lang = a.substr(7)
 		elif a.begins_with("--size="):
 			var wh := a.substr(7).split("x")
 			if wh.size() == 2:
@@ -1133,7 +1156,7 @@ func _setup_shot() -> void:
 				map_on = true
 			else:
 				set_state("menu")
-		"play", "orb", "inv", "chest", "over", "walk", "perk", "shop", "trap", "map", "pause":
+		"play", "orb", "inv", "chest", "over", "win", "walk", "perk", "shop", "trap", "map", "pause":
 			start_game(shot_cls, "normal")
 			# mérési célra mélyebb szint (ott sokkal több a szörny)
 			while game.world.dungeon_level < shot_depth:
@@ -1171,11 +1194,13 @@ func _setup_shot() -> void:
 				set_state("pause")
 			elif shot_scene == "chest":
 				var ch := {"x": game.player.x, "y": game.player.y, "opened": false,
-					"items": [Item.make(Item.find_base("Holdfénypenge"), "legendary", 3), Item.make(Item.find_base("Rúnapajzs"), "epic", 3)]}
+					"items": [Item.make(Item.find_base("moonlight_blade"), "legendary", 3), Item.make(Item.find_base("rune_shield"), "epic", 3)]}
 				chest_ui = {"chest": ch, "sel": 0}
 				set_state("chest")
 			elif shot_scene == "over":
 				set_state("over")
+			elif shot_scene == "win":
+				set_state("win")
 
 
 ## néhány szörny a kezdőszoba közelébe, hogy a képen látszódjanak a figurák
@@ -1292,11 +1317,11 @@ func _shot_map() -> void:
 
 func _shot_items() -> void:
 	var p := game.player
-	p.weapon = Item.make(Item.find_base("Rúnakard"), "epic", 3)
-	p.armor = Item.make(Item.find_base("Sárkánypáncél"), "legendary", 3)
-	p.shield = Item.make(Item.find_base("Acélpajzs"), "rare", 3)
-	for nm_r in [["Holdfénypenge", "legendary"], ["Ezoterikus íj", "epic"], ["Pokoli ágyú", "rare"], ["Rúnapajzs", "epic"],
-			["Nagy gyógyital", "legendary"], ["Életerő töltő", "rare"], ["Erő tekercs", "epic"], ["Véd tekercs", "common"], ["Tűzgömb", "legendary"]]:
+	p.weapon = Item.make(Item.find_base("rune_sword"), "epic", 3)
+	p.armor = Item.make(Item.find_base("dragon_armor"), "legendary", 3)
+	p.shield = Item.make(Item.find_base("steel_shield"), "rare", 3)
+	for nm_r in [["moonlight_blade", "legendary"], ["esoteric_bow", "epic"], ["infernal_cannon", "rare"], ["rune_shield", "epic"],
+			["greater_healing_potion", "legendary"], ["vitality_elixir", "rare"], ["scroll_strength", "epic"], ["scroll_warding", "common"], ["fireball", "legendary"]]:
 		p.inventory.append(Item.make(Item.find_base(nm_r[0]), nm_r[1], 3))
 
 

@@ -358,7 +358,7 @@ static func spawn_shops(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Arr
 ## A kereskedő kínálata: egy bájital, egy véletlen tárgy és egy teljes gyógyítás (10–60 arany).
 static func make_stock(lvl: int) -> Array:
 	var stock: Array = []
-	var pot := Item.make(Item.find_base("Nagy gyógyital" if lvl >= 3 else "Gyógyital"), Item.roll_rarity(lvl), lvl)
+	var pot := Item.make(Item.find_base("greater_healing_potion" if lvl >= 3 else "healing_potion"), Item.roll_rarity(lvl), lvl)
 	stock.append({"kind": "item", "item": pot, "price": clampi(12 + lvl * 3, 10, 60), "sold": false})
 	var goods := Item.random(lvl + 1)
 	stock.append({"kind": "item", "item": goods, "price": clampi(int(Data.SHOP_PRICE[goods.rarity]) + lvl * 2, 10, 60), "sold": false})

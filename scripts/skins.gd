@@ -12,7 +12,6 @@ extends RefCounted
 ## figura egyetlen gyorsítótárazott hálóba felvehető, és képkockánként csak eltolódik.
 
 const SLOTS := ["fej", "test", "lab", "fegyver"]
-const SLOT_NEV := {"fej": "Fej", "test": "Test", "lab": "Láb", "fegyver": "Fegyver"}
 const ARAK := {"fegyver": 20, "test": 20, "fej": 15, "lab": 10}
 const CLS_KEY := {"Lovag": "lovag", "Mágus": "magus", "Íjász": "ijasz"}
 const KEY_CLS := {"lovag": "Lovag", "magus": "Mágus", "ijasz": "Íjász"}
@@ -39,20 +38,7 @@ const VARIANSOK := {
 	},
 }
 
-const NEVEK := {
-	"lovag_fej_sisak_arany": "Arany sisak", "lovag_fej_sisak_szarv": "Szarvas sisak", "lovag_fej_csuklya": "Harci csuklya",
-	"lovag_test_pancel_arany": "Arany páncél", "lovag_test_pancel_sotet": "Sötét páncél", "lovag_test_koponyas_vert": "Koponyás vért",
-	"lovag_lab_vaslabvert": "Vas lábvért", "lovag_lab_bor_labvert": "Bőr lábvért",
-	"lovag_fegyver_kard_lang": "Lángkard", "lovag_fegyver_kard_jeg": "Jégkard", "lovag_fegyver_csatabard": "Csatabárd",
-	"magus_fej_kalap_csillag": "Csillagos kalap", "magus_fej_kalap_sotet": "Sötét kalap", "magus_fej_korona": "Mágus korona",
-	"magus_test_kontos_kek": "Kék köntös", "magus_test_kontos_bibor": "Bíbor köntös", "magus_test_kontos_arany": "Arany köntös",
-	"magus_lab_csizma_kek": "Kék csizma", "magus_lab_csizma_arany": "Arany csizma",
-	"magus_fegyver_bot_kristaly": "Kristálybot", "magus_fegyver_bot_koponya": "Koponyás bot", "magus_fegyver_bot_fa": "Élőfa bot",
-	"ijasz_fej_csuklya_zold": "Zöld csuklya", "ijasz_fej_csuklya_szurke": "Szürke csuklya", "ijasz_fej_tollas_kalap": "Tollas kalap",
-	"ijasz_test_bor_vert": "Bőrvért", "ijasz_test_koppeny_zold": "Zöld köpeny", "ijasz_test_vadasz_mellveert": "Vadász mellvért",
-	"ijasz_lab_csizma_bor": "Bőrcsizma", "ijasz_lab_csizma_magas": "Magas szárú csizma",
-	"ijasz_fegyver_ij_tiszafa": "Tiszafa íj", "ijasz_fegyver_ij_csont": "Csontíj", "ijasz_fegyver_szamszerij": "Számszeríj",
-}
+## A darabok neve a nyelvi fájlokban: skin.<kulcs> (pl. skin.lovag_fej_sisak_arany), a helyeké slot.<hely>.
 
 # ══════════ KATALÓGUS ══════════
 static func kulcs(ck: String, slot: String, v: String) -> String:
@@ -65,8 +51,15 @@ static func ar(slot: String) -> int:
 
 static func nev(ck: String, slot: String, v: String) -> String:
 	if v == "":
-		return "Alap"
-	return str(NEVEK.get(kulcs(ck, slot, v), v))
+		return Lang.T("skin.default")
+	var k := "skin." + kulcs(ck, slot, v)
+	var s := Lang.T(k)
+	return v if s == k else s
+
+
+## a hely (fej / test / láb / fegyver) neve a mostani nyelven
+static func hely_nev(slot: String) -> String:
+	return Lang.T("slot." + slot)
 
 
 static func ervenyes(ck: String, slot: String, v: String) -> bool:

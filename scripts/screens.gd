@@ -1,4 +1,4 @@
-﻿class_name Screens
+class_name Screens
 extends RefCounted
 ## Menük és felületek: főmenü (sárkányos borító), irányítás/billentyűszerkesztő, nehézség,
 ## hősválasztás, táska, láda-választó, játék vége, hang gomb.
@@ -115,19 +115,19 @@ static func menu_front(m: Node, c: Cv) -> void:
 	var tot: float = tt["tot"]
 	# a cím izzó árnyéka
 	c.tex(m.tex_glow, Rect2(W / 2 - tot / 2 - 40 * k, ty - tsz * 1.05, tot + 80 * k, tsz * 1.45), rgba(255, 160, 35, 0.22))
-	MenuArt.ls_text(c, "KARD ÉS MÁGIA", W / 2 + 1.5 * k, ty + 1.5 * k, "#1a1005", tsz, tsz * 0.055, "center")
+	MenuArt.ls_text(c, Lang.T("title"), W / 2 + 1.5 * k, ty + 1.5 * k, "#1a1005", tsz, tsz * 0.055, "center")
 	# keresztbe tett kardok a cím két oldalán (mozdulatlanok)
 	var half_t := tot / 2
 	var skey := "swords|%d" % int(roundf(tsz * 0.78 * 8.0))
 	c.blit(skey, func() -> void: MenuArt.crossed_swords(c, 0, 0, tsz * 0.78, "#c8a03a"), W / 2 - half_t - 40 * k, ty - tsz * 0.28)
 	c.blit(skey, func() -> void: MenuArt.crossed_swords(c, 0, 0, tsz * 0.78, "#c8a03a"), W / 2 + half_t + 40 * k, ty - tsz * 0.28)
-	c.ftxt("ROGUELIKE KALAND  ·  5 MÉLYSÉG  ·  3 HŐS", W / 2, by + bh * 0.84, "#9c8354", minf(16 * k, tsz * 0.28), "center")
+	c.ftxt_fit(Lang.T("menu.subtitle"), W / 2, by + bh * 0.84, "#9c8354", minf(16 * k, tsz * 0.28), bw - 60 * k, "center")
 	c.blit("orna2|%d|%d" % [int(roundf(bw - 52 * k)), int(roundf(k * 64.0))],
 		func() -> void: MenuArt.ornament(c, 0, 0, bw - 52 * k, "#6a5222", k), bx + 26 * k, by + bh - 20 * k)
 
 
 static func _title_geo(m: Node, bw: float, bh: float, by: float, k: float) -> Dictionary:
-	var title := "KARD ÉS MÁGIA"
+	var title := Lang.T("title")
 	var tsz := minf(48 * k, bw / 10)
 	var tot := MenuArt.ls_width(title, tsz, tsz * 0.055)
 	while tot > bw - 200 * k and tsz > 14:
@@ -160,7 +160,7 @@ static func menu_title(m: Node, c: Cv) -> void:
 	var mat: ShaderMaterial = m.title_mat
 	mat.set_shader_parameter("top", ty - tsz * 0.85)
 	mat.set_shader_parameter("bot", ty + tsz * 0.18)
-	MenuArt.ls_text(c, "KARD ÉS MÁGIA", W / 2, ty - 1 * k, Color.WHITE, tsz, tsz * 0.055, "center")
+	MenuArt.ls_text(c, Lang.T("title"), W / 2, ty - 1 * k, Color.WHITE, tsz, tsz * 0.055, "center")
 
 
 ## Borítókép: ugyanaz a menü, csak gombok nélkül, és minden hős SAJÁT neve áll alatta
@@ -173,7 +173,7 @@ static func menu_borito(m: Node, c: Cv) -> void:
 	var k: float = g["k"]
 	var spread := W * 0.22
 	var feet_y := H * 0.88
-	var names := [["Mágus", W / 2 - spread, "#c9a6ff"], ["Lovag", W / 2, "#e8d8a0"], ["Íjász", W / 2 + spread, "#a8e090"]]
+	var names := [[Lang.cls("Mágus"), W / 2 - spread, "#c9a6ff"], [Lang.cls("Lovag"), W / 2, "#e8d8a0"], [Lang.cls("Íjász"), W / 2 + spread, "#a8e090"]]
 	for n in names:
 		var nx: float = n[1]
 		var sz := minf(17 * k, 18.0)
@@ -202,13 +202,13 @@ static func menu_top(m: Node, c: Cv) -> void:
 	# gombok — sorrend: (Folytatás) · Kaland kezdete · Irányítás · Kilépés
 	var btn_w := minf(300 * k, W - 56)
 	var btns := [
-		{"t": "⚔  Kaland kezdete", "c": P["parchGold"], "bg": "#2e2210", "bd": P["parchGold"], "fn": m.go_diff},
-		{"t": "✦  Kinézet bolt", "c": "#c9a6ff", "bg": "#1d1430", "bd": "#6a4aa8", "fn": func() -> void: m.open_bolt("menu")},
-		{"t": "Irányítás", "c": P["ink"], "bg": "#241a0c", "bd": P["parchEdge"], "fn": func() -> void: m.set_state("help")},
-		{"t": "Kilépés", "c": "#c08070", "bg": "#1e1008", "bd": "#6a3a2a", "fn": m.quit_app},
+		{"t": Lang.T("menu.new"), "c": P["parchGold"], "bg": "#2e2210", "bd": P["parchGold"], "fn": m.go_diff},
+		{"t": Lang.T("menu.shop"), "c": "#c9a6ff", "bg": "#1d1430", "bd": "#6a4aa8", "fn": func() -> void: m.open_bolt("menu")},
+		{"t": Lang.T("menu.controls"), "c": P["ink"], "bg": "#241a0c", "bd": P["parchEdge"], "fn": func() -> void: m.set_state("help")},
+		{"t": Lang.T("menu.quit"), "c": "#c08070", "bg": "#1e1008", "bd": "#6a3a2a", "fn": m.quit_app},
 	]
 	if SaveGame.has_save():
-		btns.push_front({"t": "▶  Folytatás", "c": "#9ce0a0", "bg": "#16280f", "bd": "#5aa050", "fn": m.continue_game})
+		btns.push_front({"t": Lang.T("menu.continue"), "c": "#9ce0a0", "bg": "#16280f", "bd": "#5aa050", "fn": m.continue_game})
 	# a gomboszlop magassága állandó (a képernyő ~40%-a), akárhány gomb van: így sosem lóg ki
 	var n := btns.size()
 	var gap := 10 * k
@@ -234,8 +234,9 @@ static func menu_top(m: Node, c: Cv) -> void:
 	c.stroke_rect(14 * k, 14 * k, W - 28 * k, H - 28 * k)
 	c.ss(rgba(212, 168, 75, 0.22)); c.lw(1 * k)
 	c.stroke_rect(22 * k, 22 * k, W - 44 * k, H - 44 * k)
-	var hint := "♪ Háttérzene szól  ·  M vagy 🔊: hang ki/be  ·  F11: teljes képernyő" if m.audio.music_started else "♪ A háttérzene hamarosan indul...  ·  F11: teljes képernyő"
-	c.ftxt(hint, W / 2, H - 10, P["inkDark"], minf(10 * k, 10), "center")
+	var hint := Lang.T("menu.hint_music") if m.audio.music_started else Lang.T("menu.hint_wait")
+	c.ftxt_fit(hint, W / 2, H - 10, P["inkDark"], minf(10 * k, 10), W - 60, "center")
+	lang_buttons(m, c, 30 * k + 6, 30 * k + 4)
 
 
 # ══════════ IRÁNYÍTÁS + BILLENTYŰSZERKESZTŐ ══════════
@@ -245,17 +246,17 @@ static func help(m: Node, c: Cv) -> void:
 	var P := Data.P
 	c.fs("#080604"); c.fill_rect(0, 0, W, H)
 	var info := [
-		["Mozgás / Támadás", "WASD vagy nyilak — tartsd lenyomva a folyamatos járáshoz"],
-		["A katakomba él", "Ha megállsz, a szörnyek akkor is lépnek: ne késlekedj sokáig!"],
-		["Íj / Ágyú / Varázsgömb", "Lő az irányba, ha szörny van a vonalban"],
-		["Láda · Szentély · Kereskedő", "Sétálj rá: tárgyat választasz, áldást kérsz vagy aranyért vásárolsz"],
-		["Tab: térkép  ·  K: kutatás", "Bejárt mezők kis térképen; titkos ajtók és rejtett csapdák felfedése"],
-		["Szintlépés", "Három lap közül választhatsz képességet (1 / 2 / 3 vagy kattintás)"],
-		["Mentés · Hang · Képernyő", "Esc: menü és mentés  ·  M: hang ki/be  ·  F11: teljes képernyő"],
+		[Lang.T("help.1"), Lang.T("help.1.d")],
+		[Lang.T("help.2"), Lang.T("help.2.d")],
+		[Lang.T("help.3"), Lang.T("help.3.d")],
+		[Lang.T("help.4"), Lang.T("help.4.d")],
+		[Lang.T("help.5"), Lang.T("help.5.d")],
+		[Lang.T("help.6"), Lang.T("help.6.d")],
+		[Lang.T("help.7"), Lang.T("help.7.d")],
 	]
 	var bind_rows := [
-		["up", "Fel / Mozgás ↑"], ["down", "Le / Mozgás ↓"], ["left", "Bal / Mozgás ←"], ["right", "Jobb / Mozgás →"],
-		["stair", "Lépcső (lejjebb)"], ["inventory", "Táska"], ["menu", "Menü / Vissza"],
+		["up", Lang.T("bind.up")], ["down", Lang.T("bind.down")], ["left", Lang.T("bind.left")], ["right", Lang.T("bind.right")],
+		["stair", Lang.T("bind.stair")], ["inventory", Lang.T("bind.inventory")], ["menu", Lang.T("bind.menu")],
 	]
 	var gap := 34.0 if H >= 700 else 28.0
 	var head := 68 + info.size() * gap + 5   # az elválasztó vonalig
@@ -266,7 +267,8 @@ static func help(m: Node, c: Cv) -> void:
 	var oy := maxf(12, (H - ph) / 2)
 	c.panel(ox, oy, pw, ph, P["parch"], P["parchGold"], 2, 10)
 	c.orna(ox + 16, oy + 18, pw - 32, P["parchEdge"])
-	c.ftxt("Irányítás & Billentyűk", W / 2, oy + 42, P["parchGold"], 18, "center")
+	c.ftxt_fit(Lang.T("help.title"), W / 2, oy + 42, P["parchGold"], 18, pw - 250, "center")
+	lang_buttons(m, c, ox + pw - 16 - 3 * 36 + 4, oy + 24, 30.0, 22.0)
 	c.orna(ox + 16, oy + 52, pw - 32, P["parchEdge"])
 	# az ismertető sorai halvány háttérsávon: tagoltabb, kevésbé zsúfolt
 	for i in info.size():
@@ -274,10 +276,10 @@ static func help(m: Node, c: Cv) -> void:
 			c.rrect_fill_c(ox + 12, oy + 56 + i * gap, pw - 24, gap - 4, 4, "#1c1408")
 	for i in info.size():
 		var ly := oy + 68 + i * gap
-		c.ftxt(info[i][0], ox + 22, ly, P["parchGold"], 12)
+		c.ftxt_fit(info[i][0], ox + 22, ly, P["parchGold"], 12, pw - 44)
 		c.ftxt_fit(info[i][1], ox + 22, ly + 15, P["ink"], 10, pw - 44)
 	c.orna(ox + 16, oy + head, pw - 32, "#241a0c")
-	c.ftxt("Testreszabható billentyűk", W / 2, oy + head + 19, P["inkDark"], 11, "center")
+	c.ftxt_fit(Lang.T("help.custom"), W / 2, oy + head + 19, P["inkDark"], 11, pw - 40, "center")
 	var rows_y := oy + head + 31
 	var btn_w := minf(110, pw * 0.3)
 	var btn_x := ox + pw - btn_w - 16
@@ -290,8 +292,8 @@ static func help(m: Node, c: Cv) -> void:
 		c.rrect(ox + 10, ry, pw - 20, row_h - 4, 5); c.fill()
 		c.ss(P["parchGold"] if editing else P["parchEdge"]); c.lw(2 if editing else 1)
 		c.rrect(ox + 10, ry, pw - 20, row_h - 4, 5); c.stroke()
-		c.ftxt(label, ox + 24, ry + row_h / 2 + 3, P["parchGold"] if editing else P["ink"], 11)
-		var lbl: String = "[ nyomj egy billentyűt ]" if editing else m.key_label(m.binds[key])
+		c.ftxt_fit(label, ox + 24, ry + row_h / 2 + 3, P["parchGold"] if editing else P["ink"], 11, btn_x - ox - 32)
+		var lbl: String = Lang.T("help.press") if editing else m.key_label(m.binds[key])
 		c.fs("#5a3a10" if editing else "#2a1e08"); c.rrect(btn_x, ry + 4, btn_w, row_h - 12, 5); c.fill()
 		c.ss(P["parchGold"] if editing else P["parchEdge"]); c.lw(1.5); c.rrect(btn_x, ry + 4, btn_w, row_h - 12, 5); c.stroke()
 		c.ftxt_fit(lbl, btn_x + btn_w / 2, ry + row_h / 2 + 4, "#ffd700" if editing else P["parchGold"], 8 if editing else 12, btn_w - 8, "center")
@@ -302,7 +304,7 @@ static func help(m: Node, c: Cv) -> void:
 	var rh := 34.0
 	var rx2 := ox + (pw - rw) / 2
 	c.panel(rx2, reset_y, rw, rh, "#1e0808", "#8a2a2a", 1.5, 6)
-	c.ftxt("↺ Alapértelmezett visszaállítás", W / 2, reset_y + 22, "#d06060", 10, "center")
+	c.ftxt_fit(Lang.T("help.reset"), W / 2, reset_y + 22, "#d06060", 10, rw - 12, "center")
 	m.add_hit(rx2, reset_y, rw, rh, func() -> void: m.reset_binds())
 	# vissza
 	var bw2 := minf(200, pw - 40)
@@ -310,10 +312,10 @@ static func help(m: Node, c: Cv) -> void:
 	var bx := (W - bw2) / 2
 	var by := oy + ph - bh - 12
 	c.panel(bx, by, bw2, bh, "#2e2210", P["parchGold"], 2, 8)
-	c.ftxt("← Vissza", W / 2, by + 28, P["parchGold"], 14, "center")
+	c.ftxt_fit(Lang.T("common.back"), W / 2, by + 28, P["parchGold"], 14, bw2 - 16, "center")
 	m.add_hit(bx, by, bw2, bh, m.close_help)
 	if m.bind_edit != "":
-		c.ftxt("Nyomj bármilyen billentyűt a hozzárendeléshez", W / 2, reset_y + rh + 11, P["inkDark"], 9, "center")
+		c.ftxt_fit(Lang.T("help.press_any"), W / 2, reset_y + rh + 11, P["inkDark"], 9, pw - 30, "center")
 
 
 # ══════════ NEHÉZSÉG ══════════
@@ -322,8 +324,8 @@ static func diff_sel(m: Node, c: Cv) -> void:
 	var H: float = m.H
 	var P := Data.P
 	c.fs("#080604"); c.fill_rect(0, 0, W, H)
-	c.ftxt("Nehézség", W / 2, maxf(46, H * 0.1), P["parchGold"], 24, "center")
-	var diffs := [["Könnyű", "Gyenge ellenségek", "#50a050"], ["Közepes", "Igazi kihívás", P["parchGold"]], ["Nehéz", "Kegyetlen mélység", "#d05040"]]
+	c.ftxt(Lang.T("diff.title"), W / 2, maxf(46, H * 0.1), P["parchGold"], 24, "center")
+	var diffs := [[Lang.T("diff.easy"), Lang.T("diff.easy.d"), "#50a050"], [Lang.T("diff.normal"), Lang.T("diff.normal.d"), P["parchGold"]], [Lang.T("diff.hard"), Lang.T("diff.hard.d"), "#d05040"]]
 	var bw2 := minf(180, (W - 80) / 3)
 	var bh := 190.0
 	var start_x := (W - bw2 * 3 - 32) / 2
@@ -335,10 +337,10 @@ static func diff_sel(m: Node, c: Cv) -> void:
 		var bx := start_x + i * (bw2 + 16)
 		var sel: bool = m.diff_sel == i
 		c.panel(bx, by, bw2, bh, "#3a2810" if sel else "#1c1408", col if sel else P["parchEdge"], 2.5 if sel else 1.0, 8)
-		c.ftxt(label, bx + bw2 / 2, by + 42, col if sel else P["ink"], 17, "center")
+		c.ftxt_fit(label, bx + bw2 / 2, by + 42, col if sel else P["ink"], 17, bw2 - 12, "center")
 		c.ftxt_fit(desc, bx + bw2 / 2, by + 76, P["inkDark"], 11, bw2 - 12, "center")
 		if sel:
-			c.ftxt("✓ Kiválasztva", bx + bw2 / 2, by + bh - 20, col, 11, "center")
+			c.ftxt_fit(Lang.T("common.selected"), bx + bw2 / 2, by + bh - 20, col, 11, bw2 - 12, "center")
 		m.add_hit(bx, by, bw2, bh, func() -> void:
 			if m.diff_sel == i:
 				m.char_sel = 0
@@ -350,7 +352,7 @@ static func diff_sel(m: Node, c: Cv) -> void:
 	var cx2 := (W - cw) / 2
 	var cy2 := by + bh + 30
 	c.panel(cx2, cy2, cw, ch, "#2e2210", P["parchGold"], 2, 8)
-	c.ftxt("Tovább  →", W / 2, cy2 + 32, P["parchGold"], 15, "center")
+	c.ftxt_fit(Lang.T("diff.next"), W / 2, cy2 + 32, P["parchGold"], 15, cw - 16, "center")
 	m.add_hit(cx2, cy2, cw, ch, m.go_char)
 	_back_btn(m, c, "menu")
 
@@ -358,7 +360,7 @@ static func diff_sel(m: Node, c: Cv) -> void:
 static func _back_btn(m: Node, c: Cv, to: String) -> void:
 	var P := Data.P
 	c.panel(12, 12, 110, 40, "#1c1408", P["parchEdge"], 1.5, 6)
-	c.ftxt("← Vissza", 12 + 55, 12 + 26, P["ink"], 12, "center")
+	c.ftxt_fit(Lang.T("common.back"), 12 + 55, 12 + 26, P["ink"], 12, 100, "center")
 	m.add_hit(12, 12, 110, 40, func() -> void: m.set_state(to))
 
 
@@ -368,7 +370,7 @@ static func char_sel(m: Node, c: Cv) -> void:
 	var H: float = m.H
 	var P := Data.P
 	c.fs("#080604"); c.fill_rect(0, 0, W, H)
-	c.ftxt("Válassz Hőst", W / 2, maxf(44, H * 0.08), P["parchGold"], 24, "center")
+	c.ftxt(Lang.T("char.title"), W / 2, maxf(44, H * 0.08), P["parchGold"], 24, "center")
 	var n := Data.CLASS_ORDER.size()
 	var bw2 := minf(200, (W - 100) / 3)
 	var bh := minf(H * 0.6, 400)
@@ -381,14 +383,14 @@ static func char_sel(m: Node, c: Cv) -> void:
 		var sel: bool = m.char_sel == i
 		c.panel(bx, by, bw2, bh, "#2e2210" if sel else "#1a1206", s["col"] if sel else P["parchEdge"], 2.5 if sel else 1.0, 10)
 		Sprites.hero_cached(c, name, bx + bw2 / 2, by + bh * 0.23, minf(110, bh * 0.3), m.tick, m.skins)
-		c.ftxt(name, bx + bw2 / 2, by + bh * 0.46, P["parchGold"] if sel else P["ink"], 18, "center")
-		var stats := [["♥ Életerő", s["hp"], "#d04030"],
-			(["✦ Varázserő", s["mag"], "#6aa8ff"] if s["mag"] > 0 else ["⚔ Támadás", s["atk"], "#e09030"]),
-			["🛡 Védelem", s["def"], "#5080d0"]]
+		c.ftxt_fit(Lang.cls(name), bx + bw2 / 2, by + bh * 0.46, P["parchGold"] if sel else P["ink"], 18, bw2 - 16, "center")
+		var stats := [[Lang.T("stat.hp"), s["hp"], "#d04030"],
+			([Lang.T("stat.mag"), s["mag"], "#6aa8ff"] if s["mag"] > 0 else [Lang.T("stat.atk"), s["atk"], "#e09030"]),
+			[Lang.T("stat.def"), s["def"], "#5080d0"]]
 		for j in 3:
-			c.ftxt(stats[j][0], bx + 18, by + bh * 0.56 + j * 24, stats[j][2], 11)
+			c.ftxt_fit(stats[j][0], bx + 18, by + bh * 0.56 + j * 24, stats[j][2], 11, bw2 - 64)
 			c.ftxt(str(stats[j][1]), bx + bw2 - 18, by + bh * 0.56 + j * 24, P["ink"], 12, "right")
-		c.wrap_text(s["desc"], bx + bw2 / 2, by + bh * 0.80, bw2 - 30, 10, P["inkDark"], "center")
+		c.wrap_text(Lang.cls_desc(name), bx + bw2 / 2, by + bh * 0.80, bw2 - 30, 10, P["inkDark"], "center")
 		if sel:
 			c.ftxt("✓", bx + bw2 - 22, by + 26, s["col"], 18, "center")
 		m.add_hit(bx, by, bw2, bh, func() -> void:
@@ -401,7 +403,7 @@ static func char_sel(m: Node, c: Cv) -> void:
 	var sx3 := (W - sw) / 2
 	var sy3 := by + bh + 24
 	c.panel(sx3, sy3, sw, sh, "#2e2210", P["parchGold"], 2.5, 10)
-	c.ftxt("⚔ Indulás!", W / 2, sy3 + 34, P["parchGold"], 17, "center")
+	c.ftxt_fit(Lang.T("char.start"), W / 2, sy3 + 34, P["parchGold"], 17, sw - 16, "center")
 	m.add_hit(sx3, sy3, sw, sh, func() -> void: m.start_game(Data.CLASS_ORDER[m.char_sel], Data.DIFF_ORDER[m.diff_sel]))
 	_back_btn(m, c, "diff")
 
@@ -419,7 +421,7 @@ static func inventory(m: Node, c: Cv) -> void:
 	var ox := (W - pw) / 2
 	var oy := (H - ph) / 2
 	c.panel(ox, oy, pw, ph, P["parch"], P["parchEdge"], 2, 10)
-	c.ftxt("Felszerelés & Táska", W / 2, oy + 30, P["parchGold"], 19, "center")
+	c.ftxt_fit(Lang.T("inv.title"), W / 2, oy + 30, P["parchGold"], 19, pw - 40, "center")
 	c.orna(ox + 18, oy + 40, pw - 36, P["parchEdge"])
 	# a hős képe a MOSTANI kinézettel (a boltban vett darabokkal együtt)
 	var hb := 86.0
@@ -429,7 +431,7 @@ static func inventory(m: Node, c: Cv) -> void:
 	# felszerelt tárgyak: fegyver, páncél, pajzs
 	var rx0 := ox + 12 + hb + 10
 	var rw0 := ox + pw - 12 - rx0
-	var slots := [["⚔", p.weapon, "Nincs fegyver (puszta kéz)"], ["🛡", p.armor, "Nincs páncél"], ["⛨", p.shield, "Nincs pajzs"]]
+	var slots := [["⚔", p.weapon, Lang.T("inv.no_weapon")], ["🛡", p.armor, Lang.T("inv.no_armor")], ["⛨", p.shield, Lang.T("inv.no_shield")]]
 	# Kötegbarát sorrend: előbb minden háttér, aztán minden ikon, végül minden felirat.
 	# (A sorok nem érnek egymásba, így a kép ugyanaz, de sokkal kevesebb rajzhívás kell.)
 	for i in 3:
@@ -457,7 +459,7 @@ static func inventory(m: Node, c: Cv) -> void:
 	c.ftxt("◉ %d" % p.gold, ox + 14, oy + 152, P["parchGold"], 12)
 	var pl := Perks.labels(p)
 	var gw := maxf(60.0, Cv.measure("◉ %d" % p.gold, 12) + 14)
-	var ptxt := "Képességek: " + ("  ·  ".join(pl) if not pl.is_empty() else "még nincs — szintlépéskor választhatsz")
+	var ptxt := Lang.T("inv.perks", "  ·  ".join(pl) if not pl.is_empty() else Lang.T("inv.no_perks"))
 	c.ftxt_fit(ptxt, ox + 14 + gw, oy + 152, P["ink"] if not pl.is_empty() else P["inkDark"], 10, pw - 32 - gw)
 	c.orna(ox + 18, oy + 162, pw - 36, "#241a0c")
 	var items := p.inventory
@@ -469,7 +471,7 @@ static func inventory(m: Node, c: Cv) -> void:
 	m.inv_scroll = clampi(m.inv_scroll, 0, max_scroll)
 	var off: int = m.inv_scroll
 	if items.is_empty():
-		c.ftxt("Üres a táskád.", W / 2, list_y + 30, P["inkDark"], 13, "center")
+		c.ftxt(Lang.T("inv.empty"), W / 2, list_y + 30, P["inkDark"], 13, "center")
 	var shown := mini(items.size() - off, max_show)
 	# 1. minden sor kerete (egyetlen kötegbe)
 	for r in shown:
@@ -488,7 +490,7 @@ static func inventory(m: Node, c: Cv) -> void:
 		var it: Item = items[idx]
 		var iy := list_y + r * row_h
 		var key_txt := ("[%s]" % String.chr(65 + idx)) if idx < 26 else ""
-		var action := "felvesz" if it.slot != "use" else "használ"
+		var action := Lang.T("inv.equip") if it.slot != "use" else Lang.T("inv.use")
 		var right := "%s %s" % [action, key_txt]
 		var rw := Cv.measure(right, 9)
 		c.ftxt(right, ox + pw - 22, iy + 16, P["inkDark"], 9, "right")
@@ -496,15 +498,15 @@ static func inventory(m: Node, c: Cv) -> void:
 		c.ftxt_fit(it.short_stats(p.cls, p.mag), ox + 54, iy + 32, P["parchGold"], 10, pw - 54 - 30)
 		m.add_hit(ox + 10, iy, pw - 20, row_h - 6, func() -> void: m.use_inv(idx))
 	if items.size() > max_show:
-		var more := "▲▼ görgetés  ·  %d–%d / %d tárgy" % [off + 1, off + mini(max_show, items.size() - off), items.size()]
-		c.ftxt(more, W / 2, list_y + max_show * row_h + 10, P["inkDark"], 10, "center")
+		var more := Lang.T("inv.scroll", off + 1, off + mini(max_show, items.size() - off), items.size())
+		c.ftxt_fit(more, W / 2, list_y + max_show * row_h + 10, P["inkDark"], 10, pw - 30, "center")
 	var cw := minf(200, pw - 40)
 	var ch2 := 46.0
 	var cx2 := (W - cw) / 2
 	var cy2 := oy + ph - ch2 - 12
-	c.ftxt_fit("Kattints egy tárgyra (vagy nyomd meg a betűjét) a felvételhez / használathoz", W / 2, cy2 - 8, P["inkDark"], 9, pw - 30, "center")
+	c.ftxt_fit(Lang.T("inv.hint"), W / 2, cy2 - 8, P["inkDark"], 9, pw - 30, "center")
 	c.panel(cx2, cy2, cw, ch2, "#2e2210", P["parchGold"], 2, 8)
-	c.ftxt("Bezárás", W / 2, cy2 + 30, P["parchGold"], 14, "center")
+	c.ftxt_fit(Lang.T("common.close"), W / 2, cy2 + 30, P["parchGold"], 14, cw - 16, "center")
 	m.add_hit(cx2, cy2, cw, ch2, func() -> void: m.set_state("play"))
 
 
@@ -529,7 +531,7 @@ static func chest(m: Node, c: Cv) -> void:
 	var ox := (W - pw) / 2
 	var oy := maxf(10, (H - ph) / 2)
 	c.panel(ox, oy, pw, ph, P["parch"], P["parchGold"], 2, 10)
-	c.ftxt("⚜ Láda! Válassz egyet:", W / 2, oy + 30, P["parchGold"], 16, "center")
+	c.ftxt_fit(Lang.T("chest.title"), W / 2, oy + 30, P["parchGold"], 16, pw - 40, "center")
 	c.orna(ox + 16, oy + 40, pw - 32, P["parchEdge"])
 	for i in 2:
 		var it: Item = ch["items"][i]
@@ -543,7 +545,7 @@ static func chest(m: Node, c: Cv) -> void:
 		c.rrect_fill_c(ix + iw / 2 - 34, iy2 + 12, 68, 68, 12, Color(gcol, 0.12))
 		Sprites.item_icon(c, it, ix + iw / 2, iy2 + 46, 54, tick)
 		c.ftxt_fit(it.label, ix + iw / 2, iy2 + 94, it.glow(), 13, iw - 16, "center")
-		c.ftxt("[%s]" % it.rar()["label"], ix + iw / 2, iy2 + 109, it.border(), 10, "center")
+		c.ftxt_fit("[%s]" % Lang.T("rarity." + it.rarity), ix + iw / 2, iy2 + 109, it.border(), 10, iw - 16, "center")
 		c.orna(ix + iw * 0.22, iy2 + 116, iw * 0.56, P["parchEdge"])
 		var stats := it.stat_lines(p.cls, p.mag)
 		for j in stats.size():
@@ -551,7 +553,7 @@ static func chest(m: Node, c: Cv) -> void:
 		m.add_hit(ix, iy2, iw, card_h, func() -> void:
 			m.chest_ui["sel"] = i
 			m.pick_chest_item())
-	c.ftxt("Kattints a tárgyra, vagy ←/→ és Enter  ·  Esc: később", W / 2, oy + ph - 12, P["inkDark"], 10, "center")
+	c.ftxt_fit(Lang.T("chest.hint"), W / 2, oy + ph - 12, P["inkDark"], 10, pw - 30, "center")
 
 
 # ══════════ SZINTLÉPÉS: KÉPESSÉGVÁLASZTÓ ══════════
@@ -572,9 +574,9 @@ static func perk_pick(m: Node, c: Cv) -> void:
 	var ox := (W - pw) / 2
 	var oy := maxf(12, (H - ph) / 2)
 	c.panel(ox, oy, pw, ph, P["parch"], P["parchGold"], 2, 10)
-	c.ftxt("⬆ %d. szint — válassz képességet!" % p.plvl, W / 2, oy + 34, P["parchGold"], 18, "center")
+	c.ftxt_fit(Lang.T("perk.title", p.plvl), W / 2, oy + 34, P["parchGold"], 18, pw - 40, "center")
 	c.orna(ox + 16, oy + 46, pw - 32, P["parchEdge"])
-	c.ftxt("A képességek összeadódnak, és a táskádban végig láthatók.", W / 2, oy + 68, P["inkDark"], 10, "center")
+	c.ftxt_fit(Lang.T("perk.sub"), W / 2, oy + 68, P["inkDark"], 10, pw - 40, "center")
 	var cw := (pw - 24 - (n - 1) * 12) / n
 	for i in ids.size():
 		var id: String = ids[i]
@@ -593,11 +595,11 @@ static func perk_pick(m: Node, c: Cv) -> void:
 		c.orna(cx + cw * 0.28, cy + 99, cw * 0.44, P["parchEdge"])
 		var nsor := Cv.wrap_lines(d["d"], cw - 26, 11).size()
 		c.wrap_text(d["d"], cx + cw / 2, cy + maxf(120.0, (card_h - 34 + 108 - nsor * 16) / 2.0), cw - 26, 11, P["ink"], "center")
-		var foot := "Jelenleg: ×%d  (max %d)" % [have, int(d["max"])] if have > 0 else "Új képesség  (max %d)" % int(d["max"])
+		var foot := Lang.T("perk.have", have, int(d["max"])) if have > 0 else Lang.T("perk.new", int(d["max"]))
 		c.ftxt_fit(foot, cx + cw / 2, cy + card_h - 30, P["inkDark"], 10, cw - 16, "center")
 		c.ftxt("[%d]" % (i + 1), cx + cw / 2, cy + card_h - 12, bd, 12, "center")
 		m.add_hit(cx, cy, cw, card_h, func() -> void: m.pick_perk(i))
-	c.ftxt("Kattints egy lapra, vagy 1 / 2 / 3  ·  ←/→ és Enter", W / 2, oy + ph - 14, P["inkDark"], 10, "center")
+	c.ftxt_fit(Lang.T("perk.hint"), W / 2, oy + ph - 14, P["inkDark"], 10, pw - 30, "center")
 
 
 # ══════════ KERESKEDŐ ══════════
@@ -618,9 +620,9 @@ static func shop(m: Node, c: Cv) -> void:
 	var ox := (W - pw) / 2
 	var oy := maxf(12, (H - ph) / 2)
 	c.panel(ox, oy, pw, ph, P["parch"], "#60d080", 2, 10)
-	c.ftxt("◉ Vándorkereskedő", W / 2, oy + 34, "#9ce0a0", 18, "center")
+	c.ftxt_fit(Lang.T("shop.title"), W / 2, oy + 34, "#9ce0a0", 18, pw - 40, "center")
 	c.orna(ox + 16, oy + 46, pw - 32, P["parchEdge"])
-	c.ftxt("Aranyad: ◉ %d" % p.gold, W / 2, oy + 70, P["parchGold"], 13, "center")
+	c.ftxt(Lang.T("shop.gold", p.gold), W / 2, oy + 70, P["parchGold"], 13, "center")
 	var cw := (pw - 24 - (n - 1) * 12) / n
 	for i in stock.size():
 		var e: Dictionary = stock[i]
@@ -641,16 +643,16 @@ static func shop(m: Node, c: Cv) -> void:
 				c.ftxt_fit(lines[j], cx + cw / 2, cy + 112 + j * 16, P["ink"], 10, cw - 16, "center")
 		else:
 			c.ftxt("✚", cx + cw / 2, cy + 60, "#40c860", 34, "center")
-			c.ftxt_fit("Teljes gyógyulás", cx + cw / 2, cy + 92, "#9ce0a0", 12, cw - 16, "center")
-			c.ftxt_fit("Az életerőd feltöltődik.", cx + cw / 2, cy + 112, P["ink"], 10, cw - 16, "center")
-		var lbl := "ELFOGYOTT" if sold else ("◉ %d arany" % price)
-		c.ftxt(lbl, cx + cw / 2, cy + card_h - 30, (P["parchGold"] if afford else P["inkDark"]) if not sold else "#7a6a58", 14, "center")
+			c.ftxt_fit(Lang.T("shop.full_heal"), cx + cw / 2, cy + 92, "#9ce0a0", 12, cw - 16, "center")
+			c.ftxt_fit(Lang.T("shop.full_heal.d"), cx + cw / 2, cy + 112, P["ink"], 10, cw - 16, "center")
+		var lbl := Lang.T("shop.sold") if sold else Lang.T("shop.price", price)
+		c.ftxt_fit(lbl, cx + cw / 2, cy + card_h - 30, (P["parchGold"] if afford else P["inkDark"]) if not sold else "#7a6a58", 14, cw - 16, "center")
 		if not sold and not afford:
-			c.ftxt("nincs elég aranyad", cx + cw / 2, cy + card_h - 14, "#a05050", 9, "center")
+			c.ftxt_fit(Lang.T("shop.poor"), cx + cw / 2, cy + card_h - 14, "#a05050", 9, cw - 12, "center")
 		else:
 			c.ftxt("[%d]" % (i + 1), cx + cw / 2, cy + card_h - 14, bd, 11, "center")
 		m.add_hit(cx, cy, cw, card_h, func() -> void: m.buy_shop(i))
-	c.ftxt("Kattints egy lapra, vagy 1 / 2 / 3  ·  Esc: továbbállsz", W / 2, oy + ph - 14, P["inkDark"], 10, "center")
+	c.ftxt_fit(Lang.T("shop.hint"), W / 2, oy + ph - 14, P["inkDark"], 10, pw - 30, "center")
 
 
 # ══════════ KINÉZET BOLT (kozmetika — csak a külsőt változtatja) ══════════
@@ -675,20 +677,20 @@ static func bolt(m: Node, c: Cv) -> void:
 	c.panel_c(mar, 12, W - mar * 2, hh, "#1a1224", "#5c4488", 1.5, 8)
 	var bw0 := 92.0
 	c.panel(mar + 10, 20, bw0, hh - 16, "#241a0c", P["parchEdge"], 1.5, 6)
-	c.ftxt("← Vissza", mar + 10 + bw0 / 2, 20 + (hh - 16) * 0.66, P["ink"], 11, "center")
+	c.ftxt_fit(Lang.T("common.back"), mar + 10 + bw0 / 2, 20 + (hh - 16) * 0.66, P["ink"], 11, bw0 - 10, "center")
 	m.add_hit(mar + 10, 20, bw0, hh - 16, m.close_bolt)
-	c.ftxt_fit("✦ Kinézet bolt", mar + 118, 12 + hh * 0.62, "#c9a6ff", 19, W * 0.26)
+	c.ftxt_fit(Lang.T("bolt.title"), mar + 118, 12 + hh * 0.62, "#c9a6ff", 19, W * 0.26)
 	var ebw := 148.0
 	var ebx := W - mar - 58 - ebw   # a hang gomb helyét szabadon hagyva
 	var eby := 20.0
 	c.panel(ebx, eby, ebw, hh - 16, "#2e2210", P["parchGold"], 2, 6)
-	c.ftxt("◉ Érmét veszek", ebx + ebw / 2, eby + (hh - 16) * 0.66, P["parchGold"], 12, "center")
+	c.ftxt_fit(Lang.T("bolt.buy_coins"), ebx + ebw / 2, eby + (hh - 16) * 0.66, P["parchGold"], 12, ebw - 12, "center")
 	m.add_hit(ebx, eby, ebw, hh - 16, func() -> void: m.bolt_ui["erme"] = true)
 	if f != null and f.betoltve:
-		var et := ("◉ %d érme" % f.erme) if f.erme_ismert else "◉ … érme"
+		var et := Lang.T("bolt.coins", f.erme) if f.erme_ismert else Lang.T("bolt.coins_unknown")
 		c.ftxt_fit(et, ebx - 16, 12 + hh * 0.60, P["parchGold"], 16, W * 0.22, "right")
 	else:
-		c.ftxt_fit("Jelentkezz be a ParthLauncherben", ebx - 16, 12 + hh * 0.60, "#e0a030", 12, W * 0.34, "right")
+		c.ftxt_fit(Lang.T("fiok.login"), ebx - 16, 12 + hh * 0.60, "#e0a030", 12, W * 0.34, "right")
 	# ── bal oldal: a hős előnézete ──
 	var lw := clampf(W * 0.28, 224.0, 330.0)
 	var lh := boty - top
@@ -699,7 +701,7 @@ static func bolt(m: Node, c: Cv) -> void:
 		var on: bool = i == int(m.bolt_ui["cls"])
 		var nm: String = Data.CLASS_ORDER[i]
 		c.panel(tx, top + 10, tabw, 28, "#2e2210" if on else "#1a1408", Data.CLASSES[nm]["col"] if on else P["parchEdge"], 2 if on else 1, 5)
-		c.ftxt_fit(nm, tx + tabw / 2, top + 29, P["parchGold"] if on else P["inkDark"], 12, tabw - 8, "center")
+		c.ftxt_fit(Lang.cls(nm), tx + tabw / 2, top + 29, P["parchGold"] if on else P["inkDark"], 12, tabw - 8, "center")
 		m.add_hit(tx, top + 10, tabw, 28, func() -> void:
 			m.bolt_ui["cls"] = i
 			m.bolt_ui["slot"] = 0
@@ -717,7 +719,7 @@ static func bolt(m: Node, c: Cv) -> void:
 	for i in Skins.SLOTS.size():
 		var sl: String = Skins.SLOTS[i]
 		var vv := str(valasztott.get(sl, ""))
-		c.ftxt(Skins.SLOT_NEV[sl], mar + 16, view_y + view_h + 22 + i * 17, P["inkDark"], 10)
+		c.ftxt_fit(Skins.hely_nev(sl), mar + 16, view_y + view_h + 22 + i * 17, P["inkDark"], 10, 62)
 		c.ftxt_fit(Skins.nev(ck, sl, vv), mar + lw - 16, view_y + view_h + 22 + i * 17,
 			P["parchGold"] if vv != "" else P["ink"], 10, lw - 84, "right")
 	# ── jobb oldal: a négy hely változatai ──
@@ -730,7 +732,7 @@ static func bolt(m: Node, c: Cv) -> void:
 		var ry := top + si * (row_h + rgap)
 		var akt: bool = si == sel_slot
 		c.panel_c(rx, ry, rw, row_h, "#151016" if not akt else "#1c1526", "#4a3f5c" if akt else "#302a38", 2 if akt else 1, 8)
-		c.ftxt("%s  ·  %d érme" % [Skins.SLOT_NEV[slot], Skins.ar(slot)], rx + 12, ry + 19, P["parchGold"] if akt else P["inkDark"], 12)
+		c.ftxt_fit(Lang.T("bolt.slot_price", Skins.hely_nev(slot), Skins.ar(slot)), rx + 12, ry + 19, P["parchGold"] if akt else P["inkDark"], 12, rw - 24)
 		var opts: Array = m.bolt_opciok(ck, slot)
 		var cnt := opts.size()
 		var cgap := 7.0
@@ -753,20 +755,20 @@ static func bolt(m: Node, c: Cv) -> void:
 			var lbl := ""
 			var lc: Variant = P["inkDark"]
 			if felveve:
-				lbl = "✓ felveve"
+				lbl = Lang.T("bolt.worn")
 				lc = "#7fe08a"
 			elif megvan:
-				lbl = "Felvesz"
+				lbl = Lang.T("bolt.equip")
 				lc = P["parchGold"]
 			else:
-				lbl = "Megvásárlás (%d érme)" % Skins.ar(slot)
+				lbl = Lang.T("bolt.buy", Skins.ar(slot))
 				lc = P["parchGold"] if (f != null and f.betoltve and f.erme >= Skins.ar(slot)) else "#a07850"
 			c.ftxt_fit(lbl, cx + cw / 2, cy + chh - 8, lc, 10, cw - 8, "center")
 			m.add_hit(cx, cy, cw, chh, func() -> void: m.bolt_valaszt(ck, slot, v))
 	# ── üzenet / lábjegyzet ──
-	var hint := "↑↓ hely  ·  ←→ darab  ·  Enter: felvesz / megvásárol  ·  Tab: másik hős  ·  Esc: vissza"
+	var hint := Lang.T("bolt.hint")
 	if f != null and f.uzenet != "":
-		c.ftxt_fit(f.uzenet, W / 2, H - 14, "#e08060" if f.uzenet_hiba else "#9ce0a0", 11, W - 40, "center")
+		c.ftxt_fit(f.uzenet_szoveg(), W / 2, H - 14, "#e08060" if f.uzenet_hiba else "#9ce0a0", 11, W - 40, "center")
 	else:
 		c.ftxt_fit(hint, W / 2, H - 14, P["inkDark"], 10, W - 40, "center")
 	if bool(m.bolt_ui["erme"]):
@@ -784,18 +786,18 @@ static func _erme_panel(m: Node, c: Cv) -> void:
 	var ox := (W - pw) / 2
 	var oy := (H - ph) / 2
 	c.panel(ox, oy, pw, ph, P["parch"], P["parchGold"], 2, 10)
-	c.ftxt("◉ Érmét veszek", W / 2, oy + 38, P["parchGold"], 18, "center")
+	c.ftxt_fit(Lang.T("bolt.buy_coins"), W / 2, oy + 38, P["parchGold"], 18, pw - 40, "center")
 	c.orna(ox + 20, oy + 50, pw - 40, P["parchEdge"])
-	c.ftxt_fit("A vásárlás a böngészőben, a Gumroadon történik.", W / 2, oy + 72, P["inkDark"], 10, pw - 32, "center")
+	c.ftxt_fit(Lang.T("coins.note"), W / 2, oy + 72, P["inkDark"], 10, pw - 32, "center")
 	var bh := 48.0
 	for i in Fiok.GUMROAD.size():
 		var e: Dictionary = Fiok.GUMROAD[i]
 		var by := oy + 86 + i * (bh + 10)
 		c.panel(ox + 20, by, pw - 40, bh, "#2e2210", P["parchGold"], 1.8, 7)
-		c.ftxt("◉ %d érme" % int(e["erme"]), ox + 38, by + bh * 0.62, P["parchGold"], 14)
-		c.ftxt("%s   [%d]" % [str(e["ar"]), i + 1], ox + pw - 38, by + bh * 0.62, P["ink"], 13, "right")
+		c.ftxt(Lang.T("bolt.coins", int(e["erme"])), ox + 38, by + bh * 0.62, P["parchGold"], 14)
+		c.ftxt("%s   [%d]" % [Fiok.ar_szoveg(i), i + 1], ox + pw - 38, by + bh * 0.62, P["ink"], 13, "right")
 		m.add_hit(ox + 20, by, pw - 40, bh, func() -> void: Fiok.bolt_megnyit(i))
-	c.ftxt("Esc / Enter: bezárás", W / 2, oy + ph - 14, P["inkDark"], 10, "center")
+	c.ftxt_fit(Lang.T("coins.close"), W / 2, oy + ph - 14, P["inkDark"], 10, pw - 30, "center")
 	m.add_hit(ox, oy, pw, 34, func() -> void: m.bolt_ui["erme"] = false)
 
 
@@ -807,17 +809,17 @@ static func pause(m: Node, c: Cv) -> void:
 	c.fs(rgba(0, 0, 0, 0.85)); c.fill_rect(0, 0, W, H)
 	var pw := minf(380, W - 24)
 	var items := [
-		["▶  Vissza a játékhoz", P["parchGold"], "#2e2210", m.close_pause],
-		["✦  Kinézet bolt", "#c9a6ff", "#1d1430", func() -> void: m.open_bolt("pause")],
-		["💾  Mentés és kilépés", "#9ce0a0", "#16280f", m.save_and_menu],
-		["☠  Feladás (mentés törlése)", "#d08070", "#2a1008", m.abandon_run],
+		[Lang.T("pause.resume"), P["parchGold"], "#2e2210", m.close_pause],
+		[Lang.T("menu.shop"), "#c9a6ff", "#1d1430", func() -> void: m.open_bolt("pause")],
+		[Lang.T("pause.save"), "#9ce0a0", "#16280f", m.save_and_menu],
+		[Lang.T("pause.abandon"), "#d08070", "#2a1008", m.abandon_run],
 	]
 	var bh := 50.0
 	var ph := minf(74 + items.size() * (bh + 12) + 30, H - 24)
 	var ox := (W - pw) / 2
 	var oy := maxf(12, (H - ph) / 2)
 	c.panel(ox, oy, pw, ph, P["parch"], P["parchGold"], 2, 10)
-	c.ftxt("Szünet", W / 2, oy + 40, P["parchGold"], 20, "center")
+	c.ftxt(Lang.T("pause.title"), W / 2, oy + 40, P["parchGold"], 20, "center")
 	c.orna(ox + 20, oy + 52, pw - 40, P["parchEdge"])
 	var bw := pw - 40
 	for i in items.size():
@@ -826,7 +828,7 @@ static func pause(m: Node, c: Cv) -> void:
 		c.panel(ox + 20, by, bw, bh, items[i][2], items[i][1] if sel else P["parchEdge"], 2.5 if sel else 1.5, 8)
 		c.ftxt_fit("%s  [%d]" % [items[i][0], i + 1], W / 2, by + bh * 0.63, items[i][1], 14, bw - 24, "center")
 		m.add_hit(ox + 20, by, bw, bh, items[i][3])
-	c.ftxt("A szintváltás magától ment  ·  Esc: vissza", W / 2, oy + ph - 14, P["inkDark"], 10, "center")
+	c.ftxt_fit(Lang.T("pause.hint"), W / 2, oy + ph - 14, P["inkDark"], 10, pw - 30, "center")
 
 
 # ══════════ JÁTÉK VÉGE ══════════
@@ -841,18 +843,32 @@ static func game_over(m: Node, c: Cv, won: bool) -> void:
 	var oy := (H - ph) / 2
 	c.panel(ox, oy, pw, ph, "#1e1a08" if won else "#180808", P["parchGold"] if won else P["vein"], 2.5, 10)
 	c.orna(ox + 18, oy + 20, pw - 36, P["parchEdge"] if won else "#5a1a1a")
-	c.ftxt("⚜ GYŐZELEM ⚜" if won else "☠ ELESTÉL ☠", W / 2, oy + 62, P["parchGold"] if won else P["vein"], 26, "center")
-	c.ftxt("Megölted a Sárkányt!" if won else "A sötétség elnyelt...", W / 2, oy + 98, P["ink"] if won else P["inkDark"], 14, "center")
+	c.ftxt_fit(Lang.T("over.win") if won else Lang.T("over.lose"), W / 2, oy + 62, P["parchGold"] if won else P["vein"], 26, pw - 30, "center")
+	c.ftxt_fit(Lang.T("over.win.d") if won else Lang.T("over.lose.d"), W / 2, oy + 98, P["ink"] if won else P["inkDark"], 14, pw - 30, "center")
 	if m.game.world:
 		var p: Player = m.game.player
-		c.ftxt("Szint %d · Kör %d · Mélység %d/%d" % [p.plvl, m.game.world.turn, m.game.world.dungeon_level, Data.MAX_LEVEL], W / 2, oy + 126, P["inkDark"], 11, "center")
+		c.ftxt_fit(Lang.T("over.stats", p.plvl, m.game.world.turn, m.game.world.dungeon_level, Data.MAX_LEVEL), W / 2, oy + 126, P["inkDark"], 11, pw - 30, "center")
 	var bw2 := minf(220, pw - 40)
 	var bh := 50.0
 	var bx := (W - bw2) / 2
 	var by := oy + ph - bh - 18
 	c.panel(bx, by, bw2, bh, "#2e2210", P["parchGold"], 2, 8)
-	c.ftxt("Főmenü", W / 2, by + 32, P["parchGold"], 15, "center")
+	c.ftxt_fit(Lang.T("over.menu"), W / 2, by + 32, P["parchGold"], 15, bw2 - 16, "center")
 	m.add_hit(bx, by, bw2, bh, func() -> void: m.set_state("menu"))
+
+
+# ══════════ NYELVVÁLASZTÓ (HU / EN / DE) ══════════
+## Három kis gomb; kattintásra azonnal átvált a nyelv (újraindítás nélkül), és a beállításfájlba mentődik.
+static func lang_buttons(m: Node, c: Cv, x: float, y: float, bw := 38.0, bh := 26.0) -> void:
+	var P := Data.P
+	var akt := Lang.nyelv()
+	for i in Lang.NYELVEK.size():
+		var code: String = Lang.NYELVEK[i]
+		var on := code == akt
+		var bx := x + i * (bw + 6)
+		c.panel(bx, y, bw, bh, "#2e2210" if on else "#1a1206", P["parchGold"] if on else P["parchEdge"], 2.0 if on else 1.0, 5)
+		c.ftxt(code.to_upper(), bx + bw / 2, y + bh * 0.68, P["parchGold"] if on else P["inkDark"], 12.0 if bh >= 24 else 11.0, "center")
+		m.add_hit(bx, y, bw, bh, func() -> void: m.set_nyelv(code))
 
 
 # ══════════ HANG GOMB (jobb felső sarok) ══════════
