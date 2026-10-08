@@ -34,6 +34,20 @@ var gold := 0            # a szörnyekből hulló, játékon belüli arany (a ke
 var perks := {}          # képesség-azonosító -> hányszor vette fel
 var perk_seq := 0        # nő minden új képességnél (a HUD/táska ebből tudja, hogy változott)
 var steps := 0           # megtett lépések (a "Gyors léptek" képességhez)
+# ── Gorgona: nyersanyag, aktív képességek, állapotok ──
+var bio := 0             # Bio-Hulladék (ebben a kalandban gyűjtött; a végén a Műtőterembe kerül)
+var rez := 0             # Rézötvözet
+var kills := 0
+var kill_heal := 0       # Szív-pumpa: ennyit gyógyul minden legyőzött szörny után
+var cd_cut := 0          # Adrenalin-mirigy: ennyivel rövidebb a képességek lehűlése
+var find_mult := 1.0     # Üvegszem: több nyersanyag
+var dash_cd := 0         # hány kör múlva ugorhat újra félre
+var skill_cd := 0        # hány kör múlva használhatja újra a kaszt-képességét
+var stun := 0            # kábult: ennyi köre kimarad
+var rooted := 0          # gyökerek fogják: támadhat, de nem léphet
+var dir_x := 1           # az utolsó irány (a félreugrás és a képesség ebbe megy)
+var dir_y := 0
+var hurt_ms := 0.0       # mikor érte utoljára ütés (a kirajzolás villanásához)
 
 
 static func create(c: String) -> Player:
@@ -54,6 +68,16 @@ static func create(c: String) -> Player:
 
 var atk: int:
 	get: return base_atk + (weapon.dmg if weapon else 0)
+
+## a félreugrás hossza és lehűlése (a Réz-Idegfonat megduplázza a távot, és gyorsítja)
+var dash_len: int:
+	get: return Data.DASH_LEN * (2 if perk("idegfonat") > 0 else 1)
+
+var dash_cd_max: int:
+	get: return maxi(2, Data.DASH_CD - cd_cut - (2 if perk("idegfonat") > 0 else 0))
+
+var skill_cd_max: int:
+	get: return maxi(3, Data.SKILL_CD - cd_cut)
 
 ## a mágus varázsereje: a fegyver fele is hozzáadódik (a rúnakard jobban vezeti a mágiát)
 var mag: int:

@@ -24,6 +24,17 @@ var _next := {}
 var _mel_idx := 0
 var _phrase_gen := 0
 var _ghost_idx := 0
+## hangulat: "game" (a katakomba szokásos zenéje), "boss" (dobogó, sürgető), "cine" (a képsorok zenéje)
+var mood := "game"
+var _cine_idx := 0
+var _boss_idx := 0
+
+## a képsorok zenéje: lassú, szomorú akkordbontás (a-moll – F-dúr – C-dúr – G-dúr), 220 Hz-hez mérve
+const CINE_ARP := [220.0, 261.63, 329.63, 440.0, 329.63, 261.63, 174.61, 220.0, 261.63, 349.23, 261.63, 220.0,
+	130.81, 196.0, 261.63, 329.63, 261.63, 196.0, 196.0, 246.94, 293.66, 392.0, 293.66, 246.94]
+const CINE_LEAD := [440.0, 523.25, 493.88, 440.0, 349.23, 440.0, 392.0, 329.63, 392.0, 440.0, 493.88, 392.0]
+const BOSS_BASS := [55.0, 55.0, 65.41, 55.0, 73.42, 55.0, 65.41, 49.0]
+const BOSS_LEAD := [220.0, 261.63, 246.94, 220.0, 329.63, 311.13, 261.63, 246.94]
 
 const MEL_SCALE := [110, 123.47, 130.81, 146.83, 164.81, 174.61, 196, 220, 246.94, 261.63, 293.66, 329.63]
 const PHRASE_A := [0, 2, 1, 0, 4, 3, 2, 0, 5, 4, 3, 2, 6, 5, 4, 0]
@@ -61,6 +72,23 @@ func _exit_tree() -> void:
 func set_muted(m: bool) -> void:
 	muted = m
 	AudioServer.set_bus_mute(0, m)
+
+
+## Hangulatváltás (a főjelenet minden képkockán meghívja: csak a tényleges váltás számít).
+func set_mood(m: String) -> void:
+	if m == mood:
+		return
+	mood = m
+	_cine_idx = 0
+	_boss_idx = 0
+	if not _next.is_empty():
+		_next["cine"] = _t + 0.2
+		_next["lead"] = _t + 1.4
+		_next["boss"] = _t + 0.1
+	# a zúgó alap a képsorok alatt halkabb
+	if _loop_player != null and music_started:
+		var tw := create_tween()
+		tw.tween_property(_loop_player, "volume_db", linear_to_db(MASTER * (0.55 if m == "cine" else 1.0)), 1.2)
 
 
 func play(n: String) -> void:
@@ -164,6 +192,52 @@ func _build_sfx() -> void:
 	_sfx["chest"] = [_arp([523, 659, 784, 1047], 0.08, 0.12, 0.35, "sine")]
 	_sfx["levelup"] = [_arp([392, 494, 587, 784], 0.09, 0.15, 0.4, "triangle")]
 	_sfx["death"] = [_death()]
+	_sfx["dash"] = [_dash()]
+	_sfx["steam"] = [_steam(), _steam()]
+	_sfx["roar"] = [_roar()]
+	_sfx["warn"] = [_arp([740, 554], 0.09, 0.10, 0.16, "triangle")]
+	_sfx["note"] = [_arp([659, 880, 1175], 0.07, 0.09, 0.5, "sine")]
+
+
+## félreugrás: gyors, felfelé söprő szélhang
+func _dash() -> AudioStreamWAV:
+	var b := _buf(0.22)
+	var bp := Biquad.new("bandpass", 500, 3.0, SR)
+	for i in b.size():
+		var t := float(i) / SR
+		if i % 16 == 0:
+			bp.set_freq(xr(t, 0, 0.18, 500, 4200))
+		b[i] = bp.process(randf() * 2 - 1) * lr(t, 0, 0.03, 0.0, 0.5) * xr(t, 0.03, 0.21, 1.0, 0.002) * 2.2
+	return to_wav(b, SR)
+
+
+## kitörő gőz: sziszegő zajlöket
+func _steam() -> AudioStreamWAV:
+	var b := _buf(0.5)
+	var hp := Biquad.new("highpass", 1800 + randf() * 600, 0.8, SR)
+	var lp := Biquad.new("lowpass", 180, 1.0, SR)
+	for i in b.size():
+		var t := float(i) / SR
+		var nz := randf() * 2 - 1
+		b[i] = hp.process(nz) * xr(t, 0, 0.45, 0.30, 0.001) + lp.process(nz) * xr(t, 0, 0.2, 0.9, 0.001)
+	return to_wav(b, SR)
+
+
+## főellenség: mély, remegő bömbölés
+func _roar() -> AudioStreamWAV:
+	var b := _buf(1.1)
+	var lp := Biquad.new("lowpass", 420, 1.4, SR)
+	var ph := 0.0
+	var ph2 := 0.0
+	for i in b.size():
+		var t := float(i) / SR
+		var fr := lr(t, 0, 0.9, 72, 38) + sin(TAU * 23 * t) * 16
+		ph = fmod(ph + fr / SR, 1.0)
+		ph2 = fmod(ph2 + fr * 1.51 / SR, 1.0)
+		var saw := 2.0 * (ph - floorf(ph + 0.5)) + 1.2 * (ph2 - floorf(ph2 + 0.5))
+		var g := lr(t, 0, 0.08, 0.0, 0.34) if t < 0.08 else xr(t, 0.08, 1.05, 0.34, 0.001)
+		b[i] = lp.process(saw + (randf() - 0.5) * 0.6) * g
+	return to_wav(b, SR)
 
 
 func _step() -> AudioStreamWAV:
@@ -301,6 +375,8 @@ func _gen_music() -> void:
 	out["bell"] = to_wav(_bell(), MSR)
 	out["breath"] = to_wav(_breath(), MSR)
 	out["heart"] = to_wav(_heart(), MSR)
+	out["drum"] = to_wav(_drum(), MSR)
+	out["pluck"] = to_wav(_pluck(), MSR)
 	call_deferred("_music_done", out)
 
 
@@ -497,6 +573,60 @@ func _heart() -> PackedFloat32Array:
 	return b
 
 
+## üstdob-szerű mély ütés (a főellenség zenéjéhez)
+func _drum() -> PackedFloat32Array:
+	var b := _buf(0.5, MSR)
+	var lp := Biquad.new("lowpass", 240, 1.0, MSR)
+	var ph := 0.0
+	for i in b.size():
+		var t := float(i) / MSR
+		ph = fmod(ph + xr(t, 0, 0.2, 120, 46) / MSR, 1.0)
+		b[i] = (sin(TAU * ph) * xr(t, 0, 0.45, 0.5, 0.001) + lp.process(randf() * 2 - 1) * xr(t, 0, 0.08, 0.3, 0.001)) * MUSIC_GAIN * 3.0
+	return b
+
+
+## pengetett húr 220 Hz-en, hosszú lecsengéssel és visszhanggal (a képsorok akkordbontásához)
+func _pluck() -> PackedFloat32Array:
+	var f := 220.0
+	var dry := _buf(2.4, MSR)
+	for i in dry.size():
+		var t := float(i) / MSR
+		var env := (t / 0.006) if t < 0.006 else xr(t, 0.006, 2.3, 1.0, 0.002)
+		dry[i] = (sin(TAU * f * t) + 0.42 * sin(TAU * f * 2.0 * t) * exp(-t * 3.0) + 0.18 * sin(TAU * f * 3.0 * t) * exp(-t * 6.0)) * env * 0.5
+	return _echo(dry, [[0.31, 0.32], [0.62, 0.16]])
+
+
+## A képsorok zenéje: pengetett akkordbontás, fölötte lassú furulyadallam.
+func _process_cine() -> void:
+	if _t >= float(_next.get("cine", 0.0)):
+		var f: float = CINE_ARP[_cine_idx % CINE_ARP.size()]
+		_mplay("pluck", f / 220.0, 1.0 if _cine_idx % 6 == 0 else 0.7)
+		_cine_idx += 1
+		_next["cine"] = _t + 0.42
+	if _t >= float(_next.get("lead", 0.0)):
+		var k := int(_cine_idx / 6.0) % CINE_LEAD.size()
+		_mplay("flute", float(CINE_LEAD[k]) / 220.0, 0.8)
+		_next["lead"] = _t + 2.52
+	if _t >= _next["breath"]:
+		_mplay("breath", float(Data.pick(BREATH_NOTES)) * 2.0 / 220.0, 0.6)
+		_next["breath"] = _t + 5.0 + randf() * 4.0
+
+
+## A főellenség zenéje: dobogó ütem, lüktető basszus, sürgető dallam.
+func _process_boss() -> void:
+	if _t >= float(_next.get("boss", 0.0)):
+		var i := _boss_idx
+		_mplay("drum", 1.0 if i % 4 == 0 else 1.5, 1.0 if i % 2 == 0 else 0.55)
+		if i % 2 == 0:
+			_mplay("pluck", float(BOSS_BASS[int(i / 2.0) % BOSS_BASS.size()]) * 2.0 / 220.0, 0.9)
+		if i % 4 == 2 or i % 8 == 7:
+			_mplay("flute", float(BOSS_LEAD[int(i / 2.0) % BOSS_LEAD.size()]) * 2.0 / 220.0, 0.6)
+		if i % 4 == 0:
+			_mplay("heart", 1.3)
+		_boss_idx += 1
+		_next["boss"] = _t + 0.24
+
+
 func _mplay(key: String, pitch: float, vol := 1.0) -> void:
 	if muted or not _mus.has(key):
 		return
@@ -512,6 +642,12 @@ func _process(delta: float) -> void:
 	if not music_started or _mus.is_empty() or _next.is_empty():
 		return
 	_t += delta
+	if mood == "cine":
+		_process_cine()
+		return
+	if mood == "boss":
+		_process_boss()
+		return
 	if _t >= _next["breath"]:
 		var dur := 6.0 + randf() * 5.0
 		_mplay("breath", float(Data.pick(BREATH_NOTES)) * 2.0 / 220.0, 0.75 + randf() * 0.5)

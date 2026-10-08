@@ -8,7 +8,7 @@ const DEFAULT_BINDS := {"up": "ArrowUp", "down": "ArrowDown", "left": "ArrowLeft
 	"stair": "Control", "inventory": "i", "menu": "Escape"}
 const KEY_DIRS := {"ArrowUp": Vector2i(0, -1), "ArrowDown": Vector2i(0, 1), "ArrowLeft": Vector2i(-1, 0), "ArrowRight": Vector2i(1, 0),
 	"w": Vector2i(0, -1), "s": Vector2i(0, 1), "a": Vector2i(-1, 0), "d": Vector2i(1, 0)}
-const WORLD_STATES := ["play", "inv", "chest", "over", "win", "perk", "shop", "pause"]
+const WORLD_STATES := ["play", "inv", "chest", "over", "win", "perk", "shop", "pause", "dialog", "note"]
 
 var game := Game.new()
 var audio: Audio
@@ -30,6 +30,22 @@ var perk_ui: Variant = null        # {"ids": Array[String], "sel": int}
 var shop_ui: Variant = null        # {"shop": Dictionary, "sel": int}
 var pause_sel := 0
 var inv_scroll := 0
+# történet: képsorok (bevezető / befejezés), párbeszéd, feljegyzés, Napló, Műtőterem
+var cine_ui := {}                  # {"slides": Array, "i": int, "t0": ms, "kind": String, "then": String}
+var dialog_ui: Variant = null      # {"lines": [[ki, kulcs], ...], "i": int, "t0": ms}
+var note_ui := ""                  # a most olvasott feljegyzés azonosítója
+var journal_sel := 0
+var journal_back := "menu"
+var hub_bought := ""               # kinél vásárolt utoljára (ő szólal meg)
+var pending_start: Array = []      # [kaszt, nehézség] — a bevezető után indul a kaland
+var run_banked := false            # a kaland nyersanyaga már a Műtőterembe került
+var shake_off := Vector2.ZERO      # a képernyőrázás pillanatnyi eltolása
+# több mentés + felhő
+var felho: FelhoMentes
+var saves_sel := 0
+var saves_back := "menu"
+var saves_arm := ""                # a törlésre kijelölt mentés (második megerősítésre törlődik)
+var saves_msg := ""                # rövid visszajelzés fordítási kulcsa (pl. "saves.saved")
 # automata térkép (Tab)
 var map_on := false
 var map_img: Image
@@ -99,7 +115,25 @@ func _ready() -> void:
 	audio.set_muted(_cfg_muted)
 	game.sfx = func(n: String) -> void: audio.play(n)
 	game.autosave = shot_path == ""   # képernyőkép-módban nem írunk mentést
+	Meta.persist = shot_path == ""    # ...és a Műtőterem állását sem
+	if shot_path != "":
+		SaveGame.DIR = "user://_kepmod_mentesek/"   # a képernyőképek nem nyúlnak a játékos mentéseihez
+		SaveGame.erase_all()
+	Meta.load_meta()
 	SaveGame.refresh()
+	# felhő-mentés: a mentések mappája a fiókhoz kötve (belépés nélkül csendben kimarad)
+	felho = FelhoMentes.new()
+	felho.name = "FelhoMentes"
+	add_child(felho)
+	if shot_path == "":
+		SaveGame.on_write = func(fajl: String) -> void: felho.feltolt(fajl)
+		SaveGame.on_erase = func(fajl: String) -> void: felho.torol(fajl)
+		Meta.on_write = func(fajl: String) -> void: felho.feltolt(fajl)
+		felho.valtozott.connect(func() -> void:
+			SaveGame.refresh()
+			if not in_world():
+				Meta.load_meta())   # a másik gépen megvett fejlesztések is megérkeztek
+		felho.indit("kard_es_magia", SaveGame.DIR, ["json"])
 	get_window().min_size = Vector2i(900, 600)
 	if shot_path != "":
 		_setup_shot()
@@ -284,6 +318,12 @@ func _lay2(rid: RID, which: String) -> void:
 				"shop": Screens.shop(self, cv)
 				"bolt": Screens.bolt(self, cv)
 				"pause": Screens.pause(self, cv)
+				"cine": StoryUI.cine(self, cv)
+				"dialog": StoryUI.dialog(self, cv)
+				"note": StoryUI.note(self, cv)
+				"journal": StoryUI.journal(self, cv)
+				"hub": StoryUI.hub(self, cv)
+				"saves": StoryUI.saves(self, cv)
 				"over": Screens.game_over(self, cv, false)
 				"win": Screens.game_over(self, cv, true)
 			if not borito_mod: Screens.mute_button(self, cv)
@@ -391,6 +431,7 @@ static func key_name(ev: InputEventKey) -> String:
 		KEY_TAB: return "Tab"
 		KEY_CAPSLOCK: return "CapsLock"
 		KEY_BACKSPACE: return "Backspace"
+		KEY_DELETE: return "Delete"
 	if ev.keycode >= KEY_F1 and ev.keycode <= KEY_F12:
 		return "F%d" % (ev.keycode - KEY_F1 + 1)
 	if ev.keycode >= KEY_A and ev.keycode <= KEY_Z:
@@ -422,22 +463,133 @@ func set_state(s: String) -> void:
 
 
 func start_game(cls: String, diff: String) -> void:
+	# a legelső leereszkedés előtt lepereg a bevezető (a Naplóból később újranézhető)
+	if not Meta.intro_seen() and shot_path == "":
+		pending_start = [cls, diff]
+		start_cine("intro", "start")
+		return
+	SaveGame.current = ""   # új kaland: új automata mentés (a meglévők megmaradnak)
 	game.start(cls, diff)
 	inv_scroll = 0
 	chest_ui = null
 	perk_ui = null
 	shop_ui = null
+	dialog_ui = null
+	note_ui = ""
+	run_banked = false
 	map_on = false
 	set_state("play")
 	if game.autosave:
 		SaveGame.save_run(game)
 
 
-## Folytatás: a mentett kaland visszatöltése (a főmenüben csak akkor látszik, ha van mentés)
-func continue_game() -> bool:
-	var g := SaveGame.load_run()
-	if g == null:
+# ══════════ TÖRTÉNET: képsorok, párbeszéd, feljegyzés, Napló, Műtőterem ══════════
+## kind: "intro" vagy "ending"; then: hová lépünk a végén ("start", "win", "journal", "menu")
+func start_cine(kind: String, then: String) -> void:
+	cine_ui = {"slides": Story.INTRO if kind == "intro" else Story.ENDING, "i": 0, "t0": now_ms(), "kind": kind, "then": then}
+	audio.set_mood("cine")
+	set_state("cine")
+
+
+func cine_next() -> void:
+	if cine_ui.is_empty():
+		return
+	# az első gombnyomás kiírja a teljes szöveget, a második lapoz
+	if not StoryUI.cine_done(self):
+		cine_ui["t0"] = now_ms() - 600000.0
+		return
+	cine_ui["i"] = int(cine_ui["i"]) + 1
+	cine_ui["t0"] = now_ms()
+	if int(cine_ui["i"]) >= (cine_ui["slides"] as Array).size():
+		cine_end()
+
+
+func cine_end() -> void:
+	var then := str(cine_ui.get("then", "menu"))
+	var kind := str(cine_ui.get("kind", ""))
+	cine_ui = {}
+	audio.set_mood("game")
+	if kind == "intro":
+		Meta.mark_intro()
+	match then:
+		"start":
+			if pending_start.size() == 2:
+				var ps := pending_start
+				pending_start = []
+				start_game(ps[0], ps[1])
+			else:
+				set_state("menu")
+		"win": set_state("win")
+		"journal": set_state("journal")
+		_: set_state("menu")
+
+
+func dialog_next() -> void:
+	if dialog_ui == null:
+		set_state("play")
+		return
+	if not StoryUI.dialog_done(self):
+		dialog_ui["t0"] = now_ms() - 600000.0
+		return
+	dialog_ui["i"] = int(dialog_ui["i"]) + 1
+	dialog_ui["t0"] = now_ms()
+	if int(dialog_ui["i"]) >= (dialog_ui["lines"] as Array).size():
+		dialog_ui = null
+		set_state("play")
+		_after_move()
+
+
+func close_note() -> void:
+	note_ui = ""
+	set_state("play")
+	_after_move()
+
+
+func open_journal(vissza: String) -> void:
+	journal_back = vissza
+	set_state("journal")
+
+
+func close_journal() -> void:
+	set_state(journal_back if journal_back != "" else "menu")
+
+
+func open_hub() -> void:
+	hub_bought = ""
+	set_state("hub")
+
+
+func hub_buy(id: String) -> void:
+	if Meta.buy(id):
+		hub_bought = str(Meta.UPGRADES[id]["npc"])
+		audio.play("chest")
+	else:
+		audio.play("hit")
+
+
+func hub_buy_n(n: int) -> void:
+	if n >= 0 and n < Meta.ORDER.size():
+		hub_buy(Meta.ORDER[n])
+
+
+## A kaland vége (halál, feladás vagy győzelem): a gyűjtött Bio-Hulladék és Rézötvözet a
+## Műtőterembe kerül. Egy kalandot csak egyszer könyvelünk el.
+func end_run(won: bool) -> void:
+	if run_banked or game.player == null or game.world == null:
+		return
+	run_banked = true
+	game.run_bio = game.player.bio
+	game.run_rez = game.player.rez
+	Meta.bank_run(game.player, game.world.dungeon_level, won)
+	if game.autosave:
 		SaveGame.erase()
+
+
+## Folytatás: a mentett kaland visszatöltése (a főmenüben csak akkor látszik, ha van mentés)
+func continue_game(id := "") -> bool:
+	var g := SaveGame.load_run(id)
+	if g == null:
+		SaveGame.refresh()
 		set_state("menu")
 		return false
 	game = g
@@ -447,6 +599,9 @@ func continue_game() -> bool:
 	chest_ui = null
 	perk_ui = null
 	shop_ui = null
+	dialog_ui = null
+	note_ui = ""
+	run_banked = false
 	map_on = false
 	_map_world = 0
 	game.player.add_msg(Lang.ref("msg.continue"), Data.P["parchGold"])
@@ -455,8 +610,14 @@ func continue_game() -> bool:
 
 
 func next_level() -> void:
+	if not game.can_descend():
+		if game.on_stair():
+			game.player.add_msg(Lang.ref("msg.stair_locked"), "#ff8070")
+		return
 	if game.next_level():
-		set_state("win")
+		# a Mag vezérlőpultja: a befejezés képsora, utána az összegzés
+		end_run(true)
+		start_cine("ending", "win")
 
 
 func pick_chest_item() -> void:
@@ -500,6 +661,24 @@ func toggle_mute() -> void:
 
 
 func _after_move() -> void:
+	if game.player and not game.player.alive:
+		end_run(false)   # az elesett hőst nem lehet folytatni: a zsákmánya a Műtőterembe kerül
+		set_state("over")
+		held["active"] = false
+		return
+	# történet: előbb a párbeszéd, aztán a talált feljegyzés (egyszerre csak egy ablak nyílik)
+	if not game.pending_dialog.is_empty():
+		dialog_ui = {"lines": game.pending_dialog, "i": 0, "t0": now_ms()}
+		game.pending_dialog = []
+		held["active"] = false
+		set_state("dialog")
+		return
+	if game.pending_note != "":
+		note_ui = game.pending_note
+		game.pending_note = ""
+		held["active"] = false
+		set_state("note")
+		return
 	if game.pending_chest != null:
 		chest_ui = {"chest": game.pending_chest, "sel": 0}
 		game.pending_chest = null
@@ -508,12 +687,6 @@ func _after_move() -> void:
 		shop_ui = {"shop": game.pending_shop, "sel": 0}
 		game.pending_shop = null
 		set_state("shop")
-	if game.player and not game.player.alive:
-		if game.autosave:
-			SaveGame.erase()   # az elesett hőst nem lehet folytatni
-		set_state("over")
-		held["active"] = false
-		return
 	_check_perk()
 
 
@@ -602,7 +775,76 @@ func bolt_enter() -> void:
 	bolt_valaszt(bolt_kaszt(), bolt_hely(), str(opts[clampi(int(bolt_ui["opt"]), 0, opts.size() - 1)]))
 
 
+# ══════════ MENTÉSEK (több hely, bármikor visszatölthető) ══════════
+func open_saves(vissza: String) -> void:
+	saves_back = vissza
+	saves_sel = 0
+	saves_arm = ""
+	saves_msg = ""
+	SaveGame.refresh()
+	felho.szinkron()   # hátha másik gépen készült újabb mentés
+	set_state("saves")
+
+
+func close_saves() -> void:
+	saves_arm = ""
+	set_state(saves_back if saves_back != "" else "menu")
+
+
+## Kézi mentés új helyre (csak futó kalandban).
+func save_snapshot() -> void:
+	if not in_world() or game.player == null or not game.player.alive:
+		return
+	if SaveGame.snapshot(game) != "":
+		saves_msg = "saves.saved"
+		saves_sel = 0
+		audio.play("chest")
+
+
+func saves_load(i: int) -> void:
+	var l := SaveGame.list()
+	if i < 0 or i >= l.size():
+		return
+	# a futó kaland ne vesszen el: előbb az automata mentése frissül
+	if saves_back == "pause" and in_world() and game.player and game.player.alive and game.autosave:
+		SaveGame.save_run(game)
+	continue_game(str(l[i]["id"]))
+
+
+## Törlés két lépésben: az első kattintás csak kijelöli, a második töröl.
+func saves_delete(i: int) -> void:
+	var l := SaveGame.list()
+	if i < 0 or i >= l.size():
+		return
+	var id := str(l[i]["id"])
+	if saves_arm != id:
+		saves_arm = id
+		return
+	saves_arm = ""
+	SaveGame.erase(id)
+	saves_sel = clampi(saves_sel, 0, maxi(0, SaveGame.list().size() - 1))
+
+
 # ══════════ JÁTÉK KÖZBENI MENÜ (Esc) ══════════
+## A szünet-menü pontjai: [szövegkulcs, szín, háttér, művelet]
+func pause_items() -> Array:
+	return [
+		["pause.resume", Data.P["parchGold"], "#2e2210", close_pause],
+		["pause.snapshot", "#9ce0a0", "#16280f", func() -> void:
+			save_snapshot()
+			open_saves("pause")
+			saves_msg = "saves.saved"],
+		["pause.load", "#a0d0ff", "#101c2a", func() -> void: open_saves("pause")],
+		["menu.shop", "#c9a6ff", "#1d1430", func() -> void: open_bolt("pause")],
+		["pause.save", "#e0d0a8", "#241a0c", save_and_menu],
+		["pause.abandon", "#d08070", "#2a1008", abandon_run],
+	]
+
+
+func pause_pick(i: int) -> void:
+	var it := pause_items()
+	if i >= 0 and i < it.size():
+		(it[i][3] as Callable).call()
 func save_and_menu() -> void:
 	if game.autosave:
 		SaveGame.save_run(game)
@@ -611,10 +853,11 @@ func save_and_menu() -> void:
 
 
 func abandon_run() -> void:
+	end_run(false)   # a feladás is halál: a test odavész, az emlékek visszatérnek a lombikba
 	if game.autosave:
 		SaveGame.erase()
 	held["active"] = false
-	set_state("menu")
+	open_hub()
 
 
 func quit_app() -> void:
@@ -663,7 +906,9 @@ func idle_tick(now: float) -> void:
 		return
 	if game.pending_chest != null or game.pending_shop != null or game.pending_perks > 0:
 		return
-	if int(game.world.turn) != _idle_turn:         # a hős tett valamit: újraindul a várakozás
+	if not game.pending_dialog.is_empty() or game.pending_note != "":
+		return
+	if int(game.world.turn) != _idle_turn:        # a hős tett valamit: újraindul a várakozás
 		_idle_turn = int(game.world.turn)
 		_idle_at = now
 		_idle_first = true
@@ -745,6 +990,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				quit_app()
 			elif k == "l":
 				set_nyelv(Lang.kovetkezo())
+			elif k == "h":
+				open_hub()
+			elif k == "j":
+				open_journal("menu")
+			elif k == "b":
+				open_saves("menu")
 		"help":
 			if k == "Escape" or k == "Enter":
 				bind_edit = ""
@@ -773,31 +1024,60 @@ func _unhandled_input(event: InputEvent) -> void:
 			if k == "k":
 				game.search()   # kutatás: titkos ajtók és csapdák a szomszédban
 				_after_move()
+			if k == " " and d == null:
+				game.dash()     # félreugrás az utolsó irányba (nem telik vele kör)
+				_after_move()
+			if k == "q":
+				game.skill()    # a kaszt aktív képessége
+				_after_move()
+			if k == "e":
+				game.quick_heal()
 			if k == binds["stair"] or k == "." or k == ">":
 				if game.on_stair():
 					next_level()
-			if k == binds["menu"] or k == "Escape":
+			if state == "play" and (k == binds["menu"] or k == "Escape"):
 				pause_sel = 0
 				set_state("pause")
-			if game.player and not game.player.alive:
-				if game.autosave:
-					SaveGame.erase()
-				set_state("over")
+		"cine":
+			if k == "Escape":
+				cine_end()
+			elif k in ["Enter", " ", "ArrowRight", "d"]:
+				cine_next()
+		"dialog":
+			if k in ["Enter", " ", "Escape", "e"]:
+				dialog_next()
+		"note":
+			if k in ["Enter", " ", "Escape", "e"]:
+				close_note()
+		"journal":
+			var nn := Story.NOTE_ORDER.size()
+			if k == "Escape" or k == binds["menu"]: close_journal()
+			elif k in ["ArrowUp", "w"]: journal_sel = (journal_sel + nn - 1) % nn
+			elif k in ["ArrowDown", "s"]: journal_sel = (journal_sel + 1) % nn
+		"hub":
+			if k == "Escape" or k == binds["menu"]: set_state("menu")
+			elif k == "Enter": go_diff()
+			elif k == "j": open_journal("hub")
+			elif k.length() == 1 and k >= "1" and k <= "8": hub_buy_n(int(k) - 1)
 		"pause":
 			if k == "Escape" or k == binds["menu"]:
 				set_state("play")
-			elif k in ["ArrowUp", "w"]: pause_sel = (pause_sel + 3) % 4
-			elif k in ["ArrowDown", "s"]: pause_sel = (pause_sel + 1) % 4
-			elif k == "Enter":
-				match pause_sel:
-					0: set_state("play")
-					1: open_bolt("pause")
-					2: save_and_menu()
-					_: abandon_run()
-			elif k == "1": set_state("play")
-			elif k == "2": open_bolt("pause")
-			elif k == "3": save_and_menu()
-			elif k == "4": abandon_run()
+			elif k in ["ArrowUp", "w"]: pause_sel = (pause_sel + pause_items().size() - 1) % pause_items().size()
+			elif k in ["ArrowDown", "s"]: pause_sel = (pause_sel + 1) % pause_items().size()
+			elif k == "Enter": pause_pick(pause_sel)
+			elif k.length() == 1 and k >= "1" and k <= "9": pause_pick(int(k) - 1)
+		"saves":
+			var sn := SaveGame.list().size()
+			if k == "Escape" or k == binds["menu"]: close_saves()
+			elif k in ["ArrowUp", "w"] and sn > 0:
+				saves_sel = (saves_sel + sn - 1) % sn
+				saves_arm = ""
+			elif k in ["ArrowDown", "s"] and sn > 0:
+				saves_sel = (saves_sel + 1) % sn
+				saves_arm = ""
+			elif k == "Enter": saves_load(saves_sel)
+			elif k == "Delete" or k == "x": saves_delete(saves_sel)
+			elif k == "n" and saves_back == "pause": save_snapshot()
 		"bolt":
 			var opts := bolt_opciok(bolt_kaszt(), bolt_hely())
 			if bool(bolt_ui["erme"]):
@@ -862,7 +1142,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_state("play")
 		"over", "win":
 			if k == "Enter" or k == "Escape":
-				set_state("menu")
+				open_hub()   # az emlékek visszatérnek a Műtőterem lombikjába
 
 
 func _click(p: Vector2) -> void:
@@ -911,9 +1191,36 @@ func _process2(delta: float) -> void:
 		game.prune_fx()      # a lejárt lövedékek és villanások eltűnnek
 	if in_world():
 		_update_motion(now)
+	_update_shake()
+	if audio:
+		audio.set_mood(_mood())
 	_update_layers()
 	if shot_path != "":
 		_shot_tick()
+
+
+## Képernyőrázás: a pálya rétegei pár képpontot rándulnak (a HUD és az ablakok a helyükön maradnak).
+func _update_shake() -> void:
+	var s := game.shake if in_world() and shot_path == "" else 0.0
+	if s > 0.05:
+		shake_off = Vector2(randf_range(-s, s), randf_range(-s, s))
+		game.shake = s * pow(0.86, dt / 16.67)
+	else:
+		shake_off = Vector2.ZERO
+		game.shake = 0.0
+	for k in ["world", "glow", "mid", "fx_add", "fx"]:
+		layers[k].position = shake_off
+
+
+## Melyik zene szóljon: képsor, főellenség, vagy a szokásos.
+func _mood() -> String:
+	if state == "cine":
+		return "cine"
+	if in_world() and state != "over" and state != "win":
+		var b := game.world.boss()
+		if b != null and b.met:
+			return "boss"
+	return "game"
 
 
 # ══════════ MELYIK RÉTEGET KELL ÚJRARAJZOLNI? ══════════
@@ -956,7 +1263,7 @@ func _update_layers() -> void:
 	layers["hud"].visible = wo
 	layers["map"].visible = wo and map_on
 	if wo:
-		var ws := [cam.x, cam.y, W, H, game.world.get_instance_id(), game.world.fov_version]
+		var ws := [cam.x, cam.y, W, H, game.world.get_instance_id(), game.world.fov_version, game.world.boss() == null]
 		if world_fading or _sig.get("world") != ws:
 			_sig["world"] = ws
 			layers["world"].queue_redraw()
@@ -1017,7 +1324,9 @@ func _hud_sig() -> Array:
 	var w := game.world
 	return [W, H, p.hp, p.max_hp, p.xp, p.xp_next, p.lives, p.poison, p.regen, p.lifesteal,
 		p.cls, p.plvl, p.atk, p.mag, p.def, p.msg_seq, w.turn, w.dungeon_level, w.diff,
-		p.weapon, p.armor, p.shield, game.on_stair(), binds["stair"], p.gold, p.perk_seq, Lang.seq]
+		p.weapon, p.armor, p.shield, game.on_stair(), binds["stair"], p.gold, p.perk_seq, Lang.seq,
+		p.dash_cd, p.skill_cd, p.bio, p.rez, p.stun, p.rooted, Render.potions(p), game.can_descend(),
+		binds["inventory"], Skins.sig(skins, p.cls)]
 
 
 func _ui_sig() -> Array:
@@ -1027,6 +1336,10 @@ func _ui_sig() -> Array:
 			s.append(audio.music_started if audio else false)
 			s.append(SaveGame.has_save())
 		"pause": s.append(pause_sel)
+		"saves":
+			s.append_array([saves_sel, saves_arm, saves_msg, SaveGame.list().size(), felho.allapot, felho.hiba, Sprites.hero_phase(tick)])
+			for e in SaveGame.list():
+				s.append_array([e["id"], e["ido"], felho.felhoben_van(str(e["id"]) + ".json")])
 		"bolt":
 			s.append_array([bolt_ui["cls"], bolt_ui["slot"], bolt_ui["opt"], bolt_ui["erme"], fiok.uzenet if fiok else "",
 				fiok.seq if fiok else 0, Sprites.hero_phase(tick),
@@ -1053,8 +1366,8 @@ func _ui_sig() -> Array:
 		"over", "win":
 			if game.world:
 				s.append_array([game.player.plvl, game.world.turn, game.world.dungeon_level])
-		"inv", "chest":
-			s.append(tick)                       # a tárgy-ikonok élnek: minden képkockán kell
+		"inv", "chest", "cine", "dialog", "note", "hub", "journal":
+			s.append(tick)                       # élő képernyők: minden képkockán újrarajzolódnak
 	return s
 
 
@@ -1140,6 +1453,18 @@ func _setup_shot() -> void:
 			char_sel = Data.CLASS_ORDER.find(shot_cls) if Data.CLASS_ORDER.has(shot_cls) else 0
 			set_state("char")
 		"help": set_state("help")
+		"intro", "ending":
+			start_cine(shot_scene, "menu")
+			cine_ui["i"] = clampi(shot_depth - 1, 0, (cine_ui["slides"] as Array).size() - 1)
+			cine_ui["t0"] = now_ms() - 4000.0
+		"hub", "journal":
+			Meta.reset()
+			var md := Meta.data()
+			md["bio"] = 46; md["rez"] = 38; md["runs"] = 5; md["deaths"] = 5; md["deepest"] = 3; md["kills"] = 212
+			md["last_death"] = 3; md["up"] = {"rezhenger": 2, "elezes": 1, "szivpumpa": 1, "gyomor": 2}
+			md["notes"] = ["n041", "sargulas", "klinika", "n112"]
+			journal_sel = 0
+			set_state(shot_scene)
 		"bolt", "bolt_preview", "shop_preview": _shot_bolt(shot_scene != "bolt")
 		"load", "folytat":
 			# mentett kaland a főmenü "Folytatás" gombjához (a "folytat" rögtön vissza is tölti)
@@ -1156,8 +1481,10 @@ func _setup_shot() -> void:
 				map_on = true
 			else:
 				set_state("menu")
-		"play", "orb", "inv", "chest", "over", "win", "walk", "perk", "shop", "trap", "map", "pause":
+		"play", "orb", "inv", "chest", "over", "win", "walk", "perk", "shop", "trap", "map", "pause", "boss", "boss2", "dialog", "note", "saves":
 			start_game(shot_cls, "normal")
+			if shot_scene != "play":
+				game.banner = {}
 			# mérési célra mélyebb szint (ott sokkal több a szörny)
 			while game.world.dungeon_level < shot_depth:
 				game.player.plvl = game.world.dungeon_level * 3
@@ -1192,12 +1519,35 @@ func _setup_shot() -> void:
 			elif shot_scene == "pause":
 				pause_sel = 1
 				set_state("pause")
+			elif shot_scene == "saves":
+				game.player.plvl = 4
+				SaveGame.save_run(game)
+				game.next_level()
+				game.player.plvl = 7
+				SaveGame.snapshot(game)
+				SaveGame.current = ""
+				game.player.cls = "Mágus"
+				SaveGame.save_run(game)
+				game.player.cls = shot_cls
+				open_saves("pause")
+				saves_arm = str(SaveGame.list()[1]["id"])
+				felho.allapot = "kesz"
+				felho.felhoben = {str(SaveGame.list()[0]["id"]) + ".json": true, str(SaveGame.list()[1]["id"]) + ".json": true}
 			elif shot_scene == "chest":
 				var ch := {"x": game.player.x, "y": game.player.y, "opened": false,
 					"items": [Item.make(Item.find_base("moonlight_blade"), "legendary", 3), Item.make(Item.find_base("rune_shield"), "epic", 3)]}
 				chest_ui = {"chest": ch, "sel": 0}
 				set_state("chest")
+			elif shot_scene == "dialog":
+				dialog_ui = {"lines": Story.talk(Data.BOSS_LVL[game.world.dungeon_level], "pre"), "i": 0, "t0": now_ms() - 60000.0}
+				set_state("dialog")
+			elif shot_scene == "note":
+				note_ui = Story.NOTES[game.world.dungeon_level][0]
+				set_state("note")
 			elif shot_scene == "over":
+				game.run_bio = 23
+				game.run_rez = 11
+				game.player.kills = 31
 				set_state("over")
 			elif shot_scene == "win":
 				set_state("win")
@@ -1225,8 +1575,29 @@ func _shot_populate() -> void:
 	# látható boss-fény: a főellenség is közel
 	for d in [Vector2i(-2, 2), Vector2i(2, 2), Vector2i(-2, -2)]:
 		if not w.blocked(p.x + d.x, p.y + d.y) and w.mon_at(p.x + d.x, p.y + d.y) == null:
-			w.mons.append(Mon.make("goblin_king", p.x + d.x, p.y + d.y, "normal"))
+			var bm := Mon.make(Data.BOSS_LVL[w.dungeon_level], p.x + d.x, p.y + d.y, "normal")
+			bm.met = shot_scene in ["boss", "boss2", "dialog"]
+			if shot_scene == "boss2":
+				game.boss_phase2(bm)
+				bm.hp = int(bm.max_hp * 0.36)
+				game.pending_dialog = []
+			# a pálya igazi főellensége ne zavarjon bele a képbe
+			for om in w.mons:
+				if om.boss:
+					om.alive = false
+			w.mons.append(bm)
 			break
+	if shot_scene in ["boss", "boss2"]:
+		game.banner = {}
+		game.warn(p.x + 1, p.y, "steam", 5)
+		game.warn(p.x + 2, p.y, "steam", 5)
+		game.warn(p.x, p.y - 1, "blade", 5)
+		game.acid_pool(p.x - 1, p.y + 1, 5, 3)
+		game.acid_pool(p.x + 1, p.y + 1, 5, 3)
+		p.hp = int(p.max_hp * 0.55)
+		p.bio = 14
+		p.rez = 9
+		p.skill_cd = 4
 
 
 ## Kinézet bolt képernyőképe: bejelentkezett fiók, érmék és néhány már megvásárolt darab.

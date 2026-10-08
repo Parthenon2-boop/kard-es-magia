@@ -21,6 +21,10 @@ func ok(cond: bool, what: String) -> void:
 
 func _init() -> void:
 	seed(12345)
+	Meta.persist = false   # a tesztek nem nyúlnak a játékos Műtőterem-állásához
+	Meta.reset()
+	SaveGame.DIR = "user://_teszt_mentesek/"   # ...és a mentéseihez sem
+	SaveGame.erase_all()
 	Lang.set_lang("hu")   # a szöveges ellenőrzések a magyar szövegekre épülnek
 	print("══════ 1. PÁLYÁK (300 db) ══════")
 	test_levels()
@@ -38,6 +42,8 @@ func _init() -> void:
 	test_kozmetika()
 	print("══════ 8. NYELVEK (HU / EN / DE) ══════")
 	test_nyelvek()
+	print("══════ 9. GORGONA: zónák, főellenségek, képességek, Műtőterem ══════")
+	test_story()
 	Lang.set_lang("hu")
 	print("══════ ÖSSZESEN: %d ellenőrzés, %d hiba ══════" % [checks, fails])
 	quit(1 if fails > 0 else 0)
@@ -57,7 +63,7 @@ func test_levels() -> void:
 	var bad_feature := 0
 	var t0 := Time.get_ticks_msec()
 	for i in 300:
-		var depth := 1 + i % 5
+		var depth := 1 + i % Data.MAX_LEVEL
 		var p := Player.create(Data.CLASS_ORDER[i % 3])
 		var w := World.create(p, depth, Data.DIFF_ORDER[i % 3])
 		var err := Dungeon.verify_open(w.tiles, w.rooms, w.chests)
@@ -161,7 +167,7 @@ func test_combat() -> void:
 	var N := 3000
 	var res := {}
 	for cls in Data.CLASS_ORDER:
-		for key in ["goblin", "golem", "dragon"]:
+		for key in ["goblin", "golem", "weaver"]:
 			var g := arena(cls)
 			# távolság: a mágus és az íjász messziről lő (2 mező), a lovag közelharcban (1)
 			var dist := 1 if cls == "Lovag" else 2
@@ -220,7 +226,7 @@ func test_combat() -> void:
 	ga.do_move(1, 0)
 	ok(ma.hp < ma.max_hp, "az íjász 4 mezőre lő")
 	# varázsellenállás: sárkány ellen kisebb a mágus sebzése, mint goblin ellen
-	ok(res["Mágus/dragon"] < res["Mágus/goblin"], "a sárkány varázsellenállása csökkenti a sebzést")
+	ok(res["Mágus/weaver"] < res["Mágus/goblin"], "az Első Kárpit varázsellenállása csökkenti a sebzést")
 	# a mágus sebzése a páncélon nagyrészt átüt: golem (def 8) ellen jóval többet üt, mint a fizikai 'atk'-ja
 	ok(res["Mágus/golem"] > 5.0, "a mágus a kőgolem páncélján is átüt")
 	# közelharc-szorzók: lovag ×1.35, íjász ×0.7, mágus ×0.6 (közvetlenül p_attack-kal mérve)
@@ -508,7 +514,7 @@ func test_specials() -> void:
 	gg.p_attack(mob)
 	var g_mob: int = gg.player.gold
 	gg.player.gold = 0
-	var bossm := place(gg, "dragon", 1)
+	var bossm := place(gg, "weaver", 1)
 	bossm.hp = 1
 	gg.p_attack(bossm)
 	ok(g_mob >= Data.GOLD_MIN and gg.player.gold >= Data.GOLD_BOSS[0], "arany hullik (szörny %d, boss %d)" % [g_mob, gg.player.gold])
@@ -769,8 +775,8 @@ func test_save() -> void:
 	ok(inv_ok, "a táska minden tárgya azonos")
 	print("  Mentés: %d csempe, %d szörny, %d láda, %d csapda, %d titkos ajtó, %d tárgy a táskában" % [
 		w.tiles.size(), w.mons.size(), w.chests.size(), w.traps.size(), w.secrets.size(), p.inventory.size()])
-	var sz := FileAccess.get_file_as_bytes(SaveGame.PATH).size()
-	print("  A mentésfájl mérete: %.1f kB (%s)" % [sz / 1024.0, SaveGame.PATH])
+	var sz := FileAccess.get_file_as_bytes(SaveGame.path_of(SaveGame.current)).size()
+	print("  A mentésfájl mérete: %.1f kB (%s)" % [sz / 1024.0, SaveGame.path_of(SaveGame.current)])
 
 	# ── a betöltött kalandban tovább lehet játszani
 	var t0 := g2.world.turn
@@ -790,17 +796,20 @@ func test_save() -> void:
 	ok(g4 != null and g4.world.dungeon_level == 2, "az automata mentés a 2. mélységet őrzi")
 
 	# ── sérült / régi mentés: nincs folytatás
-	var f := FileAccess.open(SaveGame.PATH, FileAccess.WRITE)
+	SaveGame.erase_all()
+	DirAccess.make_dir_recursive_absolute(SaveGame.DIR)
+	var f := FileAccess.open(SaveGame.path_of("rossz"), FileAccess.WRITE)
 	f.store_string('{"v": 999, "hos": {}}')
 	f.close()
 	SaveGame.refresh()
 	ok(SaveGame.load_run() == null and not SaveGame.has_save(), "régi verziójú mentés elutasítva")
-	f = FileAccess.open(SaveGame.PATH, FileAccess.WRITE)
+	f = FileAccess.open(SaveGame.path_of("rossz"), FileAccess.WRITE)
 	f.store_string("ez nem json {{{")
 	f.close()
 	SaveGame.refresh()
 	ok(SaveGame.load_run() == null and not SaveGame.has_save(), "sérült mentés elutasítva")
-	SaveGame.erase()
+	DirAccess.remove_absolute(SaveGame.path_of("rossz"))
+	SaveGame.erase_all()
 	ok(not SaveGame.has_save(), "a mentés törölhető (nincs mentés)")
 
 
@@ -1010,7 +1019,7 @@ func test_kozmetika() -> void:
 ## a kulcsok, amelyekre a kód hivatkozik: a szkriptekben szó szerint álló kulcsok
 ## (Lang.T / Lang.Ta / Lang.ref / _uz hívások és minden "csoport.valami" alakú szöveg),
 ## valamint a táblákból összerakott kulcsok (tárgyak, szörnyek, képességek, kinézet...)
-const KULCS_CSOPORTOK := "menu|help|bind|key|common|diff|char|cls|stat|inv|chest|rarity|rar|perk|shop|bolt|coins|pack|slot|skin|fiok|pause|over|hud|map|st|sh|msg|item|mon|room|trap|shrine"
+const KULCS_CSOPORTOK := "menu|help|bind|key|common|diff|char|cls|stat|inv|chest|rarity|rar|perk|shop|bolt|coins|pack|slot|skin|fiok|pause|over|hud|map|st|sh|msg|item|mon|room|trap|shrine|ab|zone|banner|boss|who|talk|dlg|intro|end|cine|npc|hub|up|cur|journal|note|lore|saves|cloud"
 
 
 func kod_kulcsai() -> Dictionary:
@@ -1061,6 +1070,36 @@ func kod_kulcsai() -> Dictionary:
 		out["skin." + str(e["key"])] = "skins.gd"
 	for kod in Fiok.HIBA_SZOVEG:
 		out[str(Fiok.HIBA_SZOVEG[kod])] = "fiok.gd"
+	# Gorgona: zónák, főellenségek, veszélyzónák, feljegyzések, fejlesztések, képességek
+	for z in Story.ZONES:
+		out["zone." + str(Story.ZONES[z]["id"])] = "story.gd"
+		out["zone." + str(Story.ZONES[z]["id"]) + ".goal"] = "story.gd"
+	for lv in Data.BOSS_LVL:
+		var bk: String = Data.BOSS_LVL[lv]
+		out["boss." + bk + ".s"] = "game.gd"
+		out["boss." + bk + ".p2"] = "game.gd"
+		out["msg.phase2." + str(Data.MONS[bk]["sp"])] = "game.gd"
+	for hk in Data.HAZ_COL:
+		out["msg.haz." + str(hk)] = "game.gd"
+	for id in Story.NOTE_ORDER:
+		out["note." + str(id)] = "story.gd"
+		out["note." + str(id) + ".d"] = "story.gd"
+	for id in Meta.ORDER:
+		out["up." + str(id)] = "meta.gd"
+		out["up." + str(id) + ".d"] = "meta.gd"
+	for c in Data.SKILL:
+		out["ab." + str(Data.SKILL[c])] = "data.gd"
+		out["ab." + str(Data.SKILL[c]) + ".d"] = "data.gd"
+	for n in ["nora", "profeta"]:
+		out["npc." + n] = "story_ui.gd"
+		out["npc." + n + ".role"] = "story_ui.gd"
+	for a in ["ki", "var", "megy", "kesz", "hiba"]:
+		out["cloud." + a] = "story_ui.gd"
+	for h in ["halozat", "belepes", "tul_sok_mentes", "betelt_a_tarhely"]:
+		out["cloud.hiba." + h] = "felho_mentes.gd"
+	for b in Data.ITEM_BASES:
+		if Lang.tabla("hu").has("lore." + str(b["id"])):
+			out["lore." + str(b["id"])] = "screens.gd"
 	return out
 
 
@@ -1174,7 +1213,7 @@ func test_nyelvek() -> void:
 		var naplo: Array = []
 		p.hp = 5000
 		p.max_hp = 5000
-		for key in ["goblin", "vampire", "spider", "witch", "assassin", "demon", "goblin_king", "necromancer", "shadow_lord"]:
+		for key in ["goblin", "vampire", "spider", "witch", "assassin", "demon", "rat", "nurse", "spore", "rust_worm", "dr_karel", "weaver"]:
 			var mo := place(ga, key, 2)
 			mo.hp = 3
 			ga.do_move(1, 0)
@@ -1217,7 +1256,7 @@ func test_nyelvek() -> void:
 				rossz.append(s)
 		ok(rossz.is_empty(), "%s: sehol sem látszik lefordítatlan kulcs (%s)" % [kod, str(rossz)])
 		# a HUD / menük dinamikus sorai
-		for s in [Lang.T("hud.depth", 3, 5, Lang.T("diff.hard"), 120), Lang.T("perk.title", 4), Lang.T("over.stats", 7, 900, 5, 5),
+		for s in [Lang.T("hud.zone", 3, 4, Lang.T("zone.mag")), Lang.T("perk.title", 4), Lang.T("over.stats", 7, 900, Lang.T("zone.kazan")),
 				Lang.T("inv.scroll", 1, 8, 12), Lang.T("bolt.buy", 20), Lang.T("fiok.http", 503)]:
 			ok(not nyers(s), "%s: kitöltött sor: %s" % [kod, s])
 	Lang.set_lang("hu")
@@ -1231,9 +1270,9 @@ func test_nyelvek() -> void:
 	var s_en := Lang.txt(hiv)
 	Lang.set_lang("de")
 	var s_de := Lang.txt(hiv)
-	ok(s_hu == "Kincstár őre (Ork) elesett! +45xp, +12 arany", "magyar: " + s_hu)
-	ok(s_en == "Treasury Guard (Orc) is slain! +45xp, +12 gold", "angol: " + s_en)
-	ok(s_de == "Schatzwächter (Ork) ist besiegt! +45 EP, +12 Gold", "német: " + s_de)
+	ok(s_hu == "Kincstár őre (Kazánfűtő) elesett! +45xp, +12 arany", "magyar: " + s_hu)
+	ok(s_en == "Treasury Guard (Boiler Stoker) is slain! +45xp, +12 gold", "angol: " + s_en)
+	ok(s_de == "Schatzwächter (Kesselheizer) ist besiegt! +45 EP, +12 Gold", "német: " + s_de)
 	ok(Lang.seq > seq0, "nyelvváltáskor nő a Lang.seq (a rétegek újrarajzolódnak)")
 	# a mentésből float-ként visszajövő számok is egészként látszanak
 	var vissza: Variant = JSON.parse_string(JSON.stringify(hiv))
@@ -1263,3 +1302,469 @@ func test_nyelvek() -> void:
 	ok(csak_ref, "a mentett üzenetnaplóban csak fordítási hivatkozások vannak (nincs lefordított szöveg)")
 	ok(not Lang.ervenyes_ref("Goblin elesett! +12xp, +3 arany"), "a régi mentés kész szövege nem hivatkozás (betöltéskor kimarad)")
 	print("  Nyelvek: %d kulcs nyelvenként, a kódban %d hivatkozott kulcs" % [hu.size(), kulcsok.size()])
+
+
+# ══════════ 9. GORGONA: zónák, főellenségek, képességek, veszélyzónák, Műtőterem ══════════
+func test_story() -> void:
+	# ── 9.1 minden zónának van színvilága, ura, párbeszéde és két feljegyzése
+	ok(Story.ZONES.size() == Data.MAX_LEVEL, "annyi zóna van, ahány mélység (%d)" % Story.ZONES.size())
+	var osszes_lap := 0
+	for lv in range(1, Data.MAX_LEVEL + 1):
+		var bk: String = Data.BOSS_LVL[lv]
+		ok(Data.MONS.has(bk) and Data.MONS[bk].get("boss", false), "%d. zóna: van főellenség (%s)" % [lv, bk])
+		ok(not Story.talk(bk, "pre").is_empty() and not Story.talk(bk, "win").is_empty(), "%s: van párbeszéde" % bk)
+		ok(Sprites2.has(bk) and Sprites2.has(bk + "#2"), "%s: van rajza mindkét fázishoz" % bk)
+		ok((Story.NOTES[lv] as Array).size() == 2, "%d. zóna: két feljegyzés" % lv)
+		osszes_lap += (Story.NOTES[lv] as Array).size()
+		for k in ["wall", "floor", "line", "fline", "acc", "lamp", "fog", "pat", "part"]:
+			ok(Story.zone(lv).has(k), "%d. zóna: van '%s' beállítása" % [lv, k])
+		var p := Player.create("Lovag")
+		var w := World.create(p, lv, "normal")
+		ok(w.boss() != null and w.boss().key == bk, "%d. zóna: a pályán ott a főellenség" % lv)
+		ok(w.notes.size() == 2, "%d. zóna: a pályán két feljegyzés hever (%d)" % [lv, w.notes.size()])
+		var s := Dungeon.center(w.rooms[0])
+		var seen := Dungeon.reach_map(w.tiles, s.x, s.y, {})
+		for n in w.notes:
+			var nk := Dungeon.idx(n["x"], n["y"])
+			ok(w.tiles[nk] == Data.FLOOR and seen[nk] == 1, "a feljegyzés elérhető padlón van")
+			ok(n["id"] in (Story.NOTES[lv] as Array), "a feljegyzés a saját zónájában van")
+		for pk in Data.POOL[lv]:
+			ok(Data.MONS.has(pk), "%d. zóna: ismert szörny a csapatban (%s)" % [lv, pk])
+	ok(osszes_lap == Story.NOTE_ORDER.size(), "a Napló minden lapja megtalálható valahol")
+
+	# ── 9.2 a lejáratot a zóna ura őrzi
+	var g := arena("Lovag")
+	g.world.tiles[Dungeon.idx(g.player.x, g.player.y)] = Data.STAIR
+	var boss := Mon.make("rust_worm", 20, 20, "normal")
+	g.world.mons.append(boss)
+	ok(g.on_stair() and not g.can_descend(), "amíg a főellenség él, nem lehet lemenni")
+	boss.alive = false
+	ok(g.can_descend(), "a főellenség halála után megnyílik a lejárat")
+
+	# ── 9.3 félreugrás: két mező, kör nélkül, lehűléssel; a fal megállítja
+	g = arena("Lovag")
+	var p := g.player
+	p.dir_x = 1
+	p.dir_y = 0
+	var x0 := p.x
+	var t0 := g.world.turn
+	ok(g.dash() and p.x == x0 + Data.DASH_LEN, "a félreugrás %d mezőt visz (%d)" % [Data.DASH_LEN, p.x - x0])
+	ok(g.world.turn == t0, "a félreugrással nem telik kör")
+	ok(p.dash_cd == p.dash_cd_max and p.dash_cd > 0, "a félreugrás lehűlésre megy")
+	ok(not g.dash() and p.x == x0 + Data.DASH_LEN, "lehűlés alatt nem lehet újra ugrani")
+	g.advance_turn()
+	ok(p.dash_cd == p.dash_cd_max - 1, "a lehűlés körönként csökken")
+	p.dash_cd = 0
+	g.world.tiles[Dungeon.idx(p.x + 2, p.y)] = Data.WALL
+	x0 = p.x
+	g.dash()
+	ok(p.x == x0 + 1, "a fal megállítja a félreugrást")
+	p.dash_cd = 0
+	g.world.mons.append(Mon.make("goblin", p.x - 1, p.y, "normal"))
+	p.dir_x = -1
+	x0 = p.x
+	ok(not g.dash() and p.x == x0, "szörnyön nem lehet átugrani")
+	g = arena("Lovag")
+	g.player.dir_x = 0
+	g.player.dir_y = 1
+	Perks.apply(g.player, "idegfonat")
+	var y0 := g.player.y
+	g.dash()
+	ok(g.player.y == y0 + Data.DASH_LEN * 2, "a Réz-Idegfonat megduplázza a félreugrást")
+	ok(g.player.dash_cd_max < Data.DASH_CD, "a Réz-Idegfonattal gyorsabban tölt újra")
+	g = arena("Lovag")
+	g.player.rooted = 2
+	ok(not g.dash(), "gyökerek között nem lehet félreugrani")
+
+	# ── 9.4 kaszt-képességek
+	g = arena("Lovag")
+	p = g.player
+	g.world.mons.clear()
+	var kor: Array[Mon] = []
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
+		var m := Mon.make("goblin", p.x + d.x, p.y + d.y, "normal")
+		m.hp = 9999
+		m.max_hp = 9999
+		g.world.mons.append(m)
+		kor.append(m)
+	var tavol := Mon.make("goblin", p.x + 3, p.y, "normal")
+	g.world.mons.append(tavol)
+	ok(g.skill(), "Forgószél: van célpont, elsül")
+	var mind := true
+	for m in kor:
+		if m.hp >= m.max_hp:
+			mind = false
+	ok(mind, "Forgószél: minden szomszédos ellenséget megsebez")
+	ok(tavol.hp == tavol.max_hp, "Forgószél: a távolit nem éri")
+	ok(p.skill_cd > 0 and not g.skill(), "a képesség lehűlésre megy")
+	g = arena("Lovag")
+	g.world.mons.clear()
+	ok(not g.skill() and g.player.skill_cd == 0, "célpont nélkül nem sül el, és nem megy kárba")
+	g = arena("Mágus")
+	p = g.player
+	g.world.mons.clear()
+	var m2 := Mon.make("goblin", p.x + 2, p.y - 2, "normal")
+	var m3 := Mon.make("goblin", p.x + 3, p.y, "normal")
+	m2.hp = 9999; m2.max_hp = 9999; m3.hp = 9999; m3.max_hp = 9999
+	g.world.mons.append(m2)
+	g.world.mons.append(m3)
+	ok(g.skill() and m2.hp < m2.max_hp and m3.hp == m3.max_hp, "Gőzrobbanás: két mezőn belül sebez, azon túl nem")
+	g = arena("Íjász")
+	p = g.player
+	p.dir_x = 1
+	p.dir_y = 0
+	g.world.mons.clear()
+	var a1 := Mon.make("goblin", p.x + 2, p.y, "normal")
+	var a2 := Mon.make("goblin", p.x + 4, p.y, "normal")
+	a1.hp = 9999; a1.max_hp = 9999; a2.hp = 9999; a2.max_hp = 9999
+	g.world.mons.append(a1)
+	g.world.mons.append(a2)
+	ok(g.skill() and a1.hp < a1.max_hp and a2.hp < a2.max_hp, "Nyílzápor: a vonalban mindenkin átüt")
+	# Túlhevített tartály: +30% képesség-sebzés
+	var sum0 := 0
+	var sum1 := 0
+	for kk in 2:
+		for i in 300:
+			var gq := arena("Lovag")
+			gq.world.mons.clear()
+			var mq := Mon.make("goblin", gq.player.x + 1, gq.player.y, "normal")
+			mq.hp = 9999
+			mq.max_hp = 9999
+			gq.world.mons.append(mq)
+			gq.player.base_atk = 40
+			if kk == 1:
+				Perks.apply(gq.player, "tulhevites")
+			gq.skill()
+			if kk == 0: sum0 += 9999 - mq.hp
+			else: sum1 += 9999 - mq.hp
+	ok(absf(float(sum1) / sum0 - 1.3) < 0.06, "Túlhevített tartály: +30%% képesség-sebzés (%.2f)" % (float(sum1) / sum0))
+
+	# ── 9.5 gyors-ital: a leggyengébbet issza meg
+	g = arena("Lovag")
+	p = g.player
+	p.max_hp = 200
+	p.hp = 50
+	p.inventory.append(Item.make(Item.find_base("greater_healing_potion"), "common", 1))
+	p.inventory.append(Item.make(Item.find_base("healing_potion"), "common", 1))
+	ok(g.quick_heal() and p.hp == 75 and p.inventory.size() == 1, "a gyors-ital a kisebb fiolát issza meg (%d)" % p.hp)
+	p.inventory.clear()
+	ok(not g.quick_heal(), "ital nélkül a gyors-ital nem csinál semmit")
+
+	# ── 9.6 veszélyzónák: aki kilép, megússza; aki marad, megsérül
+	g = arena("Lovag")
+	p = g.player
+	p.max_hp = 500
+	p.hp = 500
+	g.world.mons.clear()
+	g.warn(p.x, p.y, "steam", 20)
+	ok(g.world.hazards.size() == 1, "a jelzett csapás felkerül a pályára")
+	g.warn(p.x, p.y, "steam", 20)
+	ok(g.world.hazards.size() == 1, "egy mezőn egyszerre csak egy jelzés lehet")
+	g.do_move(1, 0)
+	ok(p.hp == 500 and g.world.hazards.is_empty(), "aki kilép a jelzett mezőről, nem sérül")
+	g.warn(p.x, p.y, "root", 20)
+	g.advance_turn(true)
+	ok(p.hp < 500 and p.rooted > 0, "aki bent marad, megsérül, és a gyökér megfogja")
+	var px := p.x
+	p.hp = 500
+	g.do_move(1, 0)
+	ok(p.x == px, "gyökerek között nem lehet lépni")
+	p.rooted = 0
+	g.do_move(1, 0)
+	ok(p.x == px + 1, "a gyökér elenged")
+	g.acid_pool(p.x, p.y, 3, 4)
+	g.advance_turn(true)
+	ok(p.hp == 496, "a savtócsa körönként mar (%d)" % p.hp)
+	g.advance_turn(true)
+	g.advance_turn(true)
+	ok(g.world.hazards.is_empty(), "a savtócsa elpárolog")
+	g.world.tiles[Dungeon.idx(p.x + 1, p.y)] = Data.WALL
+	g.warn(p.x + 1, p.y, "steam", 5)
+	ok(g.world.hazards.is_empty(), "falra nem kerül veszélyzóna")
+	# kábulat: a hős egy köre kimarad
+	p.stun = 1
+	px = p.x
+	g.do_move(-1, 0)
+	ok(p.x == px and p.stun == 0, "kábultan kimarad egy kör")
+
+	# ── 9.7 főellenségek: találkozás, előre jelzett csapás, második fázis
+	for bk in ["rust_worm", "dr_karel", "symbiote", "weaver"]:
+		g = arena("Lovag")
+		p = g.player
+		p.max_hp = 100000
+		p.hp = 100000
+		g.world.dungeon_level = Data.BOSS_LVL.find_key(bk)
+		g.world.mons.clear()
+		var b := Mon.make(bk, p.x + 4, p.y, "normal")
+		g.world.mons.append(b)
+		g.advance_turn()
+		ok(b.met and not g.pending_dialog.is_empty(), "%s: az első találkozáskor megszólal" % bk)
+		ok(str(g.banner.get("k", "")) == "mon." + bk, "%s: a neve nagy felirattal megjelenik" % bk)
+		var volt_jelzes := false
+		var bx0 := b.x
+		for i in 12:
+			g.advance_turn()
+			for h in g.world.hazards:
+				if h["warn"]:
+					volt_jelzes = true
+		ok(volt_jelzes, "%s: előre jelzi a csapását" % bk)
+		if bk == "symbiote":
+			ok(b.x == bx0, "a Szimbióta Anya nem mozdul el a helyéről")
+		var def0 := b.def
+		g.pending_dialog = []
+		g.hit_mon(b, int(b.max_hp * 0.6), "#ffffff")
+		ok(b.phase == 2, "%s: fél életerő alatt második fázisba lép" % bk)
+		ok(str(g.banner.get("k", "")) == "banner.phase2", "%s: a fázisváltást felirat jelzi" % bk)
+		if bk == "rust_worm":
+			ok(b.def < def0, "a Rozsdaféreg páncélja leszakad (védelem %d -> %d)" % [def0, b.def])
+			var sav := false
+			for i in 40:
+				g.advance_turn()
+				if g.world.hazard_at(p.x, p.y, "acid") != null or g.world.hazards.any(func(h: Dictionary) -> bool: return h["kind"] == "acid"):
+					sav = true
+			ok(sav, "a Rozsdaféreg a 2. fázisban savat fröcsköl")
+		if bk == "weaver":
+			ok(b.atk >= maxi(p.atk, p.mag), "az Első Kárpit lemásolja a hős erejét (%d)" % b.atk)
+		if bk == "dr_karel":
+			b.x = p.x + 3
+			b.y = p.y
+			var hp0 := p.hp
+			b.hp = 10
+			for i in 4:
+				g.advance_turn(true)
+			ok(p.hp < hp0 and b.hp > 10, "Karel Doktor a 2. fázisban elszívja a hős életerejét")
+		b.hp = 1
+		g.pending_dialog = []
+		g.p_attack(b) if g._dist(b) <= 1 else g.hit_mon(b, 5, "#ffffff")
+		if b.hp <= 0 and b.alive:
+			g.kill_reward(b)
+		ok(not b.alive and not g.pending_dialog.is_empty(), "%s: a legyőzése után Vane megszólal" % bk)
+		ok(bk in Meta.data()["bosses"], "%s: a győzelem bekerül a Műtőterem emlékei közé" % bk)
+		ok(g.world.hazards.is_empty(), "%s: a halálával eltűnnek a veszélyzónái" % bk)
+
+	# ── 9.8 nyersanyag: a hús Bio-Hulladékot, a gép Rézötvözetet hagy; az elit erősebb
+	g = arena("Lovag")
+	p = g.player
+	for i in 50:
+		g.kill_reward(Mon.make("goblin", 0, 0, "normal"))
+	ok(p.bio >= 50 and p.rez == 0, "húsból Bio-Hulladék lesz (%d / %d)" % [p.bio, p.rez])
+	p.bio = 0
+	for i in 50:
+		g.kill_reward(Mon.make("nurse", 0, 0, "normal"))
+	ok(p.rez >= 50 and p.bio == 0, "gépből Rézötvözet lesz (%d / %d)" % [p.rez, p.bio])
+	ok(p.kills == 100, "a legyőzött ellenségek száma gyűlik")
+	var el := Mon.make_elite("goblin", 0, 0, "normal")
+	var sima := Mon.make("goblin", 0, 0, "normal")
+	ok(el.elite and el.max_hp > sima.max_hp and el.atk > sima.atk, "a Fertőzött erősebb a közönségesnél")
+	ok(el.name == "Fertőzött Csatornalakó", "a Fertőzött neve: " + el.name)
+	p.rez = 0
+	g.kill_reward(el)
+	ok(p.rez >= 2, "a Fertőzött rézötvözetet ejt")
+	# Savas Epehólyag: sérüléskor a szomszédos ellenség is sérül
+	g = arena("Lovag")
+	p = g.player
+	Perks.apply(p, "epeholyag")
+	var szom := place(g, "goblin", 1)
+	var hb := szom.hp
+	g.hurt(5)
+	ok(szom.hp < hb, "Savas Epehólyag: sérüléskor savat köp a szomszédra")
+	# Láncfogazású Szike: a védelem felét átvágja
+	var atl := {}
+	for nev in ["steel_sword", "chain_scalpel"]:
+		var gs := arena("Lovag")
+		gs.player.weapon = Item.make(Item.find_base("steel_sword"), "common", 1)
+		gs.player.weapon.name = nev
+		var tot := 0
+		for i in 1500:
+			var ms := place(gs, "golem", 1)
+			gs.p_attack(ms)
+			tot += 100000 - ms.hp
+		atl[nev] = tot / 1500.0
+	ok(atl["chain_scalpel"] > atl["steel_sword"] + 3.0, "a Láncfogazású Szike átvágja a páncélt (%.1f > %.1f)" % [atl["chain_scalpel"], atl["steel_sword"]])
+
+	# ── 9.9 feljegyzés felvétele
+	Meta.reset()
+	g = arena("Lovag")
+	p = g.player
+	g.world.notes.append({"x": p.x + 1, "y": p.y, "id": "n041", "taken": false})
+	g.do_move(1, 0)
+	ok(g.pending_note == "n041" and Meta.has_note("n041"), "a feljegyzés bekerül a Naplóba")
+	ok(p.bio == 3, "az új lap Bio-Hulladékot ér")
+	g.world.notes.append({"x": p.x + 1, "y": p.y, "id": "n041", "taken": false})
+	g.do_move(1, 0)
+	ok(p.bio == 3 and (Meta.data()["notes"] as Array).size() == 1, "ugyanaz a lap másodszor már nem számít")
+
+	# ── 9.10 a Műtőterem: elszámolás, vásárlás, a fejlesztések hatása
+	Meta.reset()
+	p = Player.create("Mágus")
+	p.bio = 40
+	p.rez = 30
+	p.kills = 12
+	Meta.bank_run(p, 2, false)
+	var d := Meta.data()
+	ok(int(d["bio"]) == 40 and int(d["rez"]) == 30 and p.bio == 0 and p.rez == 0, "a kaland zsákmánya a Műtőterembe kerül")
+	ok(int(d["runs"]) == 1 and int(d["deaths"]) == 1 and int(d["deepest"]) == 2 and int(d["last_death"]) == 2, "a halál bekerül a nyilvántartásba")
+	ok(Story.nora_line(d) == "hub.nora.idle", "Nora a 2. zónás halál után az általános sorát mondja")
+	d["last_death"] = 1
+	ok(Story.nora_line(d) == "hub.nora.z1", "Nora az 1. zónás halál után a csatornapatkányokról beszél")
+	d["deepest"] = 3
+	ok(Story.nora_line(d) == "hub.nora.z3", "Nora a 3. zóna elérése után az apjáról beszél")
+	ok(Story.prophet_line({"just_bought_prophet": true}) == "hub.prophet.buy", "a Próféta vásárláskor a szív-pumpáról beszél")
+	var ar := Meta.cost("rezhenger")
+	ok(Meta.can_buy("rezhenger") and Meta.buy("rezhenger"), "Noránál lehet vásárolni rézért")
+	ok(int(d["rez"]) == 30 - ar and Meta.level("rezhenger") == 1, "a vásárlás levonja az árat, és nő a szint")
+	ok(Meta.cost("rezhenger") == ar * 2, "a következő szint drágább")
+	d["rez"] = 0
+	ok(not Meta.buy("rezhenger"), "réz nélkül nincs vásárlás")
+	ok(Meta.buy("szivpumpa") and int(d["bio"]) == 40 - 14, "a Prófétánál Bio-Hulladékért lehet vásárolni")
+	d["up"] = {"rezhenger": 2, "mellvert": 3, "elezes": 2, "lombik": 1, "szivpumpa": 2, "mirigy": 2, "uvegszem": 1, "gyomor": 2}
+	var alap := Player.create("Mágus")
+	var uj := Player.create("Mágus")
+	Meta.apply_to(uj)
+	ok(uj.max_hp == alap.max_hp + 16 and uj.hp == uj.max_hp, "Edzett rézhenger: +8 életerő szintenként")
+	ok(uj.base_def == alap.base_def + 3, "Titánbordás mellvért: +1 védelem szintenként")
+	ok(uj.base_atk == alap.base_atk + 2 and uj.base_mag == alap.base_mag + 2, "Élezett műszerek: +1 támadás és varázserő")
+	ok(uj.lives == alap.lives + 1, "Tartalék lombik: +1 élet")
+	ok(uj.kill_heal == 4 and uj.cd_cut == 2 and is_equal_approx(uj.find_mult, 1.2), "Szív-pumpa, Adrenalin-mirigy, Üvegszem")
+	ok(uj.inventory.size() == 2 and uj.inventory[0].subtype == "heal", "Kettős gyomor: két gyógyital a táskában")
+	ok(uj.skill_cd_max == Data.SKILL_CD - 2, "az Adrenalin-mirigy rövidíti a képesség lehűlését")
+	for id in Meta.ORDER:
+		d["up"][id] = Meta.UPGRADES[id]["max"]
+		d["bio"] = 9999
+		d["rez"] = 9999
+		ok(not Meta.can_buy(id), "%s: a legfelső szint fölé nem lehet venni" % id)
+	Meta.reset()
+	p = Player.create("Lovag")
+	Meta.bank_run(p, Data.MAX_LEVEL, true)
+	ok(int(Meta.data()["wins"]) == 1 and Story.nora_line(Meta.data()) == "hub.nora.win", "győzelem után Nora a szív ritmusáról beszél")
+
+	# ── 9.11 mentés: az új állapot is megmarad
+	Meta.reset()
+	var gs2 := Game.new()
+	gs2.autosave = false
+	gs2.start("Íjász", "normal")
+	var ps := gs2.player
+	ps.bio = 17; ps.rez = 9; ps.kills = 23; ps.dash_cd = 3; ps.skill_cd = 5; ps.rooted = 1; ps.dir_x = 0; ps.dir_y = -1
+	gs2.world.hazards.append({"x": ps.x, "y": ps.y, "kind": "acid", "ttl": 4, "dmg": 3, "warn": false})
+	var bs := gs2.world.boss()
+	bs.phase = 2
+	bs.met = true
+	bs.cd = 2
+	gs2.world.mons[0].elite = true
+	ok(SaveGame.save_run(gs2), "a kaland elmenthető")
+	var gl := SaveGame.load_run()
+	ok(gl != null, "a mentés visszatölthető")
+	if gl != null:
+		var pl := gl.player
+		ok(pl.bio == 17 and pl.rez == 9 and pl.kills == 23, "nyersanyag és ölések megmaradnak")
+		ok(pl.dash_cd == 3 and pl.skill_cd == 5 and pl.rooted == 1 and pl.dir_x == 0 and pl.dir_y == -1, "lehűlések, gyökér és irány megmaradnak")
+		ok(gl.world.hazards.size() == 1 and gl.world.hazards[0]["kind"] == "acid" and int(gl.world.hazards[0]["ttl"]) == 4, "a savtócsa megmarad")
+		ok(gl.world.notes.size() == gs2.world.notes.size(), "a feljegyzések megmaradnak")
+		var bl := gl.world.boss()
+		ok(bl != null and bl.phase == 2 and bl.met and bl.cd == 2 and bl.mech == bs.mech, "a főellenség fázisa megmarad")
+		ok(gl.world.mons[0].elite, "a Fertőzött jelzés megmarad")
+	SaveGame.erase_all()
+	test_mentesek()
+	print("  %d zóna, %d feljegyzés, %d állandó fejlesztés, %d képesség" % [Story.ZONES.size(), Story.NOTE_ORDER.size(), Meta.ORDER.size(), Perks.ORDER.size()])
+
+
+# ══════════ 10. TÖBB MENTÉS + FELHŐ ══════════
+func test_mentesek() -> void:
+	SaveGame.erase_all()
+	ok(not SaveGame.has_save() and SaveGame.list().is_empty(), "tiszta lappal nincs mentés")
+	var g := Game.new()
+	g.autosave = false
+	g.start("Lovag", "normal")
+	SaveGame.current = ""
+	ok(SaveGame.save_run(g) and SaveGame.list().size() == 1, "az első mentés létrehozza a kaland automata mentését")
+	var auto_id := SaveGame.current
+	ok(SaveGame.save_run(g) and SaveGame.list().size() == 1 and SaveGame.current == auto_id, "az automata mentés ugyanazt a helyet frissíti")
+	g.player.gold = 111
+	var kezi := SaveGame.snapshot(g)
+	ok(kezi != "" and kezi != auto_id and SaveGame.list().size() == 2, "a kézi mentés új helyre kerül")
+	g.player.gold = 222
+	SaveGame.save_run(g)
+	var kezi2 := SaveGame.snapshot(g)
+	ok(SaveGame.list().size() == 3, "akárhány kézi mentés készíthető (%d)" % SaveGame.list().size())
+	var van_auto := 0
+	for e in SaveGame.list():
+		if e["auto"]:
+			van_auto += 1
+		ok(e["cls"] == "Lovag" and int(e["zona"]) == 1 and int(e["ido"]) > 0, "a lista mutatja a hőst, a zónát és az időt")
+	ok(van_auto == 1, "a listában egy automata és két kézi mentés van")
+	# bármelyik visszatölthető
+	var gk := SaveGame.load_run(kezi)
+	ok(gk != null and gk.player.gold == 111, "a régebbi kézi mentés is visszatölthető (arany %d)" % (gk.player.gold if gk else -1))
+	ok(SaveGame.current == "", "kézi mentésből folytatva az automata mentés új helyre megy")
+	gk.autosave = false
+	SaveGame.save_run(gk)
+	ok(SaveGame.list().size() == 4 and SaveGame.current != kezi, "a kézi mentést a folytatás nem írja felül")
+	ok(SaveGame.load_run(kezi).player.gold == 111, "a kézi mentés érintetlen maradt")
+	var ga := SaveGame.load_run(auto_id)
+	ok(ga != null and ga.player.gold == 222 and SaveGame.current == auto_id, "automata mentésből folytatva ugyanoda ment tovább")
+	# halál: csak a kaland automata mentése tűnik el
+	SaveGame.erase()
+	var maradt: Array = []
+	for e in SaveGame.list():
+		maradt.append(e["id"])
+	ok(not (auto_id in maradt) and (kezi in maradt) and (kezi2 in maradt), "a kaland vége csak az automata mentést törli, a kéziket nem")
+	# értesítések a felhőnek
+	var irt: Array = []
+	var torolt: Array = []
+	SaveGame.on_write = func(f: String) -> void: irt.append(f)
+	SaveGame.on_erase = func(f: String) -> void: torolt.append(f)
+	var uj := SaveGame.snapshot(g)
+	SaveGame.erase(uj)
+	ok(irt == [uj + ".json"] and torolt == [uj + ".json"], "mentéskor és törléskor a felhő-mentés értesítést kap")
+	SaveGame.on_write = Callable()
+	SaveGame.on_erase = Callable()
+	# a régi, egyetlen mentésfájl átköltözik
+	SaveGame.erase_all()
+	g.autosave = false
+	SaveGame.current = ""
+	SaveGame.save_run(g)
+	DirAccess.rename_absolute(SaveGame.path_of(SaveGame.current), SaveGame.REGI)
+	SaveGame.current = ""
+	SaveGame.refresh()
+	ok(SaveGame.list().size() == 1 and not FileAccess.file_exists(SaveGame.REGI), "a régi mentes.json átköltözik a mentések közé")
+	ok(SaveGame.load_run() != null, "az átköltözött mentés betölthető")
+	SaveGame.erase_all()
+
+	# ── a felhő-szinkron döntései (hálózat nélkül): mi történjen egy fájllal?
+	var D := FelhoMentes
+	ok(D.dont(100, {}, {}) == "fel", "új helyi mentés → feltöltés")
+	ok(D.dont(-1, {}, {"ido": 100, "torolt": false}) == "le", "másik gépen készült mentés → letöltés")
+	ok(D.dont(100, {"ido": 100, "helyi": 100}, {"ido": 100, "torolt": false}) == "", "szinkronban → semmi")
+	ok(D.dont(150, {"ido": 100, "helyi": 100}, {"ido": 100, "torolt": false}) == "fel", "itt változott → feltöltés")
+	ok(D.dont(100, {"ido": 100, "helyi": 100}, {"ido": 180, "torolt": false}) == "le", "másik gépen változott → letöltés")
+	ok(D.dont(150, {"ido": 100, "helyi": 100}, {"ido": 180, "torolt": false}) == "le", "mindkét helyen változott → az újabb (felhő) nyer")
+	ok(D.dont(190, {"ido": 100, "helyi": 100}, {"ido": 180, "torolt": false}) == "fel", "mindkét helyen változott → az újabb (helyi) nyer")
+	ok(D.dont(-1, {"ido": 100, "helyi": 100}, {"ido": 100, "torolt": false}) == "torol_felho", "itt törölték → a felhőből is törlődik")
+	ok(D.dont(-1, {"ido": 100, "helyi": 100}, {"ido": 180, "torolt": false}) == "le", "itt törölték, de másutt újabb készült → visszajön")
+	ok(D.dont(100, {"ido": 100, "helyi": 100}, {"ido": 200, "torolt": true}) == "torol_helyi", "másik gépen törölték → itt is eltűnik")
+	ok(D.dont(300, {"ido": 100, "helyi": 100}, {"ido": 200, "torolt": true}) == "fel", "a törlés után újra mentették → megmarad")
+	ok(D.dont(-1, {"ido": 100, "helyi": 100}, {"ido": 200, "torolt": true}) == "felejt", "mindenhol törölve → a napló elfelejti")
+	ok(D.dont(-1, {}, {"ido": 200, "torolt": true}) == "", "régi sírkő, itt sosem volt → semmi")
+	ok(D.dont(-1, {"ido": 1, "helyi": 1}, {}) == "felejt", "sehol sincs már → a napló elfelejti")
+	ok(D.dont(100, {"ido": 100, "helyi": 100}, {}) == "fel", "a felhőből eltűnt, itt megvan → újra feltöltjük")
+	# csomagolás körút
+	DirAccess.make_dir_recursive_absolute(SaveGame.DIR)
+	var ut := SaveGame.DIR + "_korut.json"
+	var tartalom := "árvíztűrő tükörfúrógép ".repeat(400)
+	var f := FileAccess.open(ut, FileAccess.WRITE)
+	f.store_string(tartalom)
+	f.close()
+	var cs := D.csomagol(ut)
+	ok(cs != "" and cs.length() < tartalom.length(), "a mentés tömörítve megy fel (%d → %d karakter)" % [tartalom.length(), cs.length()])
+	ok(D.kicsomagol(cs).get_string_from_utf8() == tartalom, "kicsomagolva bájtra ugyanaz")
+	ok(D.kicsomagol("ez nem base64 gzip!").is_empty(), "sérült adat nem omlaszt össze semmit")
+	DirAccess.remove_absolute(ut)
+	# belépés nélkül a modul csendben kimarad
+	var fm := FelhoMentes.new()
+	fm.offline_mod = true
+	fm.indit("teszt_jatek", SaveGame.DIR, ["json"])
+	ok(fm.allapot in ["ki", "var", "megy", "hiba"], "fiók nélkül / hálózat nélkül a felhő-mentés nem akad meg (%s)" % fm.allapot)
+	fm.feltolt("nincs_ilyen.json")
+	fm.torol("nincs_ilyen.json")
+	ok(not fm._ide_tartozik("../kitores.json") and not fm._ide_tartozik("kep.png") and fm._ide_tartozik("m1_2.json"), "csak a mentésmappa saját fájljai szinkronizálódnak")
+	fm.free()

@@ -1,4 +1,4 @@
-﻿class_name Sprites
+class_name Sprites
 extends RefCounted
 ## Az összes rajzolt figura: hősök, szörnyek, tárgy-ikonok, díszek.
 ## Sorról sorra az eredeti canvas-rajzolók átirata (Cv = ctx).
@@ -88,13 +88,17 @@ static func mon_shadow(c: Cv, key: String, cx: float, cy: float, sz: float) -> v
 		c.fs(Color(0, 0, 0, 0.32)); c.ell(0, sz * 0.42, sz * 0.20 * k, sz * 0.06 * k), cx, cy)
 
 
-const MON_SHADOW := {"goblin_king": 1.25, "necromancer": 1.2, "stone_titan": 1.5, "shadow_lord": 1.3,
+const MON_SHADOW := {"rust_worm": 1.7, "rust_worm#2": 1.7, "dr_karel": 1.1, "dr_karel#2": 1.1, "symbiote": 1.6, "symbiote#2": 1.6,
+	"weaver": 1.5, "weaver#2": 1.5, "rat": 0.9, "scalpel": 0.6, "goblin_king": 1.25, "necromancer": 1.2, "stone_titan": 1.5, "shadow_lord": 1.3,
 	"dragon": 1.6, "golem": 1.2, "troll": 1.25, "demon": 1.2, "spider": 1.2}
 
 
 static func monster(c: Cv, key: String, cx: float, cy: float, sz: float, t: float, sd: float, with_shadow := true) -> void:
 	if with_shadow:
 		mon_shadow(c, key, cx, cy, sz)
+	if Sprites2.has(key):
+		Sprites2.draw(c, key, cx, cy, sz, t, sd)
+		return
 	match key:
 		"goblin": goblin(c, cx, cy, sz, t, sd)
 		"skeleton": skeleton(c, cx, cy, sz, t, sd)

@@ -24,6 +24,12 @@ var alive := true
 var guard := false   # a kincstár őre: erősebb és több aranyat ejt
 var awake := false   # riasztó ébresztette fel: a látótéren kívülről is a hős felé tart
 var stun := 0        # hány körig nem léphet (pajzsdöfés)
+var elite := false   # Fertőzött: erősebb, és rézötvözetet ejt
+var mech := false    # gépi lény: rézötvözetet ejt (a hús Bio-Hulladékot)
+var phase := 1       # főellenség: 1 vagy 2
+var met := false     # főellenség: a hős már találkozott vele (a párbeszéd lezajlott)
+var cd := 0          # főellenség: hány kör múlva jön a következő különleges támadás
+var hit_ms := 0.0    # mikor kapott utoljára ütést (a kirajzolás villanásához)
 
 
 static func make(k: String, px: int, py: int, diff: String) -> Mon:
@@ -45,6 +51,18 @@ static func make(k: String, px: int, py: int, diff: String) -> Mon:
 	m.xp = t["xp"]
 	m.sp = t.get("sp", "")
 	m.boss = t.get("boss", false)
+	m.mech = t.get("mech", false)
+	return m
+
+
+## Fertőzött (elit) változat: több életerő, erősebb ütés, több tapasztalat.
+static func make_elite(k: String, px: int, py: int, diff: String) -> Mon:
+	var m := make(k, px, py, diff)
+	m.elite = true
+	m.max_hp = Data.jround(m.max_hp * Data.ELITE_HP)
+	m.hp = m.max_hp
+	m.atk = Data.jround(m.atk * Data.ELITE_ATK)
+	m.xp = Data.jround(m.xp * 1.8)
 	return m
 
 
@@ -64,4 +82,6 @@ static func make_guard(k: String, px: int, py: int, diff: String) -> Mon:
 func ref() -> Dictionary:
 	if guard:
 		return Lang.ref("mon.guard", Lang.ref("mon." + key))
+	if elite:
+		return Lang.ref("mon.elite", Lang.ref("mon." + key))
 	return Lang.ref("mon." + key)

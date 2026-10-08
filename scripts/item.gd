@@ -102,6 +102,8 @@ func stat_lines(cls: String, mag := 0) -> Array[String]:
 		if cls == "Íjász" and subtype == "bow": s.append(Lang.T("st.range_archer", reach))
 		else: s.append(Lang.T("st.range", reach))
 	if lifesteal > 0.0: s.append(Lang.T("st.steal", int(roundf(lifesteal * 100))))
+	if name == "chain_scalpel" and not mage: s.append(Lang.T("st.pierce"))
+	if name == "steam_carbine" and not mage: s.append(Lang.T("st.burn"))
 	if def > 0: s.append(Lang.T("st.def", def))
 	if regen > 0: s.append(Lang.T("st.regen", regen))
 	if heal > 0: s.append(Lang.T("st.heal", heal))

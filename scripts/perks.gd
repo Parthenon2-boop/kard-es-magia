@@ -11,6 +11,10 @@ const LIST := {
 	"vamp": {"cls": "", "max": 3, "ic": "♥", "col": "#d03030"},
 	"regen": {"cls": "", "max": 3, "ic": "✚", "col": "#40c860"},
 	"kincs": {"cls": "", "max": 2, "ic": "◉", "col": "#d4a84b"},
+	# ── beültetések (Gorgona) ──
+	"epeholyag": {"cls": "", "max": 3, "ic": "☣", "col": "#b0e030"},
+	"idegfonat": {"cls": "", "max": 1, "ic": "»", "col": "#e08a3a"},
+	"tulhevites": {"cls": "", "max": 3, "ic": "✳", "col": "#ffb060"},
 	# ── Lovag ──
 	"blokk": {"cls": "Lovag", "max": 4, "ic": "⛨", "col": "#80a8e0"},
 	"vertezet": {"cls": "Lovag", "max": 3, "ic": "🛡", "col": "#5080e0"},
@@ -24,7 +28,7 @@ const LIST := {
 	"messzi": {"cls": "Mágus", "max": 2, "ic": "↔", "col": "#6aa8ff"},
 	"atuto": {"cls": "Mágus", "max": 2, "ic": "✳", "col": "#a0d0ff"},
 }
-const ORDER := ["eletero", "szivossag", "vamp", "regen", "kincs",
+const ORDER := ["eletero", "szivossag", "vamp", "regen", "kincs", "epeholyag", "idegfonat", "tulhevites",
 	"blokk", "vertezet", "dofes", "sasszem", "hosszuij", "gyorslab", "fokusz", "messzi", "atuto"]
 
 

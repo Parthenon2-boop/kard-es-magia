@@ -12,6 +12,8 @@ var traps: Array = []        # {x, y, type, found, sprung}
 var secrets: Array = []      # {x, y, kind: atjaro|kamra, found}
 var shrines: Array = []      # {x, y, kind, used}
 var shops: Array = []        # {x, y, stock:[{kind, item, price, sold}]}
+var notes: Array = []        # {x, y, id, taken} — megtalálható feljegyzések (a Napló lapjai)
+var hazards: Array = []      # {x, y, kind, ttl, dmg, warn} — előre jelzett csapások és savtócsák
 var decor: Array = []
 var torches: Array = []
 var vis := PackedByteArray()       # most látható mezők
@@ -45,6 +47,7 @@ static func create(p: Player, dl: int, df: String) -> World:
 	w.shrines = Dungeon.spawn_shrines(w.tiles, w.rooms, w.room_kind, used)
 	w.shops = Dungeon.spawn_shops(w.tiles, w.rooms, w.room_kind, dl, used)
 	w.traps = Dungeon.spawn_traps(w.tiles, w.rooms, w.room_kind, dl, used)
+	w.notes = Dungeon.spawn_notes(w.tiles, w.rooms, w.room_kind, dl, used)
 	w.decor = Dungeon.spawn_decor(w.tiles, w.rooms)
 	w.torches = Dungeon.seed_torches(w.rooms)
 	w.dungeon_level = dl
@@ -133,6 +136,28 @@ func shrine_at(x: int, y: int) -> Variant:
 	for s in shrines:
 		if s["x"] == x and s["y"] == y:
 			return s
+	return null
+
+
+func note_at(x: int, y: int) -> Variant:
+	for n in notes:
+		if not n["taken"] and n["x"] == x and n["y"] == y:
+			return n
+	return null
+
+
+func hazard_at(x: int, y: int, kind := "") -> Variant:
+	for h in hazards:
+		if h["x"] == x and h["y"] == y and (kind == "" or h["kind"] == kind):
+			return h
+	return null
+
+
+## a főellenség (ha él) — a felső életcsíkhoz
+func boss() -> Mon:
+	for m in mons:
+		if m.boss and m.alive:
+			return m
 	return null
 
 

@@ -201,28 +201,35 @@ static func menu_top(m: Node, c: Cv) -> void:
 	var P := Data.P
 	# gombok — sorrend: (Folytatás) · Kaland kezdete · Irányítás · Kilépés
 	var btn_w := minf(300 * k, W - 56)
-	var btns := [
-		{"t": Lang.T("menu.new"), "c": P["parchGold"], "bg": "#2e2210", "bd": P["parchGold"], "fn": m.go_diff},
-		{"t": Lang.T("menu.shop"), "c": "#c9a6ff", "bg": "#1d1430", "bd": "#6a4aa8", "fn": func() -> void: m.open_bolt("menu")},
-		{"t": Lang.T("menu.controls"), "c": P["ink"], "bg": "#241a0c", "bd": P["parchEdge"], "fn": func() -> void: m.set_state("help")},
-		{"t": Lang.T("menu.quit"), "c": "#c08070", "bg": "#1e1008", "bd": "#6a3a2a", "fn": m.quit_app},
-	]
+	# sorok: a fő gombok teljes szélességben, a többi párban egymás mellett
+	var b_new := {"t": Lang.T("menu.new"), "c": P["parchGold"], "bg": "#2e2210", "bd": P["parchGold"], "fn": m.go_diff}
+	var b_hub := {"t": Lang.T("menu.hub"), "c": "#a0f0d8", "bg": "#10221e", "bd": "#3a8a78", "fn": m.open_hub}
+	var b_jrn := {"t": Lang.T("menu.journal"), "c": "#e0d0a8", "bg": "#241a0c", "bd": P["parchEdge"], "fn": func() -> void: m.open_journal("menu")}
+	var b_shop := {"t": Lang.T("menu.shop"), "c": "#c9a6ff", "bg": "#1d1430", "bd": "#6a4aa8", "fn": func() -> void: m.open_bolt("menu")}
+	var b_ctl := {"t": Lang.T("menu.controls"), "c": P["ink"], "bg": "#241a0c", "bd": P["parchEdge"], "fn": func() -> void: m.set_state("help")}
+	var b_quit := {"t": Lang.T("menu.quit"), "c": "#c08070", "bg": "#1e1008", "bd": "#6a3a2a", "fn": m.quit_app}
+	var rows: Array = [[b_new], [b_hub, b_jrn], [b_shop, b_ctl], [b_quit]]
 	if SaveGame.has_save():
-		btns.push_front({"t": Lang.T("menu.continue"), "c": "#9ce0a0", "bg": "#16280f", "bd": "#5aa050", "fn": m.continue_game})
-	# a gomboszlop magassága állandó (a képernyő ~40%-a), akárhány gomb van: így sosem lóg ki
-	var n := btns.size()
+		rows.push_front([{"t": Lang.T("menu.continue"), "c": "#9ce0a0", "bg": "#16280f", "bd": "#5aa050", "fn": func() -> void: m.continue_game()},
+			{"t": Lang.T("menu.saves", SaveGame.list().size()), "c": "#a0d0ff", "bg": "#101c2a", "bd": "#4a7aa8", "fn": func() -> void: m.open_saves("menu")}])
+	# a gomboszlop magassága állandó (a képernyő ~40%-a), akárhány sor van: így sosem lóg ki
+	var n := rows.size()
 	var gap := 10 * k
 	var btn_h := minf(54 * k, (H * 0.40) / n - gap)
 	var tot_h := n * btn_h + (n - 1) * gap
 	var btn_y := clampf(H * 0.72 - tot_h, H * 0.26, H * 0.50)
 	for i in n:
-		var bx2 := (W - btn_w) / 2
+		var row: Array = rows[i]
+		var cw := (btn_w - (row.size() - 1) * gap) / row.size()
 		var by2 := btn_y + i * (btn_h + gap)
-		if i == 0:
-			c.soft_shadow(bx2, by2, btn_w, btn_h, 8, rgba(212, 168, 75, 0.45), 18 * k)
-		c.panel(bx2, by2, btn_w, btn_h, btns[i]["bg"], btns[i]["bd"], 2, 8)
-		c.ftxt_fit(btns[i]["t"], W / 2, by2 + btn_h * 0.63, btns[i]["c"], minf(17 * k, 17), btn_w - 28, "center")
-		m.add_hit(bx2, by2, btn_w, btn_h, btns[i]["fn"])
+		for j in row.size():
+			var b: Dictionary = row[j]
+			var bx2 := (W - btn_w) / 2 + j * (cw + gap)
+			if i == 0:
+				c.soft_shadow(bx2, by2, cw, btn_h, 8, rgba(212, 168, 75, 0.45), 18 * k)
+			c.panel(bx2, by2, cw, btn_h, b["bg"], b["bd"], 2, 8)
+			c.ftxt_fit(b["t"], bx2 + cw / 2, by2 + btn_h * 0.63, b["c"], minf(17 * k, 17) if row.size() == 1 else minf(14 * k, 14), cw - 20, "center")
+			m.add_hit(bx2, by2, cw, btn_h, b["fn"])
 	# sarokdíszek
 	var fw := minf(100 * k, W * 0.1)
 	MenuArt.flourish(c, 22 * k, 28 * k, fw, "#c8a03a", k, false)
@@ -253,6 +260,7 @@ static func help(m: Node, c: Cv) -> void:
 		[Lang.T("help.5"), Lang.T("help.5.d")],
 		[Lang.T("help.6"), Lang.T("help.6.d")],
 		[Lang.T("help.7"), Lang.T("help.7.d")],
+		[Lang.T("help.8"), Lang.T("help.8.d")],
 	]
 	var bind_rows := [
 		["up", Lang.T("bind.up")], ["down", Lang.T("bind.down")], ["left", Lang.T("bind.left")], ["right", Lang.T("bind.right")],
@@ -390,7 +398,11 @@ static func char_sel(m: Node, c: Cv) -> void:
 		for j in 3:
 			c.ftxt_fit(stats[j][0], bx + 18, by + bh * 0.56 + j * 24, stats[j][2], 11, bw2 - 64)
 			c.ftxt(str(stats[j][1]), bx + bw2 - 18, by + bh * 0.56 + j * 24, P["ink"], 12, "right")
-		c.wrap_text(Lang.cls_desc(name), bx + bw2 / 2, by + bh * 0.80, bw2 - 30, 10, P["inkDark"], "center")
+		c.wrap_text(Lang.cls_desc(name), bx + bw2 / 2, by + bh * 0.76, bw2 - 30, 10, P["inkDark"], "center")
+		# a test aktív képessége
+		var sk: String = Data.SKILL[name]
+		c.ftxt_fit(Lang.T("char.skill", Lang.T("ab." + sk)), bx + bw2 / 2, by + bh - 30, Data.SKILL_COL[name], 11, bw2 - 20, "center")
+		c.ftxt_fit(Lang.T("ab." + sk + ".d"), bx + bw2 / 2, by + bh - 14, P["inkDark"], 9, bw2 - 16, "center")
 		if sel:
 			c.ftxt("✓", bx + bw2 - 22, by + 26, s["col"], 18, "center")
 		m.add_hit(bx, by, bw2, bh, func() -> void:
@@ -525,7 +537,7 @@ static func chest(m: Node, c: Cv) -> void:
 	var pw := minf(580, W - 20)
 	var nmax := 0
 	for it in ch["items"]:
-		nmax = maxi(nmax, (it as Item).stat_lines(p.cls, p.mag).size())
+		nmax = maxi(nmax, (it as Item).stat_lines(p.cls, p.mag).size() + (2 if Lang.has("lore." + (it as Item).name) else 0))
 	var card_h := maxf(200.0, 132.0 + nmax * 17 + 16)
 	var ph := 70 + card_h + 50
 	var ox := (W - pw) / 2
@@ -550,6 +562,9 @@ static func chest(m: Node, c: Cv) -> void:
 		var stats := it.stat_lines(p.cls, p.mag)
 		for j in stats.size():
 			c.ftxt_fit(stats[j], ix + iw / 2, iy2 + 132 + j * 17, P["ink"], 11, iw - 16, "center")
+		# Gorgona különleges tárgyainak rövid története
+		if Lang.has("lore." + it.name):
+			c.wrap_text(Lang.T("lore." + it.name), ix + iw / 2, iy2 + 136 + stats.size() * 17, iw - 24, 9.5, P["inkDark"], "center")
 		m.add_hit(ix, iy2, iw, card_h, func() -> void:
 			m.chest_ui["sel"] = i
 			m.pick_chest_item())
@@ -808,13 +823,10 @@ static func pause(m: Node, c: Cv) -> void:
 	var P := Data.P
 	c.fs(rgba(0, 0, 0, 0.85)); c.fill_rect(0, 0, W, H)
 	var pw := minf(380, W - 24)
-	var items := [
-		[Lang.T("pause.resume"), P["parchGold"], "#2e2210", m.close_pause],
-		[Lang.T("menu.shop"), "#c9a6ff", "#1d1430", func() -> void: m.open_bolt("pause")],
-		[Lang.T("pause.save"), "#9ce0a0", "#16280f", m.save_and_menu],
-		[Lang.T("pause.abandon"), "#d08070", "#2a1008", m.abandon_run],
-	]
-	var bh := 50.0
+	var items: Array = []
+	for it in m.pause_items():
+		items.append([Lang.T(str(it[0])), it[1], it[2], it[3]])
+	var bh := minf(50.0, (H - 150) / items.size() - 12)
 	var ph := minf(74 + items.size() * (bh + 12) + 30, H - 24)
 	var ox := (W - pw) / 2
 	var oy := maxf(12, (H - ph) / 2)
@@ -837,24 +849,35 @@ static func game_over(m: Node, c: Cv, won: bool) -> void:
 	var H: float = m.H
 	var P := Data.P
 	c.fs(rgba(0, 0, 0, 0.9)); c.fill_rect(0, 0, W, H)
-	var pw := minf(440, W - 24)
-	var ph := 250.0
+	var pw := minf(520, W - 24)
+	var ph := 350.0
 	var ox := (W - pw) / 2
 	var oy := (H - ph) / 2
+	c.soft_shadow(ox, oy, pw, ph, 10, Color(Cv.col(P["parchGold"] if won else P["vein"]), 0.4), 30)
 	c.panel(ox, oy, pw, ph, "#1e1a08" if won else "#180808", P["parchGold"] if won else P["vein"], 2.5, 10)
 	c.orna(ox + 18, oy + 20, pw - 36, P["parchEdge"] if won else "#5a1a1a")
 	c.ftxt_fit(Lang.T("over.win") if won else Lang.T("over.lose"), W / 2, oy + 62, P["parchGold"] if won else P["vein"], 26, pw - 30, "center")
-	c.ftxt_fit(Lang.T("over.win.d") if won else Lang.T("over.lose.d"), W / 2, oy + 98, P["ink"] if won else P["inkDark"], 14, pw - 30, "center")
+	c.wrap_text(Lang.T("over.win.d") if won else Lang.T("over.lose.d"), W / 2, oy + 94, pw - 60, 13, P["ink"] if won else P["inkDark"], "center")
 	if m.game.world:
 		var p: Player = m.game.player
-		c.ftxt_fit(Lang.T("over.stats", p.plvl, m.game.world.turn, m.game.world.dungeon_level, Data.MAX_LEVEL), W / 2, oy + 126, P["inkDark"], 11, pw - 30, "center")
-	var bw2 := minf(220, pw - 40)
+		var zn := Lang.T("zone." + Story.zone_id(m.game.world.dungeon_level))
+		c.ftxt_fit(Lang.T("over.stats", p.plvl, m.game.world.turn, zn), W / 2, oy + 150, P["inkDark"], 12, pw - 30, "center")
+		# a kaland zsákmánya: ez kerül a Műtőterembe
+		var cells := [["☠", str(p.kills), Lang.T("over.kills"), "#e06050"], ["☣", "+%d" % m.game.run_bio, Lang.T("cur.bio"), "#b0e060"],
+			["⚙", "+%d" % m.game.run_rez, Lang.T("cur.rez"), "#e0a060"]]
+		var cw := (pw - 60) / 3.0
+		for i in 3:
+			var cx := ox + 30 + i * cw
+			c.rrect_fill_c(cx + 4, oy + 168, cw - 8, 78, 8, "#120e08")
+			c.ftxt("%s %s" % [cells[i][0], cells[i][1]], cx + cw / 2, oy + 204, cells[i][3], 22, "center")
+			c.ftxt_fit(str(cells[i][2]), cx + cw / 2, oy + 230, P["inkDark"], 11, cw - 16, "center")
+	var bw2 := minf(260, pw - 40)
 	var bh := 50.0
 	var bx := (W - bw2) / 2
-	var by := oy + ph - bh - 18
+	var by := oy + ph - bh - 22
 	c.panel(bx, by, bw2, bh, "#2e2210", P["parchGold"], 2, 8)
-	c.ftxt_fit(Lang.T("over.menu"), W / 2, by + 32, P["parchGold"], 15, bw2 - 16, "center")
-	m.add_hit(bx, by, bw2, bh, func() -> void: m.set_state("menu"))
+	c.ftxt_fit(Lang.T("over.hub"), W / 2, by + 32, P["parchGold"], 15, bw2 - 16, "center")
+	m.add_hit(bx, by, bw2, bh, m.open_hub)
 
 
 # ══════════ NYELVVÁLASZTÓ (HU / EN / DE) ══════════

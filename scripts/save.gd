@@ -9,39 +9,107 @@ extends RefCounted
 ## A fájl VERZIÓ mezőt tartalmaz: régebbi vagy sérült mentés esetén a betöltés null-t ad vissza,
 ## és a főmenüben nem jelenik meg a "Folytatás".
 
-const PATH := "user://mentes.json"
-const VERSION := 1
+## TÖBB MENTÉS: minden mentés külön fájl a `user://mentesek/` mappában (`<azonosító>.json`).
+##  - minden kalandnak van egy AUTOMATA mentése (szintváltáskor és kilépéskor frissül);
+##  - a játékos bármikor készíthet KÉZI mentést (pillanatfelvételt) egy új helyre, és bármelyiket
+##    bármikor visszatöltheti. A kézi mentést a játék soha nem írja felül és nem törli:
+##    ha egy kézi mentésből folytatod, az automata mentés új fájlba kerül.
+## A mappát a felhő-mentés (felho_mentes.gd) a fiókhoz köti: másik gépen is megjelennek.
 
-static var _exists := false
+## (változó, hogy a tesztek és a képernyőkép-mód külön mappába írhassanak)
+static var DIR := "user://mentesek/"
+const REGI := "user://mentes.json"   # a régi, egyetlen mentés (induláskor átköltözik a mappába)
+const VERSION := 2
+
+## a most játszott kaland automata mentésének azonosítója ("" = még nincs)
+static var current := ""
+## értesítés a felhő-mentésnek: fájlnév (pl. "m1700000000_1234.json")
+static var on_write: Callable = Callable()
+static var on_erase: Callable = Callable()
+
+static var _lista: Array = []
 static var _checked := false
 
 
-# ══════════ VAN-E MENTÉS? ══════════
+static func path_of(id: String) -> String:
+	return DIR + id + ".json"
+
+
+static func new_id() -> String:
+	return "m%d_%04d" % [int(Time.get_unix_time_from_system()), randi() % 10000]
+
+
+# ══════════ A MENTÉSEK LISTÁJA ══════════
 ## Gyors, gyorsítótárazott válasz (a főmenü minden képkockán kérdezi).
 static func has_save() -> bool:
 	if not _checked:
 		refresh()
-	return _exists
+	return not _lista.is_empty()
+
+
+## Az érvényes mentések, a legfrissebb elöl. Egy elem:
+## {id, nev, auto, cls, plvl, zona, kor, hp, max_hp, nehezseg, ido (unix mp)}
+static func list() -> Array:
+	if not _checked:
+		refresh()
+	return _lista
 
 
 static func refresh() -> void:
 	_checked = true
-	_exists = false
-	if not FileAccess.file_exists(PATH):
+	_lista = []
+	_koltoztet()
+	var d := DirAccess.open(DIR)
+	if d == null:
 		return
-	var d: Variant = _read()
-	_exists = d != null
+	for f in d.get_files():
+		if f.get_extension() != "json" or f.begins_with("_"):
+			continue   # a "_" kezdetű fájl nem kaland (pl. a Műtőterem állása)
+		var id := f.get_basename()
+		var raw: Variant = _read(id)
+		if raw == null:
+			continue
+		var info: Dictionary = (raw as Dictionary).get("info", {}) if (raw as Dictionary).get("info") is Dictionary else {}
+		var hs: Dictionary = (raw as Dictionary).get("hos", {}) if (raw as Dictionary).get("hos") is Dictionary else {}
+		var jt: Dictionary = (raw as Dictionary).get("jatek", {}) if (raw as Dictionary).get("jatek") is Dictionary else {}
+		_lista.append({"id": id, "nev": str(info.get("nev", "")), "auto": bool(info.get("auto", true)),
+			"cls": str(hs.get("cls", "Lovag")), "plvl": int(hs.get("plvl", 1)),
+			"zona": clampi(int(jt.get("melyseg", 1)), 1, Data.MAX_LEVEL), "kor": int(jt.get("kor", 0)),
+			"hp": int(hs.get("hp", 1)), "max_hp": int(hs.get("max_hp", 1)), "nehezseg": str(jt.get("nehezseg", "normal")),
+			"ido": int(FileAccess.get_modified_time(path_of(id)))})
+	_lista.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a["ido"]) > int(b["ido"]))
 
 
-static func erase() -> void:
-	if FileAccess.file_exists(PATH):
-		DirAccess.remove_absolute(PATH)
-	_exists = false
-	_checked = true
+## A régi, egyetlen mentésfájl átköltöztetése a mentések mappájába (egyszer).
+static func _koltoztet() -> void:
+	if not FileAccess.file_exists(REGI):
+		return
+	DirAccess.make_dir_recursive_absolute(DIR)
+	DirAccess.rename_absolute(REGI, path_of(new_id()))
 
 
-static func _read() -> Variant:
-	var f := FileAccess.open(PATH, FileAccess.READ)
+## Egy mentés törlése. Azonosító nélkül: a most játszott kaland automata mentése.
+static func erase(id := "") -> void:
+	var cel := id if id != "" else current
+	if cel != "" and FileAccess.file_exists(path_of(cel)):
+		DirAccess.remove_absolute(path_of(cel))
+		if on_erase.is_valid():
+			on_erase.call(cel + ".json")
+	if cel == current:
+		current = ""
+	refresh()
+
+
+## Minden mentés törlése (a tesztek és a "tiszta lap" számára).
+static func erase_all() -> void:
+	for e in list().duplicate():
+		erase(str(e["id"]))
+	current = ""
+	refresh()
+
+
+static func _read(id: String) -> Variant:
+	var f := FileAccess.open(path_of(id), FileAccess.READ)
 	if f == null:
 		return null
 	var txt := f.get_as_text()
@@ -103,7 +171,20 @@ static func _items_to(arr: Array) -> Array:
 
 
 # ══════════ MENTÉS ══════════
+## Kézi mentés új helyre (pillanatfelvétel). Visszaadja az azonosítóját ("" ha nem sikerült).
+static func snapshot(g: Game) -> String:
+	var id := new_id()
+	return id if _write(g, id, false) else ""
+
+
+## Az automata mentés frissítése (a kaland saját helye; ha még nincs, most jön létre).
 static func save_run(g: Game) -> bool:
+	if current == "":
+		current = new_id()
+	return _write(g, current, true)
+
+
+static func _write(g: Game, id: String, auto: bool) -> bool:
 	if g == null or g.world == null or g.player == null or not g.player.alive:
 		return false
 	var p := g.player
@@ -118,7 +199,8 @@ static func save_run(g: Game) -> bool:
 	for m in w.mons:
 		mons.append({"key": m.key, "x": m.x, "y": m.y, "seedv": m.seedv, "facing": m.facing,
 			"max_hp": m.max_hp, "hp": m.hp, "atk": m.atk, "def": m.def, "mres": m.mres, "xp": m.xp,
-			"sp": m.sp, "boss": m.boss, "alive": m.alive, "guard": m.guard, "awake": m.awake, "stun": m.stun})
+			"sp": m.sp, "boss": m.boss, "alive": m.alive, "guard": m.guard, "awake": m.awake, "stun": m.stun,
+			"elite": m.elite, "mech": m.mech, "phase": m.phase, "met": m.met, "cd": m.cd})
 	var chests: Array = []
 	for c in w.chests:
 		chests.append({"x": c["x"], "y": c["y"], "opened": c["opened"], "items": _items_to(c["items"])})
@@ -131,11 +213,15 @@ static func save_run(g: Game) -> bool:
 	var data := {
 		"v": VERSION,
 		"idő": Time.get_datetime_string_from_system(),
+		"info": {"nev": "", "auto": auto},
 		"jatek": {"melyseg": w.dungeon_level, "nehezseg": w.diff, "kor": w.turn, "pending_perks": g.pending_perks},
 		"hos": {"cls": p.cls, "x": p.x, "y": p.y, "col": p.col, "facing": p.facing,
 			"max_hp": p.max_hp, "hp": p.hp, "base_atk": p.base_atk, "base_mag": p.base_mag, "base_def": p.base_def,
 			"lives": p.lives, "xp": p.xp, "plvl": p.plvl, "xp_next": p.xp_next, "poison": p.poison,
 			"gold": p.gold, "steps": p.steps, "perks": p.perks.duplicate(),
+			"bio": p.bio, "rez": p.rez, "kills": p.kills, "kill_heal": p.kill_heal, "cd_cut": p.cd_cut,
+			"find_mult": p.find_mult, "dash_cd": p.dash_cd, "skill_cd": p.skill_cd, "stun": p.stun,
+			"rooted": p.rooted, "dir_x": p.dir_x, "dir_y": p.dir_y,
 			"weapon": item_to(p.weapon), "armor": item_to(p.armor), "shield": item_to(p.shield),
 			"inventory": _items_to(p.inventory), "msgs": p.msgs.duplicate(true)},
 		"palya": {
@@ -145,25 +231,37 @@ static func save_run(g: Game) -> bool:
 			"rooms": rooms, "room_kind": kinds,
 			"mons": mons, "chests": chests, "shops": shops,
 			"traps": w.traps.duplicate(true), "secrets": w.secrets.duplicate(true),
-			"shrines": w.shrines.duplicate(true), "decor": w.decor.duplicate(true), "torches": w.torches.duplicate(true),
+			"shrines": w.shrines.duplicate(true), "notes": w.notes.duplicate(true),
+			"hazards": w.hazards.duplicate(true), "decor": w.decor.duplicate(true), "torches": w.torches.duplicate(true),
 		},
 	}
-	var f := FileAccess.open(PATH, FileAccess.WRITE)
+	DirAccess.make_dir_recursive_absolute(DIR)
+	var f := FileAccess.open(path_of(id), FileAccess.WRITE)
 	if f == null:
 		return false
 	f.store_string(JSON.stringify(data))
 	f.close()
-	_exists = true
-	_checked = true
+	refresh()
+	if on_write.is_valid():
+		on_write.call(id + ".json")
 	return true
 
 
 # ══════════ BETÖLTÉS ══════════
-## null, ha nincs mentés, vagy sérült / régi a fájl.
-static func load_run() -> Game:
-	var raw: Variant = _read()
+## Azonosító nélkül a legfrissebb mentést tölti. null, ha nincs mentés, vagy sérült / régi a fájl.
+## Automata mentésből folytatva a kaland ugyanoda ment tovább; kézi mentésből folytatva az
+## automata mentés ÚJ helyre kerül (a kézi mentés érintetlen marad).
+static func load_run(id := "") -> Game:
+	var cel := id
+	if cel == "":
+		if list().is_empty():
+			return null
+		cel = str(list()[0]["id"])
+	var raw: Variant = _read(cel)
 	if raw == null:
 		return null
+	var inf: Variant = (raw as Dictionary).get("info")
+	current = cel if (not (inf is Dictionary) or bool((inf as Dictionary).get("auto", true))) else ""
 	var d: Dictionary = raw
 	if not (d.get("hos") is Dictionary) or not (d.get("palya") is Dictionary) or not (d.get("jatek") is Dictionary):
 		return null
@@ -204,6 +302,18 @@ static func load_run() -> Game:
 	p.poison = int(hs.get("poison", 0))
 	p.gold = int(hs.get("gold", 0))
 	p.steps = int(hs.get("steps", 0))
+	p.bio = maxi(0, int(hs.get("bio", 0)))
+	p.rez = maxi(0, int(hs.get("rez", 0)))
+	p.kills = maxi(0, int(hs.get("kills", 0)))
+	p.kill_heal = maxi(0, int(hs.get("kill_heal", 0)))
+	p.cd_cut = maxi(0, int(hs.get("cd_cut", 0)))
+	p.find_mult = maxf(1.0, float(hs.get("find_mult", 1.0)))
+	p.dash_cd = maxi(0, int(hs.get("dash_cd", 0)))
+	p.skill_cd = maxi(0, int(hs.get("skill_cd", 0)))
+	p.stun = maxi(0, int(hs.get("stun", 0)))
+	p.rooted = maxi(0, int(hs.get("rooted", 0)))
+	p.dir_x = clampi(int(hs.get("dir_x", 1)), -1, 1)
+	p.dir_y = clampi(int(hs.get("dir_y", 0)), -1, 1)
 	p.perks = {}
 	if hs.get("perks") is Dictionary:
 		for k in (hs["perks"] as Dictionary):
@@ -275,6 +385,11 @@ static func load_run() -> Game:
 			m.guard = bool(md.get("guard", false))
 			m.awake = bool(md.get("awake", false))
 			m.stun = int(md.get("stun", 0))
+			m.elite = bool(md.get("elite", false))
+			m.mech = bool(md.get("mech", false))
+			m.phase = clampi(int(md.get("phase", 1)), 1, 2)
+			m.met = bool(md.get("met", false))
+			m.cd = maxi(0, int(md.get("cd", 0)))
 			w.mons.append(m)
 	w.chests = []
 	if mp.get("chests") is Array:
@@ -309,6 +424,8 @@ static func load_run() -> Game:
 	w.traps = _dict_list(mp.get("traps"), {"x": 0, "y": 0, "type": "tuske", "found": false, "sprung": false})
 	w.secrets = _dict_list(mp.get("secrets"), {"x": 0, "y": 0, "kind": "atjaro", "found": false})
 	w.shrines = _dict_list(mp.get("shrines"), {"x": 0, "y": 0, "kind": "gyogyulas", "used": false})
+	w.notes = _dict_list(mp.get("notes"), {"x": 0, "y": 0, "id": "n041", "taken": false})
+	w.hazards = _dict_list(mp.get("hazards"), {"x": 0, "y": 0, "kind": "acid", "ttl": 1, "dmg": 1, "warn": false})
 	w.decor = _dict_list(mp.get("decor"), {"x": 0, "y": 0, "type": "bones", "seed": 0.0})
 	w.torches = _dict_list(mp.get("torches"), {"x": 0, "y": 0, "ph": 0.0})
 	w.dungeon_level = clampi(int(jt.get("melyseg", 1)), 1, Data.MAX_LEVEL)

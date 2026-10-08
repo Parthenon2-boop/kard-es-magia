@@ -6,9 +6,9 @@ extends RefCounted
 const MAP_W := 80
 const MAP_H := 60
 const FOV_R := 8
-const MAX_LEVEL := 5
-const TILE := 40
-const HUD_H := 96
+const MAX_LEVEL := 4
+const TILE := 48
+const HUD_H := 112
 const WALL := 0
 const FLOOR := 1
 const STAIR := 3
@@ -67,11 +67,13 @@ const ITEM_BASES := [
 	{"id": "steel_sword", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 9},
 	{"id": "rune_sword", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 15},
 	{"id": "moonlight_blade", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 22},
+	{"id": "chain_scalpel", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 12},
 	{"id": "wooden_bow", "slot": "weapon", "subtype": "bow", "glyph": ")", "baseDmg": 5, "range": 3},
 	{"id": "composite_bow", "slot": "weapon", "subtype": "bow", "glyph": ")", "baseDmg": 11, "range": 4},
 	{"id": "esoteric_bow", "slot": "weapon", "subtype": "bow", "glyph": ")", "baseDmg": 17, "range": 5},
 	{"id": "hand_cannon", "slot": "weapon", "subtype": "cannon", "glyph": "⌐", "baseDmg": 20, "range": 3},
 	{"id": "infernal_cannon", "slot": "weapon", "subtype": "cannon", "glyph": "⌐", "baseDmg": 30, "range": 4},
+	{"id": "steam_carbine", "slot": "weapon", "subtype": "cannon", "glyph": "⌐", "baseDmg": 25, "range": 4},
 	{"id": "wooden_shield", "slot": "shield", "subtype": "shield", "glyph": "⛨", "baseDef": 3},
 	{"id": "steel_shield", "slot": "shield", "subtype": "shield", "glyph": "⛨", "baseDef": 8},
 	{"id": "rune_shield", "slot": "shield", "subtype": "shield", "glyph": "⛨", "baseDef": 14},
@@ -110,26 +112,35 @@ const MONS := {
 	"orc": {"hp": 30, "atk": 7, "def": 2, "xp": 30},
 	"vampire": {"hp": 35, "atk": 9, "def": 3, "mres": 2, "xp": 55, "sp": "lifesteal"},
 	"spider": {"hp": 22, "atk": 6, "def": 1, "xp": 40, "sp": "poison"},
-	"golem": {"hp": 70, "atk": 10, "def": 8, "xp": 80, "sp": "regen"},
+	"golem": {"hp": 70, "atk": 10, "def": 8, "xp": 80, "sp": "regen", "mech": true},
 	"witch": {"hp": 28, "atk": 12, "def": 2, "mres": 4, "xp": 70, "sp": "fireball"},
 	"assassin": {"hp": 25, "atk": 15, "def": 2, "xp": 65, "sp": "crit"},
 	"troll": {"hp": 55, "atk": 11, "def": 4, "xp": 60},
 	"demon": {"hp": 80, "atk": 16, "def": 6, "mres": 4, "xp": 110, "sp": "aoe"},
-	"goblin_king": {"hp": 120, "atk": 14, "def": 5, "xp": 300, "sp": "summon", "boss": true},
-	"necromancer": {"hp": 160, "atk": 18, "def": 6, "mres": 5, "xp": 400, "sp": "revive", "boss": true},
-	"stone_titan": {"hp": 240, "atk": 20, "def": 12, "xp": 500, "sp": "regen", "boss": true},
-	"shadow_lord": {"hp": 300, "atk": 24, "def": 10, "mres": 6, "xp": 700, "sp": "teleport", "boss": true},
-	"dragon": {"hp": 420, "atk": 32, "def": 15, "mres": 5, "xp": 1500, "sp": "aoe", "boss": true},
+	# ── Gorgona saját lényei ──
+	"rat": {"hp": 10, "atk": 4, "def": 0, "xp": 9, "sp": "swift"},
+	"nurse": {"hp": 26, "atk": 7, "def": 3, "xp": 34, "sp": "mend", "mech": true},
+	"scalpel": {"hp": 14, "atk": 10, "def": 0, "mres": 3, "xp": 38, "sp": "swift", "mech": true},
+	"spore": {"hp": 20, "atk": 5, "def": 1, "xp": 42, "sp": "burst"},
+	# ── a négy zóna ura (a fázisokat lásd game.gd: boss_turn) ──
+	"rust_worm": {"hp": 150, "atk": 13, "def": 8, "xp": 300, "sp": "worm", "boss": true, "mech": true},
+	"dr_karel": {"hp": 210, "atk": 16, "def": 6, "mres": 5, "xp": 420, "sp": "karel", "boss": true, "mech": true},
+	"symbiote": {"hp": 300, "atk": 19, "def": 9, "mres": 4, "xp": 560, "sp": "symbiote", "boss": true},
+	"weaver": {"hp": 420, "atk": 24, "def": 12, "mres": 6, "xp": 1500, "sp": "weaver", "boss": true, "mech": true},
 }
-const BOSS_LVL := {1: "goblin_king", 2: "necromancer", 3: "stone_titan", 4: "shadow_lord", 5: "dragon"}
+const BOSS_LVL := {1: "rust_worm", 2: "dr_karel", 3: "symbiote", 4: "weaver"}
 const POOL := {
-	1: ["goblin", "skeleton"],
-	2: ["goblin", "skeleton", "orc", "spider", "vampire"],
-	3: ["orc", "troll", "golem", "witch", "spider"],
-	4: ["troll", "demon", "witch", "assassin", "golem"],
-	5: ["demon", "assassin", "vampire", "golem", "witch"],
+	1: ["rat", "rat", "goblin", "skeleton"],
+	2: ["nurse", "scalpel", "skeleton", "orc", "vampire"],
+	3: ["spore", "spore", "spider", "troll", "witch", "golem"],
+	4: ["demon", "assassin", "golem", "witch", "vampire", "troll"],
 }
-
+## a szint "különleges" szörnyei (ritkábban, a szokásos csapat mellé)
+const RARE_POOL := {1: ["spider"], 2: ["assassin", "spider"], 3: ["vampire", "assassin"], 4: ["scalpel", "nurse"]}
+## Fertőzött (elit) szörny: erősebb, zölden izzik, és rézötvözetet ejt.
+const ELITE_CHANCE := 0.11
+const ELITE_HP := 1.6
+const ELITE_ATK := 1.25
 # ══════════ KASZTOK ══════════
 #   Lovag – közelharc: +35% sebzés, 20% eséllyel pajzzsal felfogja az ütés felét, sok életerő
 #   Íjász – fizikai sebzés messziről: íjjal indul, +1 lőtáv, gyakori kritikus; közelről gyengébb
@@ -153,7 +164,7 @@ const ROOM_KINDS := {
 }
 const ROOM_KIND_ORDER := ["kincstar", "szentely", "kereskedo", "csapda"]
 ## a kincstár őre: erős, aranyban gazdag szörny
-const GUARD_POOL := {1: ["orc", "skeleton"], 2: ["orc", "troll"], 3: ["troll", "golem"], 4: ["golem", "demon"], 5: ["demon", "vampire"]}
+const GUARD_POOL := {1: ["orc", "skeleton"], 2: ["orc", "golem"], 3: ["troll", "golem"], 4: ["golem", "demon"]}
 
 # ══════════ CSAPDÁK ══════════
 ## Rejtettek: rálépve sülnek el, vagy szomszédos mezőről észre lehet venni (az íjász jobban).
@@ -183,6 +194,19 @@ const SHRINE_ORDER := ["gyogyulas", "elet", "vedelem", "varazs"]
 const GOLD_MIN := 2
 const GOLD_MAX := 7
 const GOLD_BOSS := [45, 80]
+
+# ══════════ AKTÍV KÉPESSÉGEK (lehűlés körökben) ══════════
+const DASH_CD := 6
+const DASH_LEN := 2
+const SKILL_CD := 9
+## kasztonként: a képesség kulcsa (a neve: ab.<kulcs>, a leírása: ab.<kulcs>.d)
+const SKILL := {"Lovag": "forgoszel", "Mágus": "gozrobbanas", "Íjász": "nyilzapor"}
+const SKILL_ICON := {"Lovag": "⚔", "Mágus": "✳", "Íjász": "➶"}
+const SKILL_COL :={"Lovag": "#ffd060", "Mágus": "#8cc4ff", "Íjász": "#a0e070"}
+
+# ══════════ VESZÉLYZÓNÁK (a főellenségek előre jelzett támadásai) ══════════
+## "warn": a mező egy kör múlva robban (ki lehet lépni belőle); "acid": tócsa, amíg el nem párolog.
+const HAZ_COL := {"steam": "#ffe0b0", "blade": "#ffffff", "root": "#70d060", "acid": "#b0e030"}
 ## a kereskedő árai ritkaság szerint (10–60 arany között marad)
 const SHOP_PRICE := {"common": 14, "rare": 24, "epic": 38, "legendary": 56}
 

@@ -293,10 +293,14 @@ static func spawn_mons(rooms: Array[Rect2i], level: int, diff: String, kinds: Ar
 		var cnt := Data.rnd(1, 2 + int(level / 2))
 		for j in cnt:
 			var q := _inner(r)
-			mons.append(Mon.make(Data.pick(pool), q.x, q.y, diff))
-		if level >= 2 and randf() < 0.28:
+			# a Fertőzöttek (elitek) a kezdőszoba közvetlen szomszédságában még nem járnak
+			if i > 3 and randf() < Data.ELITE_CHANCE:
+				mons.append(Mon.make_elite(Data.pick(pool), q.x, q.y, diff))
+			else:
+				mons.append(Mon.make(Data.pick(pool), q.x, q.y, diff))
+		if randf() < 0.28:
 			var q2 := _inner(r)
-			mons.append(Mon.make(Data.pick(["vampire", "spider", "golem", "witch", "assassin"]), q2.x, q2.y, diff))
+			mons.append(Mon.make(Data.pick(Data.RARE_POOL.get(level, ["spider"])), q2.x, q2.y, diff))
 		if kind == "kincstar":
 			var g := center(r)
 			mons.append(Mon.make_guard(Data.pick(Data.GUARD_POOL.get(level, ["orc"])), g.x, g.y, diff))
@@ -373,6 +377,30 @@ static func _free_spot(tiles: PackedByteArray, r: Rect2i, used: Dictionary) -> V
 		if tiles[k] == Data.FLOOR and not used.has(k):
 			return q
 	return Vector2i(-1, -1)
+
+
+# ══════════ FELJEGYZÉSEK ══════════
+## A zóna két lapja két különböző, hétköznapi szoba padlóján hever (járható mezőn, tehát
+## semmit nem zár el). A kezdőszobába és a főellenség termébe nem kerül.
+static func spawn_notes(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Array[String], level: int, used: Dictionary) -> Array:
+	var out: Array = []
+	var ids: Array = Story.NOTES.get(level, [])
+	var cand: Array[int] = []
+	for i in range(2, rooms.size() - 1):
+		if (kinds[i] if i < kinds.size() else "") == "":
+			cand.append(i)
+	cand.shuffle()
+	var k := 0
+	for id in ids:
+		while k < cand.size():
+			var c := _free_spot(tiles, rooms[cand[k]], used)
+			k += 1
+			if c.x < 0:
+				continue
+			used[idx(c.x, c.y)] = true
+			out.append({"x": c.x, "y": c.y, "id": str(id), "taken": false})
+			break
+	return out
 
 
 # ══════════ CSAPDÁK ══════════

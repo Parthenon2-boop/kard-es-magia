@@ -6,6 +6,29 @@ Szintlépéskor **képességet választasz**, a mélységekben **kincstár, szen
 csapdaterem** vár, rejtett csapdák és titkos ajtók lapulnak a falakban, a `Tab` pedig
 **automata térképet** nyit. A kaland bármikor **menthető és folytatható**.
 
+## Gorgona (történet, képességek, Műtőterem)
+
+A játék a *Flesh & Cog* történetét meséli el (`flesh_cog_teljes_narrat_v_s_vil_g_p_t_si_tmutat.md`):
+Vane, az Elfeledett Sebész ereszkedik le a lebegő henger-város, Gorgona tetejéről a Belső Magig.
+
+- **Négy zóna** saját színvilággal és zenével: Csatorna-Kazánok → Bronz Klinika → Tüdő-Kert → Mag-Kamra
+  (`scripts/story.gd`). A lejáratot a zóna ura őrzi: **Rozsdaféreg, Karel Doktor, Szimbióta Anya,
+  Az Első Kárpit** — mind kétfázisú, párbeszéddel, és **előre jelzett csapásokkal** (a pirosan
+  villogó mező egy kör múlva robban).
+- **Aktív képességek:** `Szóköz` félreugrás (nem telik vele kör), `Q` a test képessége
+  (Forgószél / Gőzrobbanás / Nyílzápor), `E` gyors gyógyital. A lehűlés a HUD-on látszik.
+- **Bevezető és befejezés** festett, mozgó képsorokkal (`art/*.jpg`) és saját zenével; a főellenségnél
+  a zene dobogóra vált (`scripts/audio.gd`: `set_mood`).
+- **Feljegyzések és Napló:** zónánként két megtalálható lap (főmenü → Napló, `J`).
+- **Műtőterem** (főmenü → Műtőterem, `H`; halál után ide kerülsz): a szörnyekből gyűlő
+  **Bio-Hulladékért** a Megnyúzott Próféta, **Rézötvözetért** Nora, a Csontkovács varr állandó
+  fejlesztést az új testre (`scripts/meta.gd`, mentve: `user://gorgona.json`).
+- Új szörnyek (Gőzpatkány, Automata-ápoló, Lebegő szike, Tüdőspóra), **Fertőzött** elitek, új tárgyak
+  (Láncfogazású Szike, Gőzsugár-Karbély) és beültetések (Savas Epehólyag, Réz-Idegfonat, Túlhevített tartály).
+
+Képernyőkép-jelenetek ehhez: `intro`, `ending` (`--depth=N` a képsor sorszáma), `hub`, `journal`,
+`boss`, `boss2`, `dialog`, `note`.
+
 A játék **Godot 4.7** (GDScript) natív változata; a korábbi böngészős/Electron kiadás
 forrása referenciaként a `reference/index.html` fájlban maradt (az exportba nem kerül bele).
 
@@ -47,17 +70,24 @@ fájlba mentődik.
 
 ## Mentés és folytatás
 
-A kaland bármikor folytatható: a mentés a `user://mentes.json` fájlba kerül, és a **teljes
-állapotot** tartalmazza (pálya, csempék, bejárt mezők, fényerő, díszek, fáklyák, ládák,
-csapdák, titkos ajtók, szentélyek, kereskedők, szörnyek, a hős értékei, felszerelése a
-pajzshellyel együtt, táskája, képességei, életei, mérgezése, aranya, mélység, nehézség, körszám).
+**Több mentés.** Minden mentés külön fájl a `user://mentesek/` mappában, és a teljes állapotot tartalmazza
+(pálya, szörnyek, a hős, a főellenség fázisa, veszélyzónák, feljegyzések...).
 
-- **magától ment** minden szintváltáskor és amikor a főmenübe lépsz vissza;
-- az Esc-menü **„Mentés és kilépés"** pontja kézzel is ment;
-- a főmenüben a **„Folytatás"** gomb csak akkor jelenik meg, ha van érvényes mentés;
-- a fájl verziószámot tartalmaz: régi vagy sérült mentésnél a játék nem ajánlja fel a folytatást;
-- az elesett vagy a Sárkányt legyőző hős mentése törlődik (a „Feladás" is törli).
+- minden kalandnak van egy **automata mentése**: szintváltáskor és a főmenübe lépéskor frissül;
+- az Esc-menü **„Mentés új helyre”** pontja (vagy a mentéslistán az `N`) **kézi mentést** készít — akárhányat.
+  A kézi mentést a játék soha nem írja felül: ha abból folytatod, az automata mentés új helyre kerül;
+- **Mentések** képernyő (főmenü → Mentések, `B`; játék közben Esc → Mentések / betöltés): bármelyik mentés
+  bármikor visszatölthető vagy törölhető (a törlés második kattintásra történik);
+- a főmenü **„Folytatás”** gombja a legfrissebb mentést tölti;
+- az elesett vagy a Magot újraindító hősnek csak az automata mentése törlődik, a kézi mentései megmaradnak;
+- a fájl verziószámot tartalmaz: régi vagy sérült mentés nem jelenik meg a listán. A korábbi, egyetlen
+  `mentes.json` magától átköltözik a mappába.
 
+**Felhő-mentés.** Ha a játék a ParthLauncherből, belépve indul, a `mentesek` mappa (a kalandok és a
+Műtőterem állása, `_gorgona.json`) a **fiókhoz** kötődik: másik gépen belépve a mentések maguktól megjelennek
+a listán (☁ jel). A közös modul a `scripts/felho_mentes.gd` (ugyanez van a többi játékban is); a kiszolgáló
+oldala: `Birodalom_Godot/server/supabase/schema_felho_mentes.sql`. Belépés vagy hálózat nélkül minden
+helyben működik, és később feltöltődik. Ha ugyanaz a mentés két gépen is változott, az újabb nyer.
 ## Szintlépéskor választható képesség
 
 Minden szintlépésnél három lap közül választhatsz (1 / 2 / 3 vagy kattintás). A képességek
