@@ -744,7 +744,7 @@ static func overlay(m: Node, c: Cv) -> void:
 	# a zóna levegője: gőz, porszemek, spórák, parázs
 	var fog := Color(str(z["fog"]))
 	var part := str(z["part"])
-	for i in 34:
+	for i in (34 if bool(m.kep["reszecske"]) else 0):
 		var s1 := Data.rnd_seed(i * 1.31 + 0.7)
 		var s2 := Data.rnd_seed(i * 2.77 + 3.1)
 		var x := 0.0

@@ -49,6 +49,13 @@ var saves_msg := ""                # rövid visszajelzés fordítási kulcsa (pl
 # ereklye-választó és döntési esemény
 var relic_ui: Variant = null       # {"ids": Array, "sel": int}
 var event_ui: Variant = null       # {"ev": Dictionary, "sel": int}
+# képbeállítások (Beállítások menü; a beallitasok.cfg [kep] szakaszába mentődnek)
+#   meret: a felület nagyítása; 0 = automatikus (a kijelző képpontsűrűségéből — Retina-kijelzőn 200%)
+const KEP_MERETEK := [0.0, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
+var kep := {"meret": 0.0, "teljes": false, "vsync": true, "razas": true, "reszecske": true}
+var settings_sel := 0
+var settings_back := "menu"
+var _ablak_px := Vector2i.ZERO     # az ablak mérete valódi képpontban (ha változik, újraszámoljuk a nagyítást)
 var daily_mode := false            # a hősválasztó a napi kihívásból nyílt: a kaland a nap pályáján indul
 # automata térkép (Tab)
 var map_on := false
@@ -86,6 +93,7 @@ var shot_cls := "Lovag"
 var shot_frames := 45
 var shot_depth := 1
 var shot_size := Vector2i(1280, 800)   # --size=1024x768: más felbontású elrendezés ellenőrzése
+var shot_meret := 1.0                 # --meret=2: a felület nagyítása (Retina-próba)
 var shot_lang := ""                    # --lang=en|de|hu: a képernyőkép nyelve
 ## borítókép-mód (--scene=borito): a főmenü gombok és súgósor nélkül, a hősök neve alájuk írva.
 ## Így a ParthLauncher borítója mindig a játék MOSTANI rajzait mutatja.
@@ -141,6 +149,8 @@ func _ready() -> void:
 	get_window().min_size = Vector2i(900, 600)
 	if shot_path != "":
 		_setup_shot()
+	else:
+		apply_kep()
 
 
 # ══════════ BETŰK ══════════
@@ -330,6 +340,7 @@ func _lay2(rid: RID, which: String) -> void:
 				"saves": StoryUI.saves(self, cv)
 				"relic": StoryUI.relic_pick(self, cv)
 				"daily": StoryUI.daily(self, cv)
+				"settings": StoryUI.settings(self, cv)
 				"event": StoryUI.event(self, cv)
 				"over": Screens.game_over(self, cv, false)
 				"win": Screens.game_over(self, cv, true)
@@ -350,6 +361,10 @@ func _load_cfg() -> void:
 		for k in DEFAULT_BINDS:
 			binds[k] = str(cf.get_value("binds", k, DEFAULT_BINDS[k]))
 		_cfg_muted = bool(cf.get_value("hang", "nemitva", false))
+		var km := float(cf.get_value("kep", "meret", 0.0))
+		kep["meret"] = km if km in KEP_MERETEK else 0.0
+		for kk in ["teljes", "vsync", "razas", "reszecske"]:
+			kep[kk] = bool(cf.get_value("kep", kk, kep[kk]))
 		skins = Skins.betolt(cf)
 
 
@@ -365,8 +380,66 @@ func save_cfg() -> void:
 		cf.set_value("binds", k, binds[k])
 	cf.set_value("hang", "nemitva", audio.muted if audio else false)
 	cf.set_value("nyelv", "kod", Lang.nyelv())
+	for kk in kep:
+		cf.set_value("kep", kk, kep[kk])
 	Skins.ment(cf, skins)
 	cf.save(CFG_PATH)
+
+
+# ══════════ KÉPBEÁLLÍTÁSOK ══════════
+## Az automatikus nagyítás: a kijelző képpontsűrűségéből. A játék a valódi képpontokra rajzol, ezért
+## nagy sűrűségű kijelzőn (MacBook Retina, 4K-s laptop) nagyítás nélkül minden fele akkora lenne.
+func kep_auto() -> float:
+	var kepernyo := get_window().current_screen
+	var s := DisplayServer.screen_get_scale(kepernyo)          # macOS Retina: 2.0
+	if s <= 1.0:
+		s = DisplayServer.screen_get_dpi(kepernyo) / 96.0       # Windows / Linux: a rendszer nagyítása
+	return clampf(snappedf(s, 0.25), 1.0, 3.0)
+
+
+## A most érvényes nagyítás. Akkorára korlátozzuk, hogy a felület (legalább ~860×540 egység) kiférjen az ablakban.
+func kep_meret() -> float:
+	var s: float = float(kep["meret"]) if float(kep["meret"]) > 0.0 else kep_auto()
+	var px := get_window().size
+	return maxf(0.75, minf(s, minf(px.x / 860.0, px.y / 540.0)))
+
+
+## A képbeállítások érvényesítése (induláskor, a Beállítások menüből, és ha az ablak mérete változik).
+func apply_kep() -> void:
+	if shot_path != "":
+		return
+	var win := get_window()
+	var teljes := win.mode == Window.MODE_FULLSCREEN or win.mode == Window.MODE_EXCLUSIVE_FULLSCREEN
+	if bool(kep["teljes"]) != teljes:
+		win.mode = Window.MODE_FULLSCREEN if bool(kep["teljes"]) else Window.MODE_WINDOWED
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if bool(kep["vsync"]) else DisplayServer.VSYNC_DISABLED)
+	win.content_scale_factor = kep_meret()
+	_ablak_px = win.size
+
+
+## Egy beállítás léptetése a Beállítások menüben (irany: -1 / +1; a kapcsolóknál mindegy).
+func kep_valt(sor: int, irany: int) -> void:
+	match sor:
+		0:
+			var i := KEP_MERETEK.find(float(kep["meret"]))
+			kep["meret"] = KEP_MERETEK[(maxi(0, i) + irany + KEP_MERETEK.size()) % KEP_MERETEK.size()]
+		1: kep["teljes"] = not bool(kep["teljes"])
+		2: kep["vsync"] = not bool(kep["vsync"])
+		3: kep["razas"] = not bool(kep["razas"])
+		4: kep["reszecske"] = not bool(kep["reszecske"])
+		_: return
+	apply_kep()
+	save_cfg()
+
+
+func open_settings(vissza: String) -> void:
+	settings_back = vissza
+	settings_sel = 0
+	set_state("settings")
+
+
+func close_settings() -> void:
+	set_state(settings_back if settings_back != "" else "menu")
 
 
 ## Nyelvváltás (HU / EN / DE gomb vagy L billentyű a főmenüben): azonnal, újraindítás nélkül.
@@ -685,7 +758,7 @@ func close_pause() -> void:
 
 func close_help() -> void:
 	bind_edit = ""
-	set_state("menu")
+	set_state("settings")
 
 
 func toggle_mute() -> void:
@@ -938,6 +1011,7 @@ func pause_items() -> Array:
 			saves_msg = "saves.saved"],
 		["pause.load", "#a0d0ff", "#101c2a", func() -> void: open_saves("pause")],
 		["menu.shop", "#c9a6ff", "#1d1430", func() -> void: open_bolt("pause")],
+		["menu.settings", "#e0d0a8", "#1c1408", func() -> void: open_settings("pause")],
 		["pause.save", "#e0d0a8", "#241a0c", save_and_menu],
 		["pause.abandon", "#d08070", "#2a1008", abandon_run],
 	]
@@ -1074,8 +1148,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if k == "F11":
-		var win := get_window()
-		win.mode = Window.MODE_WINDOWED if win.mode == Window.MODE_FULLSCREEN or win.mode == Window.MODE_EXCLUSIVE_FULLSCREEN else Window.MODE_FULLSCREEN
+		kep["teljes"] = not bool(kep["teljes"])
+		apply_kep()
+		save_cfg()
 		return
 	if k == "m" and state != "inv" and not (state == "play" and dir_of("m") != null):
 		toggle_mute()
@@ -1103,7 +1178,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		"help":
 			if k == "Escape" or k == "Enter":
 				bind_edit = ""
-				set_state("menu")
+				set_state("settings")
 		"diff":
 			if k in ["ArrowLeft", "a", "ArrowUp"]: diff_sel = (diff_sel + 2) % 3
 			if k in ["ArrowRight", "d", "ArrowDown"]: diff_sel = (diff_sel + 1) % 3
@@ -1117,6 +1192,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			if k in ["ArrowRight", "d"]: char_sel = (char_sel + 1) % n
 			if k == "Enter": char_start(char_sel)
 			if k == "Escape": set_state("daily" if daily_mode else "diff")
+		"settings":
+			if k == "Escape" or k == binds["menu"]: close_settings()
+			elif k in ["ArrowUp", "w"]: settings_sel = (settings_sel + 5) % 6
+			elif k in ["ArrowDown", "s"]: settings_sel = (settings_sel + 1) % 6
+			elif k in ["ArrowLeft", "a"]: kep_valt(settings_sel, -1)
+			elif k in ["ArrowRight", "d", "Enter", " "]:
+				if settings_sel == 5: set_state("help")
+				else: kep_valt(settings_sel, 1)
 		"daily":
 			if k == "Escape" or k == binds["menu"]: set_state("menu")
 			elif k == "Enter": daily_start()
@@ -1297,6 +1380,10 @@ func _process(delta: float) -> void:
 
 
 func _process2(delta: float) -> void:
+	# ha az ablak valódi mérete változott (átméretezés, másik kijelző), a nagyítást újraszámoljuk
+	if shot_path == "" and get_window().size != _ablak_px:
+		_ablak_px = get_window().size
+		get_window().content_scale_factor = kep_meret()
 	var sz := get_viewport_rect().size
 	if sz.x != W or sz.y != H or not _vign_ready:
 		W = sz.x
@@ -1324,7 +1411,7 @@ func _process2(delta: float) -> void:
 
 ## Képernyőrázás: a pálya rétegei pár képpontot rándulnak (a HUD és az ablakok a helyükön maradnak).
 func _update_shake() -> void:
-	var s := game.shake if in_world() and shot_path == "" else 0.0
+	var s := game.shake if in_world() and shot_path == "" and bool(kep["razas"]) else 0.0
 	if s > 0.05:
 		shake_off = Vector2(randf_range(-s, s), randf_range(-s, s))
 		game.shake = s * pow(0.86, dt / 16.67)
@@ -1461,6 +1548,7 @@ func _ui_sig() -> Array:
 			s.append(audio.music_started if audio else false)
 			s.append(SaveGame.has_save())
 		"pause": s.append(pause_sel)
+		"settings": s.append_array([settings_sel, kep["meret"], kep["teljes"], kep["vsync"], kep["razas"], kep["reszecske"], kep_meret()])
 		"daily": s.append_array([fiok.seq if fiok else 0, Meta.seq, Daily.nap()])
 		"relic":
 			if relic_ui != null:
@@ -1589,6 +1677,7 @@ func _setup_shot() -> void:
 	win.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 	win.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
 	win.content_scale_size = shot_size
+	win.content_scale_factor = shot_meret
 	match shot_scene:
 		"blank": set_state("blank")
 		"borito":
@@ -1601,6 +1690,7 @@ func _setup_shot() -> void:
 			char_sel = Data.CLASS_ORDER.find(shot_cls) if Data.CLASS_ORDER.has(shot_cls) else 0
 			set_state("char")
 		"help": set_state("help")
+		"settings": open_settings("menu")
 		"intro", "ending":
 			start_cine(shot_scene, "menu")
 			cine_ui["i"] = clampi(shot_depth - 1, 0, (cine_ui["slides"] as Array).size() - 1)

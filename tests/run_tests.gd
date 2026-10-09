@@ -1025,7 +1025,7 @@ func test_kozmetika() -> void:
 ## a kulcsok, amelyekre a kód hivatkozik: a szkriptekben szó szerint álló kulcsok
 ## (Lang.T / Lang.Ta / Lang.ref / _uz hívások és minden "csoport.valami" alakú szöveg),
 ## valamint a táblákból összerakott kulcsok (tárgyak, szörnyek, képességek, kinézet...)
-const KULCS_CSOPORTOK := "menu|help|bind|key|common|diff|char|cls|stat|inv|chest|rarity|rar|perk|shop|bolt|coins|pack|slot|skin|fiok|pause|over|hud|map|st|sh|msg|item|mon|room|trap|shrine|ab|zone|banner|boss|who|talk|dlg|intro|end|cine|npc|hub|up|cur|journal|note|lore|saves|cloud|relic|mini|event|ach|daily"
+const KULCS_CSOPORTOK := "menu|help|bind|key|common|diff|char|cls|stat|inv|chest|rarity|rar|perk|shop|bolt|coins|pack|slot|skin|fiok|pause|over|hud|map|st|sh|msg|item|mon|room|trap|shrine|ab|zone|banner|boss|who|talk|dlg|intro|end|cine|npc|hub|up|cur|journal|note|lore|saves|cloud|relic|mini|event|ach|daily|set"
 
 
 func kod_kulcsai() -> Dictionary:

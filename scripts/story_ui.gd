@@ -692,3 +692,62 @@ static func _eloter(c: Cv, x: float, y: float, w: float, h: float, tick: float, 
 			c.ss(sot); c.lw(5.0 * k); c.bp(); c.arc(px, ay - 40.0 * k, 13.0 * k, 0, TAU); c.stroke()
 			c.line(px - 13.0 * k, ay - 40.0 * k, px + 13.0 * k, ay - 40.0 * k)
 	c.fs(sot); c.fill_rect(x, ay - 14.0 * k, w, 4.0 * k)
+
+
+# ══════════ BEÁLLÍTÁSOK (kép) ══════════
+static func settings(m: Node, c: Cv) -> void:
+	var W: float = m.W
+	var H: float = m.H
+	var P := Data.P
+	var futo: bool = m.settings_back == "pause"
+	c.fs(rgba(4, 4, 3, 0.94) if futo else "#080604"); c.fill_rect(0, 0, W, H)
+	if not futo:
+		art(c, "gorgona", 0, 0, W, H, m.tick, 0.5 + 0.5 * sin(m.tick * 0.0016), 1)
+		c.fs(rgba(6, 5, 4, 0.84)); c.fill_rect(0, 0, W, H)
+	var pw := minf(620.0, W - 24)
+	var rh := minf(62.0, (H - 150) / 6.0)
+	var ph := 84 + 6 * rh + 40
+	var ox := (W - pw) / 2
+	var oy := maxf(10, (H - ph) / 2)
+	c.panel(ox, oy, pw, ph, P["parch"], P["parchGold"], 2, 10)
+	c.ftxt_fit(Lang.T("set.title"), W / 2, oy + 38, P["parchGold"], 20, pw - 40, "center")
+	c.orna(ox + 18, oy + 52, pw - 36, P["parchEdge"])
+	var be := Lang.T("set.on")
+	var ki := Lang.T("set.off")
+	var meret: float = float(m.kep["meret"])
+	var meret_txt := Lang.T("set.scale.auto", int(roundf(m.kep_auto() * 100.0))) if meret <= 0.0 else "%d%%" % int(roundf(meret * 100.0))
+	var sorok := [
+		[Lang.T("set.scale"), meret_txt, Lang.T("set.scale.d", int(roundf(m.kep_meret() * 100.0)))],
+		[Lang.T("set.full"), be if m.kep["teljes"] else ki, Lang.T("set.full.d")],
+		[Lang.T("set.vsync"), be if m.kep["vsync"] else ki, Lang.T("set.vsync.d")],
+		[Lang.T("set.shake"), be if m.kep["razas"] else ki, Lang.T("set.shake.d")],
+		[Lang.T("set.particles"), be if m.kep["reszecske"] else ki, Lang.T("set.particles.d")],
+		[Lang.T("menu.controls"), "▶", Lang.T("set.controls.d")],
+	]
+	for i in sorok.size():
+		var y := oy + 66 + i * rh
+		var sel: bool = m.settings_sel == i
+		c.panel(ox + 14, y, pw - 28, rh - 8, "#2e2210" if sel else "#1a140c", P["parchGold"] if sel else P["parchEdge"], 2.2 if sel else 1.0, 8)
+		c.ftxt_fit(str(sorok[i][0]), ox + 30, y + rh * 0.40, P["parchGold"] if sel else P["ink"], 15, pw * 0.5)
+		c.ftxt_fit(str(sorok[i][2]), ox + 30, y + rh * 0.40 + 17, P["inkDark"], 10.5, pw * 0.56)
+		var vx := ox + pw - 150
+		if i < 5:
+			c.panel(vx - 62, y + rh * 0.5 - 20, 32, 32, "#241a0c", P["parchEdge"], 1.2, 6)
+			c.ftxt("◀", vx - 46, y + rh * 0.5 + 1, P["parchGold"], 13, "center")
+			m.add_hit(vx - 62, y + rh * 0.5 - 20, 32, 32, func() -> void:
+				m.settings_sel = i
+				m.kep_valt(i, -1))
+			c.panel(vx + 88, y + rh * 0.5 - 20, 32, 32, "#241a0c", P["parchEdge"], 1.2, 6)
+			c.ftxt("▶", vx + 104, y + rh * 0.5 + 1, P["parchGold"], 13, "center")
+			m.add_hit(vx + 88, y + rh * 0.5 - 20, 32, 32, func() -> void:
+				m.settings_sel = i
+				m.kep_valt(i, 1))
+			c.ftxt_fit(str(sorok[i][1]), vx + 29, y + rh * 0.5 + 2, "#ffe9a0", 14, 112, "center")
+			m.add_hit(ox + 14, y, pw - 28, rh - 8, func() -> void: m.settings_sel = i)
+		else:
+			c.ftxt("▶", ox + pw - 46, y + rh * 0.5 + 1, P["parchGold"], 15, "center")
+			m.add_hit(ox + 14, y, pw - 28, rh - 8, func() -> void: m.set_state("help"))
+	c.ftxt_fit(Lang.T("set.hint"), W / 2, oy + ph - 14, P["inkDark"], 10, pw - 30, "center")
+	c.panel(12, 12, 110, 40, "#1c1408", P["parchEdge"], 1.5, 6)
+	c.ftxt_fit(Lang.T("common.back"), 67, 38, P["ink"], 12, 100, "center")
+	m.add_hit(12, 12, 110, 40, m.close_settings)

@@ -654,5 +654,23 @@
 	"ach.ereklye3": "Gyűjtő",
 	"ach.naplo": "Krónikás",
 	"ach.sebesz": "Az Elfeledett Sebész",
-	"ach.meszaros": "Mészáros"
+	"ach.meszaros": "Mészáros",
+
+	"menu.settings": "⚙  Beállítások",
+	"set.title": "Beállítások",
+	"set.scale": "Felület mérete",
+	"set.scale.auto": "Auto ({0}%)",
+	"set.scale.d": "Betűk, gombok és a pálya nagyítása. Most: {0}%.",
+	"set.full": "Teljes képernyő",
+	"set.full.d": "F11-gyel játék közben is váltható.",
+	"set.vsync": "Függőleges szinkron",
+	"set.vsync.d": "Szakadásmentes kép; kikapcsolva gyorsabb válasz.",
+	"set.shake": "Képernyőrázás",
+	"set.shake.d": "Ütéseknél és robbanásoknál megrázkódik a pálya.",
+	"set.particles": "Részecskék",
+	"set.particles.d": "Gőz, por, spórák és parázs a levegőben.",
+	"set.controls.d": "Billentyűk megtekintése és átkötése.",
+	"set.on": "Be",
+	"set.off": "Ki",
+	"set.hint": "↑↓: választás  ·  ←→: állítás  ·  Esc: vissza"
 }

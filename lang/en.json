@@ -654,5 +654,23 @@
 	"ach.ereklye3": "Collector",
 	"ach.naplo": "Chronicler",
 	"ach.sebesz": "The Forgotten Surgeon",
-	"ach.meszaros": "Butcher"
+	"ach.meszaros": "Butcher",
+
+	"menu.settings": "⚙  Settings",
+	"set.title": "Settings",
+	"set.scale": "Interface size",
+	"set.scale.auto": "Auto ({0}%)",
+	"set.scale.d": "Scales text, buttons and the level. Now: {0}%.",
+	"set.full": "Fullscreen",
+	"set.full.d": "You can also toggle it with F11 during play.",
+	"set.vsync": "Vertical sync",
+	"set.vsync.d": "Tear-free picture; off gives a snappier response.",
+	"set.shake": "Screen shake",
+	"set.shake.d": "The level shakes on hits and explosions.",
+	"set.particles": "Particles",
+	"set.particles.d": "Steam, dust, spores and embers in the air.",
+	"set.controls.d": "View and rebind the keys.",
+	"set.on": "On",
+	"set.off": "Off",
+	"set.hint": "↑↓: select  ·  ←→: change  ·  Esc: back"
 }

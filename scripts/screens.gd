@@ -223,7 +223,7 @@ static func menu_top(m: Node, c: Cv) -> void:
 	var b_hub := {"t": Lang.T("menu.hub"), "c": "#a0f0d8", "bg": "#10221e", "bd": "#3a8a78", "fn": m.open_hub}
 	var b_jrn := {"t": Lang.T("menu.journal"), "c": "#e0d0a8", "bg": "#241a0c", "bd": P["parchEdge"], "fn": func() -> void: m.open_journal("menu")}
 	var b_shop := {"t": Lang.T("menu.shop"), "c": "#c9a6ff", "bg": "#1d1430", "bd": "#6a4aa8", "fn": func() -> void: m.open_bolt("menu")}
-	var b_ctl := {"t": Lang.T("menu.controls"), "c": P["ink"], "bg": "#241a0c", "bd": P["parchEdge"], "fn": func() -> void: m.set_state("help")}
+	var b_ctl := {"t": Lang.T("menu.settings"), "c": P["ink"], "bg": "#241a0c", "bd": P["parchEdge"], "fn": func() -> void: m.open_settings("menu")}
 	var b_quit := {"t": Lang.T("menu.quit"), "c": "#c08070", "bg": "#1e1008", "bd": "#6a3a2a", "fn": m.quit_app}
 	var b_napi := {"t": Lang.T("menu.daily"), "c": "#ffd870", "bg": "#2a2008", "bd": "#b08a30", "fn": m.open_daily}
 	var rows: Array = [[b_new, b_napi], [b_hub, b_jrn], [b_shop, b_ctl], [b_quit]]

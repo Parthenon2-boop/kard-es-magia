@@ -654,5 +654,23 @@
 	"ach.ereklye3": "Sammler",
 	"ach.naplo": "Chronist",
 	"ach.sebesz": "Der Vergessene Chirurg",
-	"ach.meszaros": "Schlächter"
+	"ach.meszaros": "Schlächter",
+
+	"menu.settings": "⚙  Einstellungen",
+	"set.title": "Einstellungen",
+	"set.scale": "Größe der Oberfläche",
+	"set.scale.auto": "Auto ({0}%)",
+	"set.scale.d": "Vergrößert Schrift, Schaltflächen und die Ebene. Jetzt: {0}%.",
+	"set.full": "Vollbild",
+	"set.full.d": "Auch im Spiel mit F11 umschaltbar.",
+	"set.vsync": "Vertikale Synchronisation",
+	"set.vsync.d": "Bild ohne Risse; aus reagiert es schneller.",
+	"set.shake": "Bildschirmwackeln",
+	"set.shake.d": "Bei Treffern und Explosionen wackelt die Ebene.",
+	"set.particles": "Partikel",
+	"set.particles.d": "Dampf, Staub, Sporen und Glut in der Luft.",
+	"set.controls.d": "Tasten ansehen und neu belegen.",
+	"set.on": "An",
+	"set.off": "Aus",
+	"set.hint": "↑↓: wählen  ·  ←→: ändern  ·  Esc: zurück"
 }
