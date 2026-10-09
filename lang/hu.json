@@ -672,5 +672,17 @@
 	"set.controls.d": "Billentyűk megtekintése és átkötése.",
 	"set.on": "Be",
 	"set.off": "Ki",
-	"set.hint": "↑↓: választás  ·  ←→: állítás  ·  Esc: vissza"
+	"set.hint": "↑↓: választás  ·  ←→: állítás  ·  Esc: vissza",
+
+	"mon.leech": "Csőpióca",
+	"mon.drone": "Szerelődrón",
+	"mon.bloom": "Húsvirág",
+	"mon.sentinel": "Őrautomata",
+	"msg.shot_in": "{0} rád lő: -{1}",
+
+	"set.tempo": "Ellenségek tempója",
+	"set.tempo.d": "Ha állsz, az ellenségek ilyen sűrűn lépnek maguktól.",
+	"set.tempo.0": "Lassú",
+	"set.tempo.1": "Közepes",
+	"set.tempo.2": "Gyors"
 }

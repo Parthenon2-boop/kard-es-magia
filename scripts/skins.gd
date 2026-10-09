@@ -165,7 +165,7 @@ static func hos(c: Cv, cls: String, s: float, sel: Dictionary) -> void:
 
 
 static func _lovag(c: Cv, s: float, v: Dictionary) -> void:
-	_kopeny(c, s, "#7a1518", "#a8262a")
+	_kopeny(c, s, "#3a2818", "#5e4428")
 	resz(c, "lovag", "lab", str(v.get("lab", "")), s)
 	_lovag_pajzs(c, s)
 	resz(c, "lovag", "test", str(v.get("test", "")), s)
@@ -285,15 +285,15 @@ const ARANY := "#d9ab4d"
 static func _lovag_pajzs(c: Cv, s: float) -> void:
 	# a bal karon hordott pajzs (mindig látszik, nem vásárolható darab)
 	c.save(); c.translate(-10.6 * s, 1.2 * s); c.rotate(-0.12)
-	c.fs(sot("#5b6a86", 0.42))
+	c.fs(sot("#8a6a34", 0.42))
 	c.bp(); c.mt(0, -7.6 * s); c.lt(4.6 * s, -5.6 * s); c.lt(4.2 * s, 3.4 * s)
 	c.qt(2.6 * s, 7.6 * s, 0, 9.0 * s); c.qt(-2.6 * s, 7.6 * s, -4.2 * s, 3.4 * s)
 	c.lt(-4.6 * s, -5.6 * s); c.cp(); c.fill()
-	c.fs("#5b6a86")
+	c.fs("#8a6a34")
 	c.bp(); c.mt(0, -6.6 * s); c.lt(3.8 * s, -4.9 * s); c.lt(3.5 * s, 3.0 * s)
 	c.qt(2.2 * s, 6.5 * s, 0, 7.8 * s); c.qt(-2.2 * s, 6.5 * s, -3.5 * s, 3.0 * s)
 	c.lt(-3.8 * s, -4.9 * s); c.cp(); c.fill()
-	c.fs(vil("#5b6a86", 0.22))
+	c.fs(vil("#8a6a34", 0.22))
 	c.poly([0, -6.6 * s, 3.8 * s, -4.9 * s, 3.5 * s, 3.0 * s, 1.4 * s, 4.6 * s, 1.4 * s, -5.8 * s])
 	c.fs(ARANY)
 	c.fill_rect(-3.4 * s, -1.4 * s, 6.9 * s, 1.1 * s)
@@ -307,7 +307,7 @@ static func _l_lab(c: Cv, s: float, v: String) -> void:
 	match v:
 		"vaslabvert": _l_lab_vas(c, s)
 		"bor_labvert": _l_lab_bor(c, s)
-		_: _l_lab_alap(c, s)
+		_: _g_l_lab(c, s)
 
 
 static func _l_lab_alap(c: Cv, s: float) -> void:
@@ -381,7 +381,7 @@ static func _l_test(c: Cv, s: float, v: String) -> void:
 		"pancel_arany": _l_test_szin(c, s, "#b8862a", "#f0cf72", "#6b4a0f", ARANY)
 		"pancel_sotet": _l_test_szin(c, s, "#2f3040", "#5c5e7c", "#16161f", "#c03040")
 		"koponyas_vert": _l_test_kopo(c, s)
-		_: _l_test_szin(c, s, ACEL, "#c2cddf", "#414a5b", ARANY)
+		_: _g_l_test(c, s)
 
 
 static func _l_mell(c: Cv, s: float) -> void:
@@ -454,7 +454,7 @@ static func _l_fej(c: Cv, s: float, v: String) -> void:
 		"sisak_arany": _l_sisak(c, s, "#c08f2c", "#f5dd90", "#7a5410", true, false)
 		"sisak_szarv": _l_sisak(c, s, "#5e6779", "#9fabc0", "#343b48", false, true)
 		"csuklya": _l_csuklya(c, s)
-		_: _l_sisak(c, s, "#7f8a9e", "#c2cddf", "#464f60", false, false)
+		_: _g_l_fej(c, s)
 
 
 static func _l_sisak(c: Cv, s: float, alap: Variant, vilc: Variant, sotc: Variant, szarny: bool, szarv: bool) -> void:
@@ -528,7 +528,7 @@ static func _l_fegyver(c: Cv, s: float, v: String) -> void:
 		"kard_lang": _l_kard(c, s, "#e07020", "#ffd27a", "#8a2a06", true, false)
 		"kard_jeg": _l_kard(c, s, "#7fc8ea", "#e6fbff", "#2b6f96", false, true)
 		"csatabard": _l_bard(c, s)
-		_: _l_kard(c, s, "#93a1b6", "#e4ecf6", "#4a5566", false, false)
+		_: _g_l_kard(c, s)
 
 
 static func _l_kard(c: Cv, s: float, penge: Variant, vilc: Variant, sotc: Variant, lang: bool, jeg: bool) -> void:
@@ -622,7 +622,7 @@ static func _m_test(c: Cv, s: float, v: String) -> void:
 		"kontos_kek": _m_kontos(c, s, "#1d3a86", "#3f6fd0", "#0f1e4a", "#9fd0ff")
 		"kontos_bibor": _m_kontos(c, s, "#6a1450", "#b23a8a", "#38062a", "#ffb0e0")
 		"kontos_arany": _m_kontos(c, s, "#9a7314", "#eac74a", "#4e3706", "#fff0b0")
-		_: _m_kontos(c, s, "#3a1f74", "#6a3fc0", "#1c0d3c", "#c9a6ff")
+		_: _g_m_test(c, s)
 
 
 static func _m_kontos(c: Cv, s: float, alap: Variant, vilc: Variant, sotc: Variant, diszc: Variant) -> void:
@@ -698,7 +698,7 @@ static func _m_fej(c: Cv, s: float, v: String) -> void:
 		"kalap_csillag": _m_kalap(c, s, "#2a4aa0", "#5a86e0", "#14275c", true, false)
 		"kalap_sotet": _m_kalap(c, s, "#231a34", "#463762", "#100b1c", false, true)
 		"korona": _m_korona(c, s)
-		_: _m_kalap(c, s, "#3a1f74", "#6a3fc0", "#1c0d3c", false, false)
+		_: _g_m_kalap(c, s)
 
 
 static func _m_kalap(c: Cv, s: float, alap: Variant, vilc: Variant, sotc: Variant, csillagos: bool, sotet: bool) -> void:
@@ -765,7 +765,7 @@ static func _m_fegyver(c: Cv, s: float, v: String) -> void:
 		"bot_kristaly": _m_bot(c, s, "#4a5a72", "#8fb6d8", "kristaly")
 		"bot_koponya": _m_bot(c, s, "#3c3226", "#6b5b44", "koponya")
 		"bot_fa": _m_bot(c, s, "#4a3418", "#7a5626", "fa")
-		_: _m_bot(c, s, "#5a4020", "#8a6432", "gomb")
+		_: _m_bot(c, s, "#4a4e58", "#9aa2b2", "tesla")
 
 
 static func _m_bot(c: Cv, s: float, alap: Variant, vilc: Variant, fej: String) -> void:
@@ -810,6 +810,17 @@ static func _m_bot(c: Cv, s: float, alap: Variant, vilc: Variant, fej: String) -
 			for p in [[-1.4, -24.9], [2.8, -25.5], [0.6, -22.5]]:
 				c.ell(x + float(p[0]) * s, float(p[1]) * s, 1.0 * s, 0.55 * s, 0.4)
 			c.fs("#ffd76a"); c.circ(x + 0.6 * s, -23.4 * s, 0.85 * s)
+		"tesla":
+			# Tesla-fej: réztekercs, fölötte izzó vákuumcső (a Gőz-idéző alap botja)
+			c.fs(Color(0.45, 0.85, 1.0, 0.26)); c.circ(x, -21.6 * s, 5.4 * s)
+			c.fs("#3a2a18"); c.fill_rect(x - 1.5 * s, -18.6 * s, 3.0 * s, 2.0 * s)
+			c.ss("#c8843a"); c.lw(0.7 * s)
+			for i in 4:
+				c.line(x - 1.9 * s, (-16.0 + i * 1.3) * s, x + 1.9 * s, (-16.5 + i * 1.3) * s)
+			c.fs(Color(0.75, 0.92, 1.0, 0.55)); c.rrect(x - 1.9 * s, -25.4 * s, 3.8 * s, 7.0 * s, 1.9 * s); c.fill()
+			c.fs("#7ed4ff"); c.rrect(x - 0.7 * s, -24.0 * s, 1.4 * s, 4.6 * s, 0.7 * s); c.fill()
+			c.fs("#f0fbff"); c.circ(x, -22.6 * s, 0.75 * s)
+			c.fs("#c8843a"); c.fill_rect(x - 2.1 * s, -18.9 * s, 4.2 * s, 0.8 * s); c.circ(x, -25.6 * s, 0.9 * s)
 		_:
 			c.fs(Color(0.45, 0.78, 1.0, 0.28))
 			c.circ(x, -19.4 * s, 4.6 * s)
@@ -878,7 +889,7 @@ static func _i_test(c: Cv, s: float, v: String) -> void:
 		"bor_vert": _i_torzs(c, s, "#6b4a22", "#9d7136", "#38230c", "bor")
 		"koppeny_zold": _i_torzs(c, s, "#1f5a2c", "#3f9048", "#0e2d14", "kopeny")
 		"vadasz_mellveert": _i_torzs(c, s, "#4a5340", "#77836a", "#232a1d", "mellvert")
-		_: _i_torzs(c, s, "#2c6030", "#4f9448", "#123016", "alap")
+		_: _g_i_test(c, s)
 
 
 static func _i_torzs(c: Cv, s: float, alap: Variant, vilc: Variant, sotc: Variant, mod: String) -> void:
@@ -948,7 +959,7 @@ static func _i_fej(c: Cv, s: float, v: String) -> void:
 		"csuklya_zold": _i_csuklya(c, s, "#1f5a2c", "#3f9048", "#0e2d14")
 		"csuklya_szurke": _i_csuklya(c, s, "#3d434a", "#6e767f", "#1c2025")
 		"tollas_kalap": _i_kalap(c, s)
-		_: _i_csuklya(c, s, "#5c5230", "#877a45", "#2a2410")
+		_: _g_i_fej(c, s)
 
 
 static func _i_csuklya(c: Cv, s: float, alap: Variant, vilc: Variant, sotc: Variant) -> void:
@@ -1012,7 +1023,7 @@ static func _i_fegyver(c: Cv, s: float, v: String) -> void:
 		"ij_tiszafa": _i_ij(c, s, "#7a4f1c", "#b8863a", "#3f2709")
 		"ij_csont": _i_ij(c, s, "#cbc4ac", "#f2ecd8", "#7d7561")
 		"szamszerij": _i_szamszerij(c, s)
-		_: _i_ij(c, s, "#5f451f", "#8b6a32", "#301e08")
+		_: _g_i_ij(c, s)
 
 
 static func _i_ij(c: Cv, s: float, alap: Variant, vilc: Variant, sotc: Variant) -> void:
@@ -1082,3 +1093,209 @@ static func _i_szamszerij(c: Cv, s: float) -> void:
 	c.fs(BOR); c.circ(0.2 * s, 2.4 * s, 1.55 * s)
 	rim(c, [6.2 * s, -6.2 * s, 8.8 * s, 0.0, 6.2 * s, 6.2 * s], 0.6 * s)
 	c.restore()
+
+
+# ══════════ GORGONA: A HŐSÖK ÚJ ALAPKINÉZETE ══════════
+## A három hős alap ("" nevű) darabjai a város stílusában: gőzlovag kazánpáncélban, gőz-idéző
+## kéménykalapban Tesla-bottal, gépíjas vadász. A boltban vett darabok változatlanok, és
+## továbbra is szabadon keverhetők ezekkel — a helyek és a méretek ugyanazok.
+const REZ := "#c8843a"
+const VASSZIN := "#4c5260"
+
+
+static func _szegecs(c: Cv, x: float, y: float, r: float) -> void:
+	c.fs("#2a1c10"); c.circ(x, y, r)
+	c.fs("#f0c890"); c.circ(x - r * 0.25, y - r * 0.3, r * 0.45)
+
+
+# ── GŐZLOVAG ──
+static func _g_l_lab(c: Cv, s: float) -> void:
+	for d in [-1.0, 1.0]:
+		var x: float = d * 3.3 * s
+		c.fs(sot(VASSZIN, 0.35)); c.rrect(x - 2.6 * s, 6.0 * s, 5.2 * s, 10.6 * s, 1.5 * s); c.fill()
+		c.fs(VASSZIN); c.rrect(x - 1.6 * s, 6.0 * s, 4.0 * s, 10.6 * s, 1.4 * s); c.fill()
+		c.fs(vil(VASSZIN, 0.30)); c.rrect(x + 0.7 * s, 6.4 * s, 1.4 * s, 9.6 * s, 0.7 * s); c.fill()
+		# réz térdcsukló + dugattyúrúd
+		c.fs(sot(REZ, 0.35)); c.circ(x, 9.6 * s, 2.3 * s)
+		c.fs(REZ); c.circ(x + 0.2 * s, 9.3 * s, 1.8 * s)
+		c.fs(vil(REZ, 0.45)); c.circ(x + 0.7 * s, 8.7 * s, 0.7 * s)
+		c.fs("#aab4c4"); c.fill_rect(x - 0.4 * s, 11.4 * s, 0.9 * s, 3.8 * s)
+		# vasalt csizma
+		c.fs("#1e1a16"); c.rrect(x - 3.1 * s, 15.4 * s, 6.4 * s, 3.6 * s, 1.1 * s); c.fill()
+		c.fs(REZ); c.fill_rect(x - 3.1 * s, 15.4 * s, 6.4 * s, 0.9 * s)
+	rim(c, [5.5 * s, 6.6 * s, 5.5 * s, 15.2 * s], 0.65 * s, 0.8)
+
+
+static func _g_l_test(c: Cv, s: float) -> void:
+	# a hát mögötti kis kémény (a kazánpáncél kipufogója)
+	c.fs("#2a2622"); c.fill_rect(-9.4 * s, -15.0 * s, 2.4 * s, 9.0 * s)
+	c.fs(REZ); c.fill_rect(-9.8 * s, -15.6 * s, 3.2 * s, 1.4 * s)
+	c.fs(Color(0.92, 0.92, 0.86, 0.30)); c.circ(-8.0 * s, -18.4 * s, 2.2 * s); c.circ(-9.4 * s, -21.0 * s, 1.6 * s)
+	_l_test_szin(c, s, VASSZIN, "#98a2b6", "#22262e", REZ)
+	# szegecssor a mellvért peremén
+	for i in 4:
+		_szegecs(c, (-4.6 + i * 3.1) * s, -5.6 * s + absf(1.5 - i) * 0.5 * s, 0.5 * s)
+	# nyomásmérő óra a mellkason
+	c.fs(sot(REZ, 0.4)); c.circ(-2.4 * s, -1.4 * s, 2.5 * s)
+	c.fs("#efe6cc"); c.circ(-2.4 * s, -1.4 * s, 1.9 * s)
+	c.ss("#a02a20"); c.lw(0.5 * s); c.line(-2.4 * s, -1.4 * s, -1.1 * s, -2.6 * s)
+	c.fs("#2a1c10"); c.circ(-2.4 * s, -1.4 * s, 0.4 * s)
+	# gőzcső a vállról az övig
+	c.ss(sot(REZ, 0.25)); c.lw(1.3 * s)
+	c.bp(); c.mt(4.6 * s, -6.4 * s); c.qt(6.4 * s, -1.0 * s, 3.4 * s, 2.6 * s); c.stroke()
+	c.ss(vil(REZ, 0.35)); c.lw(0.4 * s)
+	c.bp(); c.mt(4.9 * s, -6.2 * s); c.qt(6.6 * s, -1.0 * s, 3.7 * s, 2.4 * s); c.stroke()
+
+
+static func _g_l_fej(c: Cv, s: float) -> void:
+	c.fs("#22262e"); c.fill_rect(-2.6 * s, -8.6 * s, 5.2 * s, 2.6 * s)
+	# kerek kazánsisak
+	c.fs("#22262e")
+	c.bp(); c.arc(0, -13.0 * s, 6.3 * s, PI, 0); c.lt(6.3 * s, -7.0 * s); c.lt(-6.3 * s, -7.0 * s); c.cp(); c.fill()
+	c.fs(VASSZIN)
+	c.bp(); c.arc(0, -13.2 * s, 5.7 * s, PI, 0); c.lt(5.7 * s, -7.4 * s); c.lt(-5.7 * s, -7.4 * s); c.cp(); c.fill()
+	c.fs("#98a2b6")
+	c.bp(); c.arc(0, -13.2 * s, 5.7 * s, -PI * 0.42, 0); c.lt(5.7 * s, -7.4 * s); c.lt(2.6 * s, -7.4 * s); c.cp(); c.fill()
+	# réz abroncs szegecsekkel
+	c.fs(sot(REZ, 0.3)); c.fill_rect(-5.9 * s, -15.6 * s, 11.8 * s, 1.5 * s)
+	c.fs(REZ); c.fill_rect(-5.9 * s, -15.6 * s, 11.8 * s, 0.7 * s)
+	for i in 4:
+		_szegecs(c, (-4.4 + i * 2.9) * s, -14.8 * s, 0.42 * s)
+	# két izzó, kerek szemlencse a rés helyén
+	for d in [-1.0, 1.0]:
+		c.fs(sot(REZ, 0.35)); c.circ(d * 2.5 * s, -11.6 * s, 2.3 * s)
+		c.fs("#14100a"); c.circ(d * 2.5 * s, -11.6 * s, 1.7 * s)
+		c.fs(Color(1.0, 0.62, 0.20, 0.95)); c.circ(d * 2.5 * s, -11.6 * s, 1.15 * s)
+		c.fs(Color(1.0, 0.95, 0.75, 0.95)); c.circ(d * 2.5 * s + 0.35 * s, -12.0 * s, 0.42 * s)
+	# légzőrács az áll előtt
+	c.fs("#22262e"); c.rrect(-2.6 * s, -9.6 * s, 5.2 * s, 2.4 * s, 0.7 * s); c.fill()
+	c.ss(REZ); c.lw(0.45 * s)
+	for i in 4:
+		c.line((-1.8 + i * 1.2) * s, -9.3 * s, (-1.8 + i * 1.2) * s, -7.6 * s)
+	# szelepkerék a sisak tetején a sisakforgó helyén
+	c.fs("#2a2622"); c.fill_rect(-0.5 * s, -20.6 * s, 1.0 * s, 2.0 * s)
+	c.ss("#b02a22"); c.lw(0.8 * s); c.bp(); c.ellipse(0, -21.0 * s, 3.0 * s, 1.0 * s, 0, 0, TAU); c.stroke()
+	c.line(-3.0 * s, -21.0 * s, 3.0 * s, -21.0 * s)
+	rim(c, [1.6 * s, -18.6 * s, 4.8 * s, -16.4 * s, 5.7 * s, -12.0 * s, 5.5 * s, -7.6 * s], 0.75 * s)
+
+
+## Dugattyúkard: a keresztvasnál réz henger, a penge élén izzó hő.
+static func _g_l_kard(c: Cv, s: float) -> void:
+	c.save(); c.translate(7.8 * s, 3.4 * s); c.rotate(0.62)
+	c.fs("#2a1c10"); c.rrect(-0.9 * s, 0.4 * s, 1.8 * s, 4.2 * s, 0.8 * s); c.fill()
+	c.fs(REZ); c.circ(0, 5.2 * s, 1.2 * s)
+	# henger a keresztvas helyén
+	c.fs(sot(REZ, 0.4)); c.rrect(-3.6 * s, -2.6 * s, 7.2 * s, 3.0 * s, 1.2 * s); c.fill()
+	c.fs(REZ); c.rrect(-3.6 * s, -2.6 * s, 7.2 * s, 1.3 * s, 0.7 * s); c.fill()
+	_szegecs(c, -2.6 * s, -1.0 * s, 0.4 * s); _szegecs(c, 2.6 * s, -1.0 * s, 0.4 * s)
+	# széles penge
+	c.fs("#3a4250")
+	c.poly([0, -21.0 * s, 1.8 * s, -18.0 * s, 1.8 * s, -2.6 * s, -1.8 * s, -2.6 * s, -1.8 * s, -18.0 * s])
+	c.fs("#8a96aa")
+	c.poly([0, -20.2 * s, 1.4 * s, -17.8 * s, 1.4 * s, -2.8 * s, -1.4 * s, -2.8 * s, -1.4 * s, -17.8 * s])
+	c.fs("#dfe8f4")
+	c.poly([0.2 * s, -19.8 * s, 1.2 * s, -17.6 * s, 1.2 * s, -3.0 * s, 0.4 * s, -3.0 * s])
+	# izzó él a bal oldalon
+	c.fs(Color(1.0, 0.55, 0.15, 0.85))
+	c.poly([-1.4 * s, -17.6 * s, -0.8 * s, -17.6 * s, -0.8 * s, -3.0 * s, -1.4 * s, -3.0 * s])
+	c.fs(Color(1.0, 0.9, 0.6, 0.9)); c.fill_rect(-1.25 * s, -15.0 * s, 0.3 * s, 9.0 * s)
+	rim(c, [0.6 * s, -19.6 * s, 1.3 * s, -3.2 * s], 0.7 * s)
+	c.restore()
+	c.fs("#3a2a1c"); c.circ(7.6 * s, 4.0 * s, 1.85 * s)   # bőrkesztyű
+
+
+# ── GŐZ-IDÉZŐ ──
+static func _g_m_test(c: Cv, s: float) -> void:
+	_m_kontos(c, s, "#1f3d44", "#3f7882", "#0e1e22", REZ)
+	# rézcsövek a mellkason át a derékig
+	c.ss(sot(REZ, 0.25)); c.lw(1.1 * s)
+	c.bp(); c.mt(-3.4 * s, -7.4 * s); c.qt(-5.4 * s, -1.0 * s, -3.0 * s, 2.0 * s); c.stroke()
+	c.bp(); c.mt(3.2 * s, -7.4 * s); c.qt(1.0 * s, -3.0 * s, 2.6 * s, 2.0 * s); c.stroke()
+	# izzó fiolák az övön
+	for i in 3:
+		var fx := (-3.6 + i * 2.6) * s
+		c.fs(Color(0.80, 0.95, 1.0, 0.55)); c.rrect(fx - 0.7 * s, 3.6 * s, 1.4 * s, 3.2 * s, 0.6 * s); c.fill()
+		c.fs([Color(0.45, 0.85, 1.0, 0.95), Color(0.65, 1.0, 0.45, 0.95), Color(1.0, 0.55, 0.3, 0.95)][i]); c.rrect(fx - 0.5 * s, 4.8 * s, 1.0 * s, 1.8 * s, 0.4 * s); c.fill()
+		c.fs("#2a1c10"); c.fill_rect(fx - 0.5 * s, 3.3 * s, 1.0 * s, 0.6 * s)
+	# kis nyomásmérő a gallér alatt
+	c.fs(sot(REZ, 0.4)); c.circ(0, -4.6 * s, 1.7 * s)
+	c.fs("#efe6cc"); c.circ(0, -4.6 * s, 1.2 * s)
+	c.ss("#a02a20"); c.lw(0.4 * s); c.line(0, -4.6 * s, 0.8 * s, -5.3 * s)
+
+
+## Kéménykalap: magas henger, a szalagján hegesztőszemüveg, a tetején gőz.
+static func _g_m_kalap(c: Cv, s: float) -> void:
+	const FILC := "#2a2420"
+	# karima
+	c.fs("#14100e"); c.ell(0, -15.4 * s, 8.6 * s, 2.1 * s)
+	c.fs(FILC); c.ell(0, -15.8 * s, 8.0 * s, 1.8 * s)
+	c.fs(vil(FILC, 0.25)); c.ell(1.2 * s, -16.3 * s, 5.4 * s, 0.9 * s)
+	# henger (felfelé kicsit szélesedik)
+	c.fs("#14100e"); c.poly([-5.2 * s, -15.8 * s, 5.2 * s, -15.8 * s, 5.9 * s, -26.6 * s, -5.9 * s, -26.6 * s])
+	c.fs(FILC); c.poly([-4.6 * s, -16.0 * s, 4.8 * s, -16.0 * s, 5.4 * s, -26.2 * s, -5.2 * s, -26.2 * s])
+	c.fs(vil(FILC, 0.28)); c.poly([1.2 * s, -16.0 * s, 4.8 * s, -16.0 * s, 5.4 * s, -26.2 * s, 2.0 * s, -26.2 * s])
+	c.fs(vil(FILC, 0.12)); c.ell(0.1 * s, -26.4 * s, 5.3 * s, 1.1 * s)
+	# réz szalag + szemüveg
+	c.fs(sot(REZ, 0.3)); c.fill_rect(-5.0 * s, -19.2 * s, 10.0 * s, 2.0 * s)
+	c.fs(REZ); c.fill_rect(-5.0 * s, -19.2 * s, 10.0 * s, 0.8 * s)
+	for d in [-1.0, 1.0]:
+		c.fs(sot(REZ, 0.25)); c.circ(d * 2.3 * s, -18.4 * s, 2.1 * s)
+		c.fs("#1c3a40"); c.circ(d * 2.3 * s, -18.4 * s, 1.5 * s)
+		c.fs(Color(0.55, 0.95, 1.0, 0.9)); c.circ(d * 2.3 * s + 0.4 * s, -18.8 * s, 0.6 * s)
+	# gőz a kalap tetején
+	c.fs(Color(0.92, 0.94, 0.90, 0.32)); c.circ(-1.0 * s, -28.6 * s, 1.9 * s); c.circ(1.4 * s, -30.6 * s, 1.4 * s)
+	rim(c, [5.3 * s, -26.0 * s, 4.8 * s, -16.4 * s, 7.6 * s, -15.6 * s], 0.7 * s)
+
+
+# ── GÉPÍJAS VADÁSZ ──
+static func _g_i_test(c: Cv, s: float) -> void:
+	_i_torzs(c, s, "#4a3526", "#7a5a3e", "#241810", "alap")
+	# sárgaréz váll-lemez a húzó karon
+	c.fs(sot(REZ, 0.4)); c.ell(5.6 * s, -6.2 * s, 3.2 * s, 2.5 * s, 0.3)
+	c.fs(REZ); c.ell(5.8 * s, -6.6 * s, 2.7 * s, 2.0 * s, 0.3)
+	c.fs(vil(REZ, 0.4)); c.ell(6.4 * s, -7.2 * s, 1.4 * s, 0.8 * s, 0.3)
+	_szegecs(c, 4.6 * s, -5.6 * s, 0.4 * s); _szegecs(c, 6.8 * s, -5.4 * s, 0.4 * s)
+	# csavarok a keresztszíjon
+	c.fs("#c9d2dc")
+	for i in 4:
+		var u := i / 3.0
+		c.fill_rect(lerpf(-4.4, 3.6, u) * s, lerpf(-6.0, 2.4, u) * s, 0.7 * s, 2.0 * s)
+	c.fs(REZ)
+	for i in 4:
+		var u2 := i / 3.0
+		c.fill_rect(lerpf(-4.4, 3.6, u2) * s, lerpf(-6.0, 2.4, u2) * s + 1.5 * s, 0.7 * s, 0.6 * s)
+
+
+static func _g_i_fej(c: Cv, s: float) -> void:
+	_i_csuklya(c, s, "#5a2a22", "#8a4a3a", "#2a1210")
+	# távcsöves szemlencse a jobb szemen, szíjjal
+	c.ss("#2a1c10"); c.lw(0.6 * s); c.line(-3.6 * s, -13.4 * s, 3.6 * s, -11.6 * s)
+	c.fs(sot(REZ, 0.35)); c.circ(1.8 * s, -12.4 * s, 2.0 * s)
+	c.fs("#14100a"); c.circ(1.8 * s, -12.4 * s, 1.4 * s)
+	c.fs(Color(0.62, 1.0, 0.55, 0.95)); c.circ(1.8 * s, -12.4 * s, 0.9 * s)
+	c.fs(Color(0.95, 1.0, 0.9, 0.95)); c.circ(2.1 * s, -12.7 * s, 0.35 * s)
+	c.fs(REZ); c.fill_rect(3.2 * s, -13.0 * s, 1.5 * s, 1.2 * s)
+	# légzőmaszk az áll előtt
+	c.fs("#241810"); c.rrect(-2.2 * s, -9.9 * s, 4.4 * s, 2.2 * s, 0.8 * s); c.fill()
+	c.fs(REZ); c.circ(-1.1 * s, -8.8 * s, 0.6 * s); c.circ(1.1 * s, -8.8 * s, 0.6 * s)
+
+
+## Gépíj: sárgaréz ív, a két végén áttételes kerékkel.
+static func _g_i_ij(c: Cv, s: float) -> void:
+	_i_ij(c, s, "#6a5a3a", "#d0b060", "#2e2616")
+	var r := 9.4 * s
+	var ex := 8.1 * s
+	var cyp := -1.0 * s
+	var dy := r * sin(PI * 0.44)
+	for d in [-1.0, 1.0]:
+		var y: float = cyp + d * dy
+		c.fs(sot(REZ, 0.4)); c.circ(ex, y, 1.9 * s)
+		c.fs(REZ); c.circ(ex, y, 1.5 * s)
+		c.fs("#2a1c10"); c.circ(ex, y, 0.5 * s)
+		c.ss("#2a1c10"); c.lw(0.35 * s)
+		for i in 3:
+			var a := i / 3.0 * PI
+			c.line(ex - cos(a) * 1.4 * s, y - sin(a) * 1.4 * s, ex + cos(a) * 1.4 * s, y + sin(a) * 1.4 * s)
+	# irányzék a markolat fölött
+	c.fs(REZ); c.fill_rect(ex - 0.4 * s, cyp - 5.6 * s, 0.8 * s, 2.6 * s)
+	c.fs(Color(1.0, 0.4, 0.3, 0.95)); c.circ(ex, cyp - 5.9 * s, 0.6 * s)

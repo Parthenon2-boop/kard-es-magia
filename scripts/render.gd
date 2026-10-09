@@ -446,7 +446,11 @@ static func world_mid(m: Node, c: Cv) -> void:
 		if mo.facing < 0:
 			c.translate((sx + T / 2) * 2, 0)
 			c.scale(-1, 1)
-		Sprites.monster_cached(c, mo.key + ("#2" if mo.boss and mo.phase == 2 else ""), sx + T / 2 + jolt, sy + T / 2, T * 0.85 * morph * (1.25 if mo.mini else 1.0), tick, mo.seedv)
+		# minden példány kicsit más: méret és árnyalat a szörny magjából (a főellenség és a mini-boss nem)
+		var kulon := not (mo.boss or mo.mini)
+		var vm: float = Data.VAR_MERET[int(mo.seedv * 7.0) % Data.VAR_MERET.size()] if kulon else 1.0
+		var vt := (int(mo.seedv * 3.0) % Data.VAR_TONUS.size()) if kulon else 0
+		Sprites.monster_cached(c, mo.key + ("#2" if mo.boss and mo.phase == 2 else ""), sx + T / 2 + jolt, sy + T / 2, T * 0.85 * morph * (1.25 if mo.mini else vm), tick, mo.seedv, vt)
 		c.restore()
 		if mo.morph_ms > 0.0 and mt >= 0.0 and mt < 500.0:
 			c.tex(glow, Rect2(sx - T * 0.6, sy - T * 0.6, T * 2.2, T * 2.2), Color(1, 1, 1, 0.8 * (1.0 - mt / 500.0)))

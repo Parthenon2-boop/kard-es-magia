@@ -672,5 +672,17 @@
 	"set.controls.d": "Tasten ansehen und neu belegen.",
 	"set.on": "An",
 	"set.off": "Aus",
-	"set.hint": "↑↓: wählen  ·  ←→: ändern  ·  Esc: zurück"
+	"set.hint": "↑↓: wählen  ·  ←→: ändern  ·  Esc: zurück",
+
+	"mon.leech": "Rohregel",
+	"mon.drone": "Wartungsdrohne",
+	"mon.bloom": "Fleischblüte",
+	"mon.sentinel": "Wachautomat",
+	"msg.shot_in": "{0} schießt auf dich: -{1}",
+
+	"set.tempo": "Tempo der Gegner",
+	"set.tempo.d": "Wenn du stehst, ziehen die Gegner so oft von selbst.",
+	"set.tempo.0": "Langsam",
+	"set.tempo.1": "Mittel",
+	"set.tempo.2": "Schnell"
 }

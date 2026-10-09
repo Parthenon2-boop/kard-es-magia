@@ -91,7 +91,7 @@ static func mon_shadow(c: Cv, key: String, cx: float, cy: float, sz: float) -> v
 		c.fs(Color(0, 0, 0, 0.32)); c.ell(0, sz * 0.42, sz * 0.20 * k, sz * 0.06 * k), cx, cy)
 
 
-const MON_SHADOW := {"rust_worm": 1.7, "rust_worm#2": 1.7, "dr_karel": 1.1, "dr_karel#2": 1.1, "symbiote": 1.6, "symbiote#2": 1.6,
+const MON_SHADOW := {"sentinel": 1.25, "leech": 1.1, "drone": 0.7, "bloom": 1.0, "rust_worm": 1.7, "rust_worm#2": 1.7, "dr_karel": 1.1, "dr_karel#2": 1.1, "symbiote": 1.6, "symbiote#2": 1.6,
 	"weaver": 1.5, "weaver#2": 1.5, "rat": 0.9, "scalpel": 0.6, "goblin_king": 1.25, "necromancer": 1.2, "stone_titan": 1.5, "shadow_lord": 1.3,
 	"dragon": 1.6, "golem": 1.2, "troll": 1.25, "demon": 1.2, "spider": 1.2}
 
@@ -122,17 +122,22 @@ static func monster(c: Cv, key: String, cx: float, cy: float, sz: float, t: floa
 
 ## Ezeknél a szörnyeknél az EGYETLEN mozgás a fel-le ringás (mon_bob), ezért a kész háló
 ## újrafelhasználható: csak feljebb-lejjebb kerül. A többi (izzó, lobogó, kavargó) élőben rajzolódik.
-const SIMPLE_MONS := ["goblin", "skeleton", "orc", "vampire", "assassin", "troll", "goblin_king"]
+const SIMPLE_MONS := ["goblin", "skeleton", "orc"]
 
 
-static func monster_cached(c: Cv, key: String, cx: float, cy: float, sz: float, t: float, sd: float) -> void:
+## `tonus`: a példány árnyalat-változata (Data.VAR_TONUS sorszáma; 0 = eredeti színek).
+static func monster_cached(c: Cv, key: String, cx: float, cy: float, sz: float, t: float, sd: float, tonus := 0) -> void:
 	mon_shadow(c, key, cx, cy, sz)
+	if tonus > 0:
+		c.tint = Data.VAR_TONUS[tonus % Data.VAR_TONUS.size()]
 	if not key in SIMPLE_MONS:
 		monster(c, key, cx, cy, sz, t, sd, false)
+		c.tint = Color.WHITE
 		return
 	# a felvétel olyan időpillanatban készül, ahol a ringás éppen nulla -> a mag nem számít
-	c.blit("m|%s|%d" % [key, int(roundf(sz * 4.0))],
+	c.blit("m|%s|%d|%d" % [key, int(roundf(sz * 4.0)), tonus],
 		func() -> void: monster(c, key, 0, 0, sz, -sd / 0.08, sd, false), cx, cy + mon_bob(t, sd))
+	c.tint = Color.WHITE
 
 
 static func goblin(c: Cv, cx: float, cy: float, sz: float, t: float, sd: float) -> void:

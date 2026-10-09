@@ -1115,6 +1115,8 @@ func kod_kulcsai() -> Dictionary:
 		out["cls." + str(Lang.CLS_KULCS[c])] = "lang.gd"
 		out["cls." + str(Lang.CLS_KULCS[c]) + ".d"] = "lang.gd"
 		out["char.locked." + str(Lang.CLS_KULCS[c])] = "screens.gd"
+	for i in 3:
+		out["set.tempo.%d" % i] = "story_ui.gd"
 	for a in ["ki", "var", "megy", "kesz", "hiba"]:
 		out["cloud." + a] = "story_ui.gd"
 	for h in ["halozat", "belepes", "tul_sok_mentes", "betelt_a_tarhely"]:
@@ -2086,4 +2088,37 @@ func test_uj() -> void:
 		ok(mi0 == 1 and mi1 == 1, "a mini-boss megmarad")
 	SaveGame.erase_all()
 	Meta.reset()
+	# ── 11.9 változatos szörnyek: minden zóna minden szörnyének van rajza; az újak viselkedése
+	for lv in Data.POOL:
+		for kulcs in (Data.POOL[lv] as Array) + (Data.RARE_POOL[lv] as Array):
+			ok(Data.MONS.has(kulcs), "%d. zóna: ismert szörny (%s)" % [lv, kulcs])
+	for kulcs in ["witch", "vampire", "assassin", "troll", "demon", "leech", "drone", "bloom", "sentinel"]:
+		ok(Sprites2.has(kulcs), "%s: Gorgona-stílusú rajza van" % kulcs)
+	ok(Data.VAR_MERET.size() >= 3 and Data.VAR_TONUS.size() >= 4 and Data.VAR_TONUS[0] == Color(1, 1, 1), "a példányok mérete és árnyalata változik")
+	g = arena("Lovag")
+	p = g.player
+	p.max_hp = 500
+	p.hp = 500
+	g.world.mons.clear()
+	var dr := Mon.make("drone", p.x + 3, p.y, "normal")
+	dr.awake = true
+	g.world.mons.append(dr)
+	g.advance_turn(true)
+	ok(p.hp < 500 and dr.x == p.x + 3, "a Szerelődrón egy vonalból, messziről lő (nem megy oda)")
+	g.world.mons.clear()
+	p.hp = 500
+	var vi := Mon.make("bloom", p.x + 2, p.y + 1, "normal")
+	vi.awake = true
+	g.world.mons.append(vi)
+	for i in 6:
+		g.advance_turn(true)
+	ok(p.hp < 500 and vi.x == p.x + 2 and vi.y == p.y + 1, "a Húsvirág helyből köp, és sosem mozdul")
+	g.world.mons.clear()
+	p.hp = 500
+	var vi2 := Mon.make("bloom", p.x + 6, p.y, "normal")
+	vi2.awake = true
+	g.world.mons.append(vi2)
+	for i in 6:
+		g.advance_turn(true)
+	ok(p.hp == 500 and vi2.x == p.x + 6, "a Húsvirág a köpőtávján kívül ártalmatlan")
 	print("  %d ereklye, %d esemény, %d jelvény; a Sebész és a napi kihívás rendben" % [Relics.ORDER.size(), Data.EVENTS.size(), Meta.JELVENYEK.size()])

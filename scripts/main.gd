@@ -52,7 +52,10 @@ var event_ui: Variant = null       # {"ev": Dictionary, "sel": int}
 # képbeállítások (Beállítások menü; a beallitasok.cfg [kep] szakaszába mentődnek)
 #   meret: a felület nagyítása; 0 = automatikus (a kijelző képpontsűrűségéből — Retina-kijelzőn 200%)
 const KEP_MERETEK := [0.0, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
-var kep := {"meret": 0.0, "teljes": false, "vsync": true, "razas": true, "reszecske": true}
+var kep := {"meret": 0.0, "teljes": false, "vsync": true, "razas": true, "reszecske": true, "tempo": 1}
+## Az élő világ tempója: ha a hős áll, ennyi ezredmásodpercenként lépnek az ellenségek
+## (lassú / közepes / gyors). Az első várakozó kör mindig kicsit később jön.
+const TEMPO_MS := [1300.0, 800.0, 500.0]
 var settings_sel := 0
 var settings_back := "menu"
 var _ablak_px := Vector2i.ZERO     # az ablak mérete valódi képpontban (ha változik, újraszámoljuk a nagyítást)
@@ -365,6 +368,7 @@ func _load_cfg() -> void:
 		kep["meret"] = km if km in KEP_MERETEK else 0.0
 		for kk in ["teljes", "vsync", "razas", "reszecske"]:
 			kep[kk] = bool(cf.get_value("kep", kk, kep[kk]))
+		kep["tempo"] = clampi(int(cf.get_value("kep", "tempo", 1)), 0, 2)
 		skins = Skins.betolt(cf)
 
 
@@ -427,6 +431,7 @@ func kep_valt(sor: int, irany: int) -> void:
 		2: kep["vsync"] = not bool(kep["vsync"])
 		3: kep["razas"] = not bool(kep["razas"])
 		4: kep["reszecske"] = not bool(kep["reszecske"])
+		5: kep["tempo"] = (int(kep["tempo"]) + irany + 3) % 3
 		_: return
 	apply_kep()
 	save_cfg()
@@ -1089,7 +1094,8 @@ func idle_tick(now: float) -> void:
 		_idle_at = now
 		_idle_first = true
 		return
-	if now - _idle_at < (Data.IDLE_FIRST_MS if _idle_first else Data.IDLE_MS):
+	var varakozas: float = TEMPO_MS[clampi(int(kep["tempo"]), 0, 2)]
+	if now - _idle_at < (varakozas + 350.0 if _idle_first else varakozas):
 		return
 	_idle_first = false
 	game.advance_turn(true)     # várakozó kör: a szörnyek lépnek, de a méreg nem marja a hőst
@@ -1194,11 +1200,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			if k == "Escape": set_state("daily" if daily_mode else "diff")
 		"settings":
 			if k == "Escape" or k == binds["menu"]: close_settings()
-			elif k in ["ArrowUp", "w"]: settings_sel = (settings_sel + 5) % 6
-			elif k in ["ArrowDown", "s"]: settings_sel = (settings_sel + 1) % 6
+			elif k in ["ArrowUp", "w"]: settings_sel = (settings_sel + 6) % 7
+			elif k in ["ArrowDown", "s"]: settings_sel = (settings_sel + 1) % 7
 			elif k in ["ArrowLeft", "a"]: kep_valt(settings_sel, -1)
 			elif k in ["ArrowRight", "d", "Enter", " "]:
-				if settings_sel == 5: set_state("help")
+				if settings_sel == 6: set_state("help")
 				else: kep_valt(settings_sel, 1)
 		"daily":
 			if k == "Escape" or k == binds["menu"]: set_state("menu")
@@ -1548,7 +1554,7 @@ func _ui_sig() -> Array:
 			s.append(audio.music_started if audio else false)
 			s.append(SaveGame.has_save())
 		"pause": s.append(pause_sel)
-		"settings": s.append_array([settings_sel, kep["meret"], kep["teljes"], kep["vsync"], kep["razas"], kep["reszecske"], kep_meret()])
+		"settings": s.append_array([settings_sel, kep["meret"], kep["teljes"], kep["vsync"], kep["razas"], kep["reszecske"], kep["tempo"], kep_meret()])
 		"daily": s.append_array([fiok.seq if fiok else 0, Meta.seq, Daily.nap()])
 		"relic":
 			if relic_ui != null:
@@ -1610,7 +1616,7 @@ func _update_motion(now: float) -> void:
 	if kor != _mozgas_kor:
 		if _mozgas_kor >= 0:
 			var telt := now - _mozgas_kor_ms
-			_kor_hossz_ms = clampf(lerpf(_kor_hossz_ms, telt, 0.5), float(Data.STEP_MS), float(Data.IDLE_MS))
+			_kor_hossz_ms = clampf(lerpf(_kor_hossz_ms, telt, 0.5), float(Data.STEP_MS), 1400.0)
 		_mozgas_kor = kor
 		_mozgas_kor_ms = now
 	var mon_d := dt / maxf(1.0, _kor_hossz_ms)

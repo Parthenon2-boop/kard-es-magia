@@ -705,8 +705,8 @@ static func settings(m: Node, c: Cv) -> void:
 		art(c, "gorgona", 0, 0, W, H, m.tick, 0.5 + 0.5 * sin(m.tick * 0.0016), 1)
 		c.fs(rgba(6, 5, 4, 0.84)); c.fill_rect(0, 0, W, H)
 	var pw := minf(620.0, W - 24)
-	var rh := minf(62.0, (H - 150) / 6.0)
-	var ph := 84 + 6 * rh + 40
+	var rh := minf(60.0, (H - 150) / 7.0)
+	var ph := 84 + 7 * rh + 40
 	var ox := (W - pw) / 2
 	var oy := maxf(10, (H - ph) / 2)
 	c.panel(ox, oy, pw, ph, P["parch"], P["parchGold"], 2, 10)
@@ -722,6 +722,7 @@ static func settings(m: Node, c: Cv) -> void:
 		[Lang.T("set.vsync"), be if m.kep["vsync"] else ki, Lang.T("set.vsync.d")],
 		[Lang.T("set.shake"), be if m.kep["razas"] else ki, Lang.T("set.shake.d")],
 		[Lang.T("set.particles"), be if m.kep["reszecske"] else ki, Lang.T("set.particles.d")],
+		[Lang.T("set.tempo"), Lang.T("set.tempo." + str(clampi(int(m.kep["tempo"]), 0, 2))), Lang.T("set.tempo.d")],
 		[Lang.T("menu.controls"), "▶", Lang.T("set.controls.d")],
 	]
 	for i in sorok.size():
@@ -731,7 +732,7 @@ static func settings(m: Node, c: Cv) -> void:
 		c.ftxt_fit(str(sorok[i][0]), ox + 30, y + rh * 0.40, P["parchGold"] if sel else P["ink"], 15, pw * 0.5)
 		c.ftxt_fit(str(sorok[i][2]), ox + 30, y + rh * 0.40 + 17, P["inkDark"], 10.5, pw * 0.56)
 		var vx := ox + pw - 150
-		if i < 5:
+		if i < 6:
 			c.panel(vx - 62, y + rh * 0.5 - 20, 32, 32, "#241a0c", P["parchEdge"], 1.2, 6)
 			c.ftxt("◀", vx - 46, y + rh * 0.5 + 1, P["parchGold"], 13, "center")
 			m.add_hit(vx - 62, y + rh * 0.5 - 20, 32, 32, func() -> void:

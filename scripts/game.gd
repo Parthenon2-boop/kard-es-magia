@@ -1066,6 +1066,23 @@ func _mon_act(m: Mon) -> bool:
 	return false
 
 
+## Távolsági szörny lövése: gyengébb az ütésnél, de messziről jön. A Húsvirág köpete mérgez is.
+func _mon_shot(m: Mon) -> void:
+	var p := player
+	var dmg := maxi(1, Data.jround(calc_dmg(m.atk, p.def) * 0.8))
+	if p.x != m.x:
+		m.facing = 1 if p.x > m.x else -1
+	add_fx({"type": "orb" if m.sp == "ranged" else "ball", "x0": m.x, "y0": m.y, "x1": p.x, "y1": p.y, "dur": 240.0})
+	hurt(dmg)
+	add_fx({"type": "dmgnum", "x": p.x, "y": p.y, "txt": "-%d" % dmg, "col": "#ff5040", "dur": 700.0, "delay": 220.0})
+	p.add_msg(Lang.ref("msg.shot_in", m.ref(), dmg), Data.P["vein"])
+	if m.sp == "spit" and randf() < 0.45:
+		p.poison = maxi(p.poison, 3)
+		p.add_msg(Lang.ref("msg.poisoned"), "#90c030")
+	play("shoot" if m.sp == "ranged" else "growl")
+	check_death()
+
+
 ## Automata-ápoló: a közelben megsebzett társát foltozza be (a saját lépése helyett).
 func _mend(m: Mon) -> bool:
 	for o in world.mons:
@@ -1136,11 +1153,23 @@ func advance_turn(idle := false) -> void:
 		elif w.is_vis(m.x, m.y) or m.awake:
 			if m.sp == "mend" and randf() < 0.35 and _mend(m):
 				continue
+			# távolsági szörnyek: a Szerelődrón egy vonalból lő, a Húsvirág helyből köp (és sosem lép)
+			if m.sp == "ranged" or m.sp == "spit":
+				var tav := _dist(m)
+				var vonal := p.x == m.x or p.y == m.y or absi(p.x - m.x) == absi(p.y - m.y)
+				if tav > 1 and w.is_vis(m.x, m.y) and ((m.sp == "ranged" and tav <= 4 and vonal) or (m.sp == "spit" and tav <= 3)):
+					_mon_shot(m)
+					continue
+				if m.sp == "spit":
+					if tav <= 1:
+						mon_attack(m)
+					continue
 			var hit := _mon_act(m)
 			# a fürge lények (Gőzpatkány, Lebegő szike) kettőt lépnek, de csak egyszer ütnek
 			if m.sp == "swift" and not hit and m.alive and _dist(m) > 1:
 				_mon_act(m)
-		elif randf() < 0.22:
+		elif m.sp != "spit" and randf() < 0.5:
+			# a nyugodt szörnyek is járkálnak: a pálya akkor is él, ha a hős áll
 			var d: Vector2i = Data.pick(Dungeon.DIRS)
 			if d.x != 0:
 				m.facing = d.x

@@ -4,7 +4,8 @@ extends RefCounted
 ## (Nora és a Megnyúzott Próféta), a feljegyzés-lap, és a bevezető / befejezés háttérképei.
 ## Ugyanaz a rajzoló (Cv) és ugyanaz a lépték, mint a sprites.gd-ben: s = méret / 30.
 
-const KEYS := ["rat", "nurse", "scalpel", "spore", "rust_worm", "dr_karel", "symbiote", "weaver"]
+const KEYS := ["rat", "nurse", "scalpel", "spore", "rust_worm", "dr_karel", "symbiote", "weaver",
+	"witch", "vampire", "assassin", "troll", "demon", "leech", "drone", "bloom", "sentinel"]
 const REZ := "#c8843a"      # réz
 const ROZSDA := "#8a4a22"
 const HUS := "#b8424e"
@@ -36,6 +37,15 @@ static func draw(c: Cv, key: String, cx: float, cy: float, sz: float, t: float, 
 		"nurse": nurse(c, cx, cy, sz, t, sd)
 		"scalpel": scalpel(c, cx, cy, sz, t, sd)
 		"spore": spore(c, cx, cy, sz, t, sd)
+		"witch": brewer(c, cx, cy, sz, t, sd)
+		"vampire": pumper(c, cx, cy, sz, t, sd)
+		"assassin": butcher(c, cx, cy, sz, t, sd)
+		"troll": root_troll(c, cx, cy, sz, t, sd)
+		"demon": core_thrall(c, cx, cy, sz, t, sd)
+		"leech": leech(c, cx, cy, sz, t, sd)
+		"drone": drone(c, cx, cy, sz, t, sd)
+		"bloom": bloom(c, cx, cy, sz, t, sd)
+		"sentinel": sentinel(c, cx, cy, sz, t, sd)
 		"rust_worm": rust_worm(c, cx, cy, sz, t, sd, p2)
 		"dr_karel": dr_karel(c, cx, cy, sz, t, sd, p2)
 		"symbiote": symbiote(c, cx, cy, sz, t, sd, p2)
@@ -915,3 +925,307 @@ static func status_icons(c: Cv, x: float, y: float, burn: int, corr: int, bleed:
 	if bleed > 0:
 		c.fs(rgba(220, 30, 40, 0.95)); c.poly([xx, y - 5, xx + 3.0, y + 1.5, xx, y + 4, xx - 3.0, y + 1.5])
 		c.fs(rgba(255, 150, 150, 0.9)); c.circ(xx - 0.8, y + 0.6, 1.0)
+
+
+# ══════════ GORGONA LAKÓI: újrarajzolt és új szörnyek ══════════
+## Méregkeverő: gumikötényes, gázálarcos alak, a kezében izzó lombik, a hátán tartály.
+static func brewer(c: Cv, cx: float, cy: float, sz: float, t: float, sd: float) -> void:
+	var s := sz / 30.0
+	const GUMI := "#3a4a3a"
+	c.save(); c.translate(cx, cy + _bob(t, sd))
+	# háti tartály csövekkel
+	c.fs(sot(REZ, 0.45)); c.rrect(-9.0 * s, -7.0 * s, 5.0 * s, 12.0 * s, 2.0 * s); c.fill()
+	c.fs(REZ); c.rrect(-8.4 * s, -7.0 * s, 2.0 * s, 12.0 * s, 1.0 * s); c.fill()
+	c.ss(sot(REZ, 0.3)); c.lw(1.0 * s)
+	c.bp(); c.mt(-6.6 * s, -7.0 * s); c.qt(-3.0 * s, -12.0 * s, -1.0 * s, -8.0 * s); c.stroke()
+	# lábak
+	c.fs("#1e241e"); c.rrect(-4.4 * s, 7.0 * s, 3.6 * s, 6.0 * s, 1.2 * s); c.fill(); c.rrect(0.8 * s, 7.0 * s, 3.6 * s, 6.0 * s, 1.2 * s); c.fill()
+	# görnyedt test: gumiköpeny
+	c.fs(sot(GUMI, 0.4)); c.poly([-6.4 * s, -5.0 * s, 6.0 * s, -5.0 * s, 7.6 * s, 9.6 * s, -7.6 * s, 9.6 * s])
+	c.fs(GUMI); c.poly([-5.6 * s, -5.0 * s, 5.4 * s, -5.0 * s, 6.6 * s, 9.0 * s, -6.6 * s, 9.0 * s])
+	c.fs(vil(GUMI, 0.22)); c.poly([1.0 * s, -4.6 * s, 5.0 * s, -4.6 * s, 6.0 * s, 8.6 * s, 2.6 * s, 8.6 * s])
+	c.fs(rgba(150, 230, 60, 0.75)); c.ell(-1.6 * s, 3.0 * s, 1.6 * s, 2.4 * s); c.circ(2.0 * s, 6.0 * s, 0.9 * s)
+	# fej: gázálarc két kerek szűrővel
+	c.fs("#2a2e2a"); c.ell(0, -9.0 * s, 4.8 * s, 5.0 * s)
+	c.fs("#4a524a"); c.ell(0.4 * s, -9.4 * s, 4.0 * s, 4.2 * s)
+	var gl := 0.6 + 0.4 * sin(t * 0.12 + sd)
+	for xx in [-1.9, 2.1]:
+		c.fs(REZ); c.circ(xx * s, -10.2 * s, 1.7 * s)
+		c.fs(rgba(160, 255, 90, gl)); c.circ(xx * s, -10.2 * s, 1.05 * s)
+	c.fs("#1a1c1a"); c.circ(-2.6 * s, -6.2 * s, 1.6 * s); c.circ(2.8 * s, -6.2 * s, 1.6 * s)
+	c.fs(sot(REZ, 0.2)); c.circ(-2.6 * s, -6.2 * s, 0.8 * s); c.circ(2.8 * s, -6.2 * s, 0.8 * s)
+	# felemelt kar az izzó lombikkal
+	c.ss(GUMI); c.lw(2.0 * s); c.line(5.0 * s, -3.0 * s, 9.0 * s, -6.0 * s)
+	c.fs(rgba(150, 255, 80, 0.28 * gl)); c.circ(10.0 * s, -8.6 * s, 4.4 * s)
+	c.fs(rgba(210, 240, 230, 0.55)); c.circ(10.0 * s, -8.0 * s, 2.4 * s); c.fill_rect(9.3 * s, -12.0 * s, 1.4 * s, 2.4 * s)
+	c.fs(rgba(140, 240, 60, 0.9)); c.ell(10.0 * s, -7.4 * s, 2.0 * s, 1.5 * s)
+	c.restore()
+
+
+## Vérszivattyús: sovány, sápadt alak; a hátán vértartály, a karjaiba csövek futnak, tűkarmokkal.
+static func pumper(c: Cv, cx: float, cy: float, sz: float, t: float, sd: float) -> void:
+	var s := sz / 30.0
+	const BOR := "#c8c0b0"
+	c.save(); c.translate(cx, cy + _bob(t, sd))
+	# vértartály a háton: üveghenger, benne lüktető vér
+	var pu := 0.5 + 0.5 * sin(t * 0.15 + sd)
+	c.fs(sot(REZ, 0.4)); c.fill_rect(-3.2 * s, -12.4 * s, 6.4 * s, 1.6 * s); c.fill_rect(-3.2 * s, -3.0 * s, 6.4 * s, 1.6 * s)
+	c.fs(rgba(120, 10, 20, 0.9)); c.fill_rect(-2.6 * s, -10.8 * s, 5.2 * s, 7.8 * s)
+	c.fs(rgba(230, 40, 50, 0.9)); c.fill_rect(-2.6 * s, (-10.8 + (1.0 - pu) * 3.0) * s, 5.2 * s, (7.8 - (1.0 - pu) * 3.0) * s)
+	c.fs(rgba(255, 200, 200, 0.35)); c.fill_rect(-2.0 * s, -10.6 * s, 1.0 * s, 7.4 * s)
+	# lábak
+	c.fs("#2a2228"); c.rrect(-3.6 * s, 6.0 * s, 2.8 * s, 7.4 * s, 1.0 * s); c.fill(); c.rrect(0.8 * s, 6.0 * s, 2.8 * s, 7.4 * s, 1.0 * s); c.fill()
+	# vézna törzs kórházi ingben
+	c.fs(sot(BOR, 0.35)); c.poly([-4.6 * s, -5.0 * s, 4.6 * s, -5.0 * s, 3.6 * s, 7.4 * s, -3.6 * s, 7.4 * s])
+	c.fs("#a8b0a8"); c.poly([-3.9 * s, -5.0 * s, 4.0 * s, -5.0 * s, 3.1 * s, 6.9 * s, -3.1 * s, 6.9 * s])
+	c.ss(rgba(170, 20, 30, 0.8)); c.lw(0.6 * s)
+	for i in 3:
+		c.line(-2.6 * s, (-2.4 + i * 2.6) * s, 2.8 * s, (-2.4 + i * 2.6) * s)
+	# karok + vércsövek + tűkarmok
+	for side in [-1.0, 1.0]:
+		var d: float = side
+		c.ss(BOR); c.lw(1.6 * s)
+		c.bp(); c.mt(d * 4.2 * s, -4.0 * s); c.lt(d * 7.4 * s, 1.0 * s); c.lt(d * 8.2 * s, 6.0 * s); c.stroke()
+		c.ss(rgba(200, 30, 40, 0.9)); c.lw(0.7 * s)
+		c.bp(); c.mt(d * 2.0 * s, -8.0 * s); c.qt(d * 9.0 * s, -8.0 * s, d * 7.6 * s, 1.0 * s); c.stroke()
+		c.ss("#dfe8f0"); c.lw(0.5 * s)
+		for i in 3:
+			c.line(d * 8.2 * s, 6.0 * s, d * (7.4 + i * 0.9) * s, 9.6 * s)
+	# fej: kopasz, beesett szemek
+	c.fs(sot(BOR, 0.3)); c.ell(0, -8.6 * s, 3.8 * s, 4.4 * s)
+	c.fs(BOR); c.ell(0.3 * s, -9.0 * s, 3.2 * s, 3.8 * s)
+	c.fs("#3a1418"); c.ell(-1.4 * s, -9.2 * s, 1.1 * s, 1.3 * s); c.ell(1.7 * s, -9.2 * s, 1.1 * s, 1.3 * s)
+	c.fs(rgba(255, 60, 60, 0.6 + 0.4 * pu)); c.circ(-1.4 * s, -9.2 * s, 0.5 * s); c.circ(1.7 * s, -9.2 * s, 0.5 * s)
+	c.fs("#3a1418"); c.ell(0.2 * s, -6.4 * s, 1.2 * s, 0.6 * s)
+	c.restore()
+
+
+## A Klinika mészárosa: zömök alak véres kötényben, zsákcsuklyában, hatalmas bárddal.
+static func butcher(c: Cv, cx: float, cy: float, sz: float, t: float, sd: float) -> void:
+	var s := sz / 30.0
+	c.save(); c.translate(cx, cy + _bob(t, sd))
+	c.fs("#241c18"); c.rrect(-5.4 * s, 7.0 * s, 4.4 * s, 6.0 * s, 1.2 * s); c.fill(); c.rrect(1.0 * s, 7.0 * s, 4.4 * s, 6.0 * s, 1.2 * s); c.fill()
+	# széles törzs
+	c.fs("#4a3a30"); c.ell(0, 1.0 * s, 8.4 * s, 8.4 * s)
+	c.fs("#6a5444"); c.ell(0.6 * s, 0.4 * s, 7.4 * s, 7.4 * s)
+	# kötény vérfoltokkal
+	c.fs("#b8b09c"); c.poly([-4.6 * s, -4.0 * s, 4.8 * s, -4.0 * s, 5.8 * s, 9.6 * s, -5.6 * s, 9.6 * s])
+	c.fs("#d8d0bc"); c.poly([0.6 * s, -3.6 * s, 4.4 * s, -3.6 * s, 5.2 * s, 9.2 * s, 1.6 * s, 9.2 * s])
+	c.fs(rgba(140, 20, 26, 0.9)); c.ell(-1.6 * s, 1.0 * s, 2.4 * s, 3.0 * s, 0.4); c.ell(2.6 * s, 5.6 * s, 1.6 * s, 2.2 * s); c.circ(-3.0 * s, 6.6 * s, 1.0 * s)
+	# fej: zsákcsuklya egy szemnyílással
+	c.fs("#7a6a4a"); c.ell(0, -8.6 * s, 4.8 * s, 5.0 * s)
+	c.fs("#96845c"); c.ell(0.5 * s, -9.0 * s, 4.0 * s, 4.2 * s)
+	c.ss("#4a3e28"); c.lw(0.6 * s)
+	c.line(-3.4 * s, -5.6 * s, 3.6 * s, -5.6 * s); c.line(-1.0 * s, -12.6 * s, 0.4 * s, -6.0 * s)
+	c.fs("#14100a"); c.ell(1.6 * s, -9.4 * s, 1.5 * s, 1.2 * s)
+	c.fs(rgba(255, 210, 90, 0.9)); c.circ(1.8 * s, -9.4 * s, 0.55 * s)
+	# bárd a vállon
+	c.save(); c.translate(7.6 * s, 0.6 * s); c.rotate(-0.5 + sin(t * 0.06 + sd) * 0.08)
+	c.fs("#3a2a18"); c.rrect(-0.8 * s, -3.0 * s, 1.6 * s, 9.0 * s, 0.6 * s); c.fill()
+	c.fs("#6c7688"); c.poly([-1.0 * s, -3.0 * s, 5.4 * s, -3.6 * s, 6.2 * s, -11.6 * s, -1.0 * s, -12.0 * s])
+	c.fs("#cbd6e6"); c.poly([3.6 * s, -3.8 * s, 5.2 * s, -3.8 * s, 6.0 * s, -11.4 * s, 4.4 * s, -11.4 * s])
+	c.fs(rgba(150, 20, 26, 0.8)); c.poly([3.0 * s, -4.0 * s, 5.4 * s, -4.0 * s, 5.6 * s, -6.4 * s, 4.2 * s, -5.4 * s])
+	c.restore()
+	c.fs("#6a5444"); c.circ(7.4 * s, 2.0 * s, 1.9 * s)
+	c.restore()
+
+
+## Gyökértroll: kéregből és húsból nőtt óriás, gyökérkarokkal, mohos vállakkal.
+static func root_troll(c: Cv, cx: float, cy: float, sz: float, t: float, sd: float) -> void:
+	var s := sz * 1.15 / 30.0
+	const KEREG := "#4e3a2a"
+	c.save(); c.translate(cx, cy + _bob(t, sd))
+	var br := sin(t * 0.07 + sd)
+	# gyökérlábak
+	c.fs(sot(KEREG, 0.4))
+	for i in 4:
+		var xx := (-6.0 + i * 4.0) * s
+		c.poly([xx - 1.6 * s, 7.0 * s, xx + 1.6 * s, 7.0 * s, xx + (i - 1.5) * 1.4 * s, 13.0 * s])
+	# gyökérkarok
+	for side in [-1.0, 1.0]:
+		var d: float = side
+		c.ss(sot(KEREG, 0.2)); c.lw(3.0 * s)
+		c.bp(); c.mt(d * 6.0 * s, -4.0 * s); c.qt(d * 11.6 * s, -2.0 * s + br * s, d * 10.6 * s, 6.0 * s); c.stroke()
+		c.lw(1.1 * s)
+		for i in 3:
+			c.line(d * 10.6 * s, 6.0 * s, d * (9.4 + i * 1.4) * s, 10.0 * s)
+	# törzs: kéreg, a repedésekben vörös hús
+	c.fs(sot(KEREG, 0.45)); c.ell(0, 1.0 * s, 8.0 * s, 9.0 * s)
+	c.fs(KEREG); c.ell(0.5 * s, 0.4 * s, 7.0 * s, 8.0 * s)
+	c.fs(vil(KEREG, 0.2)); c.ell(2.6 * s, -1.6 * s, 3.0 * s, 4.6 * s)
+	c.ss(rgba(200, 60, 80, 0.85)); c.lw(0.9 * s)
+	c.bp(); c.mt(-3.0 * s, -3.0 * s); c.lt(-1.0 * s, 1.0 * s); c.lt(-3.4 * s, 5.0 * s); c.stroke()
+	c.bp(); c.mt(2.0 * s, 2.0 * s); c.lt(3.6 * s, 6.0 * s); c.stroke()
+	# mohos váll + fej
+	c.fs("#4a7a30"); c.ell(-5.6 * s, -6.0 * s, 3.4 * s, 2.0 * s); c.ell(5.8 * s, -6.2 * s, 3.2 * s, 1.9 * s)
+	c.fs("#6aa040"); c.ell(-5.2 * s, -6.6 * s, 2.0 * s, 1.0 * s); c.ell(6.2 * s, -6.8 * s, 1.9 * s, 0.9 * s)
+	c.fs(sot(KEREG, 0.3)); c.ell(0, -8.4 * s, 4.6 * s, 4.2 * s)
+	c.fs(KEREG); c.ell(0.4 * s, -8.8 * s, 3.9 * s, 3.5 * s)
+	var gl := 0.6 + 0.4 * sin(t * 0.1 + sd)
+	c.fs(rgba(150, 255, 90, 0.35 * gl)); c.circ(-1.6 * s, -9.0 * s, 2.0 * s); c.circ(2.0 * s, -9.0 * s, 2.0 * s)
+	c.fs(rgba(190, 255, 120, gl)); c.circ(-1.6 * s, -9.0 * s, 0.9 * s); c.circ(2.0 * s, -9.0 * s, 0.9 * s)
+	c.fs("#1a120c"); c.poly([-2.4 * s, -6.6 * s, 2.8 * s, -6.6 * s, 0.2 * s, -5.2 * s])
+	# ágak a fejen
+	c.ss(sot(KEREG, 0.2)); c.lw(1.0 * s)
+	c.line(-2.0 * s, -12.0 * s, -4.4 * s, -15.4 * s); c.line(2.2 * s, -12.0 * s, 4.0 * s, -16.0 * s); c.line(4.0 * s, -16.0 * s, 5.6 * s, -15.0 * s)
+	c.restore()
+
+
+## Mag-szolga: olvadt acélból öntött őr; a páncél repedéseiből tűz izzik, az arca kohórács.
+static func core_thrall(c: Cv, cx: float, cy: float, sz: float, t: float, sd: float) -> void:
+	var s := sz * 1.1 / 30.0
+	const VAS := "#2e2a30"
+	var gl := 0.6 + 0.4 * sin(t * 0.13 + sd)
+	var tuz := rgba(255, 140, 30, 0.75 + 0.25 * gl)
+	c.save(); c.translate(cx, cy + _bob(t, sd))
+	c.fs(rgba(255, 130, 30, 0.12 * gl)); c.circ(0, 0, 14.0 * s)
+	c.fs(sot(VAS, 0.3)); c.rrect(-5.4 * s, 6.0 * s, 4.4 * s, 7.4 * s, 1.2 * s); c.fill(); c.rrect(1.0 * s, 6.0 * s, 4.4 * s, 7.4 * s, 1.2 * s); c.fill()
+	c.fs(tuz); c.fill_rect(-4.0 * s, 9.0 * s, 1.6 * s, 0.7 * s); c.fill_rect(2.4 * s, 10.4 * s, 1.6 * s, 0.7 * s)
+	# széles váll-lemezek és törzs
+	c.fs(sot(VAS, 0.4)); c.poly([-9.0 * s, -6.6 * s, 9.0 * s, -6.6 * s, 6.0 * s, 7.4 * s, -6.0 * s, 7.4 * s])
+	c.fs(VAS); c.poly([-8.0 * s, -6.2 * s, 8.2 * s, -6.2 * s, 5.4 * s, 6.8 * s, -5.2 * s, 6.8 * s])
+	c.fs(vil(VAS, 0.3)); c.poly([2.0 * s, -6.0 * s, 8.0 * s, -6.0 * s, 5.2 * s, 6.4 * s, 2.6 * s, 6.4 * s])
+	# izzó repedések + a mellkas kohója
+	c.ss(tuz); c.lw(0.9 * s)
+	c.bp(); c.mt(-6.0 * s, -4.0 * s); c.lt(-3.4 * s, -1.0 * s); c.lt(-4.6 * s, 4.0 * s); c.stroke()
+	c.bp(); c.mt(5.6 * s, -3.0 * s); c.lt(4.0 * s, 1.6 * s); c.stroke()
+	c.fs("#140a06"); c.circ(0, 0.4 * s, 3.2 * s)
+	c.fs(rgba(255, 150, 40, 0.95)); c.circ(0, 0.4 * s, 2.2 * s)
+	c.fs(rgba(255, 240, 180, 0.95)); c.circ(-0.3 * s, 0.0, 1.0 * s)
+	# karok
+	c.fs(sot(VAS, 0.2)); c.rrect(-11.0 * s, -5.0 * s, 3.4 * s, 10.0 * s, 1.4 * s); c.fill(); c.rrect(7.6 * s, -5.0 * s, 3.4 * s, 10.0 * s, 1.4 * s); c.fill()
+	c.fs(tuz); c.circ(-9.3 * s, 6.0 * s, 1.5 * s); c.circ(9.3 * s, 6.0 * s, 1.5 * s)
+	# fej: sisak kohóráccsal, két szarvszerű kürtővel
+	c.fs(sot(VAS, 0.3)); c.rrect(-4.4 * s, -13.6 * s, 8.8 * s, 7.6 * s, 1.6 * s); c.fill()
+	c.fs(VAS); c.rrect(-3.8 * s, -13.6 * s, 7.8 * s, 7.0 * s, 1.4 * s); c.fill()
+	c.fs(rgba(255, 150, 40, 0.9)); c.fill_rect(-2.8 * s, -11.4 * s, 5.8 * s, 3.2 * s)
+	c.fs(VAS)
+	for i in 4:
+		c.fill_rect((-2.0 + i * 1.5) * s, -11.6 * s, 0.6 * s, 3.6 * s)
+	c.poly([-4.0 * s, -13.0 * s, -6.6 * s, -17.6 * s, -2.6 * s, -13.6 * s]); c.poly([4.2 * s, -13.0 * s, 6.8 * s, -17.6 * s, 2.8 * s, -13.6 * s])
+	var g := fmod(t * 0.03 + sd, 1.0)
+	c.fs(rgba(255, 170, 60, 0.6 * (1.0 - g))); c.circ(-6.4 * s, (-18.4 - g * 4.0) * s, (0.9 + g) * s); c.circ(6.6 * s, (-18.4 - g * 4.0) * s, (0.9 + g) * s)
+	c.restore()
+
+
+## Csőpióca: kövér, szelvényes, sötétvörös féreg kerek, fogas szájjal és rézgallérral.
+static func leech(c: Cv, cx: float, cy: float, sz: float, t: float, sd: float) -> void:
+	var s := sz / 30.0
+	const VER := "#6a1a24"
+	c.save(); c.translate(cx, cy + 3.0 * s)
+	var hull := sin(t * 0.12 + sd)
+	for i in range(4, -1, -1):
+		var x := (-8.0 + i * 3.6) * s
+		var y := (4.0 - i * 0.6) * s + sin(t * 0.12 + sd + i * 0.9) * 1.0 * s
+		var r := (3.2 + i * 0.5) * s
+		c.fs(sot(VER, 0.4)); c.circ(x, y, r)
+		c.fs(VER); c.circ(x + 0.3 * s, y - 0.4 * s, r * 0.86)
+		c.fs("#b03a48"); c.ell(x + r * 0.3, y - r * 0.4, r * 0.34, r * 0.22)
+	var hx := 8.0 * s
+	var hy := 1.0 * s + hull * 0.8 * s
+	c.fs(REZ); c.ell(hx - 2.6 * s, hy + 0.6 * s, 1.4 * s, 5.0 * s)
+	c.fs(sot(VER, 0.3)); c.circ(hx, hy, 5.2 * s)
+	c.fs(VER); c.circ(hx + 0.3 * s, hy - 0.3 * s, 4.6 * s)
+	c.fs("#1a0608"); c.circ(hx + 1.4 * s, hy + 0.4 * s, 3.0 * s)
+	c.fs("#efe6cc")
+	for i in 8:
+		var a := i / 8.0 * TAU + t * 0.02
+		var ox := hx + 1.4 * s + cos(a) * 3.0 * s
+		var oy := hy + 0.4 * s + sin(a) * 3.0 * s
+		c.poly([ox + cos(a + 1.57) * 0.6 * s, oy + sin(a + 1.57) * 0.6 * s, ox - cos(a + 1.57) * 0.6 * s, oy - sin(a + 1.57) * 0.6 * s, ox - cos(a) * 1.7 * s, oy - sin(a) * 1.7 * s])
+	c.fs(rgba(230, 50, 60, 0.9)); c.circ(hx + 1.4 * s, hy + 0.4 * s, 0.9 * s)
+	c.restore()
+
+
+## Szerelődrón: lebegő sárgaréz gömb légcsavarral, egyetlen kék lencsével; messziről szikrát lő.
+static func drone(c: Cv, cx: float, cy: float, sz: float, t: float, sd: float) -> void:
+	var s := sz / 30.0
+	c.save(); c.translate(cx, cy - 3.0 * s + sin(t * 0.1 + sd) * 2.2 * s)
+	# légcsavar (elmosódva forog)
+	c.fs("#3a3026"); c.fill_rect(-0.6 * s, -10.6 * s, 1.2 * s, 3.6 * s)
+	var w := absf(cos(t * 0.9 + sd)) * 9.0 + 2.0
+	c.fs(rgba(220, 220, 210, 0.45)); c.ell(0, -10.8 * s, w * s, 0.9 * s)
+	# test
+	c.fs(sot(REZ, 0.45)); c.circ(0, -1.0 * s, 7.0 * s)
+	c.fs(REZ); c.circ(0.4 * s, -1.5 * s, 6.2 * s)
+	c.fs(vil(REZ, 0.4)); c.ell(2.4 * s, -4.2 * s, 2.4 * s, 1.6 * s)
+	c.ss(sot(REZ, 0.5)); c.lw(0.7 * s)
+	c.bp(); c.arc(0, -1.0 * s, 6.4 * s, 0.2, PI - 0.2); c.stroke()
+	_rivet(c, -4.6 * s, -1.0 * s, 0.55 * s); _rivet(c, 4.8 * s, -1.0 * s, 0.55 * s)
+	# lencse
+	var gl := 0.6 + 0.4 * sin(t * 0.16 + sd)
+	c.fs("#14181c"); c.circ(0.6 * s, -1.4 * s, 3.0 * s)
+	c.fs(rgba(90, 190, 255, 0.4 * gl)); c.circ(0.6 * s, -1.4 * s, 4.0 * s)
+	c.fs(rgba(120, 210, 255, gl)); c.circ(0.6 * s, -1.4 * s, 1.8 * s)
+	c.fs("#f0faff"); c.circ(1.2 * s, -2.0 * s, 0.6 * s)
+	# két kis manipulátor + antenna
+	c.ss(sot(REZ, 0.3)); c.lw(1.0 * s)
+	c.bp(); c.mt(-4.4 * s, 3.6 * s); c.lt(-6.4 * s, 7.0 * s); c.lt(-4.8 * s, 9.0 * s); c.stroke()
+	c.bp(); c.mt(4.6 * s, 3.6 * s); c.lt(6.6 * s, 7.0 * s); c.lt(5.0 * s, 9.0 * s); c.stroke()
+	c.line(4.0 * s, -6.0 * s, 6.4 * s, -10.0 * s)
+	c.fs(rgba(255, 80, 60, gl)); c.circ(6.4 * s, -10.0 * s, 0.8 * s)
+	c.restore()
+
+
+## Húsvirág: a padlóból nőtt, nyíló hússzirmok, a közepén fogas torok; helyből köp mérget.
+static func bloom(c: Cv, cx: float, cy: float, sz: float, t: float, sd: float) -> void:
+	var s := sz / 30.0
+	c.save(); c.translate(cx, cy + 2.0 * s)
+	var ny := 0.5 + 0.5 * sin(t * 0.08 + sd)
+	# gyökerek és szár
+	c.ss("#3a5a2a"); c.lw(1.4 * s)
+	for i in 4:
+		var xx := (-7.0 + i * 4.6) * s
+		c.bp(); c.mt(0, 8.0 * s); c.qt(xx * 0.6, 11.0 * s, xx, 11.6 * s); c.stroke()
+	c.ss("#4a7a34"); c.lw(2.6 * s); c.line(0, 9.0 * s, 0, 2.0 * s)
+	c.fs("#4a7a34"); c.ell(-4.0 * s, 6.6 * s, 3.4 * s, 1.3 * s, -0.4); c.ell(4.2 * s, 5.6 * s, 3.4 * s, 1.3 * s, 0.4)
+	# szirmok (hús), lélegezve nyílnak
+	for i in 6:
+		var a := i / 6.0 * TAU + 0.3
+		var r := (6.6 + ny * 1.6) * s
+		c.fs(sot(HUS, 0.35)); c.ell(cos(a) * r * 0.62, -2.0 * s + sin(a) * r * 0.5, 4.4 * s, 2.8 * s, a)
+		c.fs("#d86a80"); c.ell(cos(a) * r * 0.66, -2.2 * s + sin(a) * r * 0.52, 3.6 * s, 2.0 * s, a)
+		c.fs("#f4a0b0"); c.ell(cos(a) * r * 0.78, -2.4 * s + sin(a) * r * 0.58, 1.4 * s, 0.8 * s, a)
+	# torok fogakkal
+	c.fs("#3a0a14"); c.ell(0, -2.0 * s, 3.6 * s, 3.0 * s)
+	c.fs("#efe6cc")
+	for i in 7:
+		var a2 := i / 7.0 * TAU
+		c.poly([cos(a2) * 3.4 * s, -2.0 * s + sin(a2) * 2.8 * s, cos(a2 + 0.3) * 3.4 * s, -2.0 * s + sin(a2 + 0.3) * 2.8 * s, cos(a2 + 0.15) * 1.6 * s, -2.0 * s + sin(a2 + 0.15) * 1.3 * s])
+	c.fs(rgba(170, 240, 60, 0.6 + 0.4 * ny)); c.circ(0, -2.0 * s, 1.1 * s)
+	c.restore()
+
+
+## Őrautomata: magas acélgép toronypajzzsal és alabárddal, a sisakrésében arany fény.
+static func sentinel(c: Cv, cx: float, cy: float, sz: float, t: float, sd: float) -> void:
+	var s := sz * 1.12 / 30.0
+	const ACEL := "#5a6070"
+	c.save(); c.translate(cx, cy + _bob(t, sd) * 0.6)
+	# alabárd a háta mögött
+	c.ss("#3a2a18"); c.lw(1.2 * s); c.line(7.6 * s, 12.0 * s, 7.6 * s, -17.0 * s)
+	c.fs("#aab4c4"); c.poly([7.6 * s, -19.6 * s, 9.0 * s, -15.0 * s, 6.2 * s, -15.0 * s])
+	c.poly([7.6 * s, -15.6 * s, 12.0 * s, -14.0 * s, 11.0 * s, -10.4 * s, 7.6 * s, -11.6 * s])
+	# lábak
+	c.fs(sot(ACEL, 0.4)); c.rrect(-4.6 * s, 6.0 * s, 3.8 * s, 7.6 * s, 1.0 * s); c.fill(); c.rrect(0.8 * s, 6.0 * s, 3.8 * s, 7.6 * s, 1.0 * s); c.fill()
+	c.fs(ARANY); c.fill_rect(-4.6 * s, 9.0 * s, 3.8 * s, 0.8 * s); c.fill_rect(0.8 * s, 9.0 * s, 3.8 * s, 0.8 * s)
+	# törzs
+	c.fs(sot(ACEL, 0.45)); c.poly([-6.0 * s, -7.0 * s, 6.0 * s, -7.0 * s, 4.6 * s, 7.0 * s, -4.6 * s, 7.0 * s])
+	c.fs(ACEL); c.poly([-5.2 * s, -6.6 * s, 5.4 * s, -6.6 * s, 4.0 * s, 6.4 * s, -4.0 * s, 6.4 * s])
+	c.fs(vil(ACEL, 0.35)); c.poly([1.4 * s, -6.4 * s, 5.2 * s, -6.4 * s, 3.8 * s, 6.0 * s, 1.8 * s, 6.0 * s])
+	c.fs(ARANY); c.fill_rect(-4.4 * s, 1.6 * s, 8.8 * s, 1.0 * s)
+	c.fs(ARANY); c.circ(0, -2.4 * s, 1.6 * s)
+	c.fs(sot(ARANY, 0.5)); c.circ(0, -2.4 * s, 0.7 * s)
+	# sisak
+	c.fs(sot(ACEL, 0.3)); c.poly([-3.8 * s, -7.0 * s, 3.8 * s, -7.0 * s, 3.2 * s, -14.0 * s, 0, -16.4 * s, -3.2 * s, -14.0 * s])
+	c.fs(ACEL); c.poly([-3.2 * s, -7.4 * s, 3.4 * s, -7.4 * s, 2.8 * s, -13.6 * s, 0.2 * s, -15.6 * s, -2.6 * s, -13.6 * s])
+	var gl := 0.6 + 0.4 * sin(t * 0.1 + sd)
+	c.fs("#14100a"); c.fill_rect(-2.6 * s, -11.6 * s, 5.4 * s, 1.4 * s)
+	c.fs(rgba(255, 210, 90, gl)); c.fill_rect(-2.0 * s, -11.3 * s, 4.2 * s, 0.8 * s)
+	c.fs(ARANY); c.poly([-0.6 * s, -15.6 * s, 0.8 * s, -15.6 * s, 0.1 * s, -19.0 * s])
+	# toronypajzs elöl
+	c.fs(sot(ACEL, 0.5)); c.rrect(-11.0 * s, -6.0 * s, 7.4 * s, 16.0 * s, 1.6 * s); c.fill()
+	c.fs("#6e7688"); c.rrect(-10.4 * s, -5.4 * s, 6.2 * s, 14.8 * s, 1.4 * s); c.fill()
+	c.fs(vil("#6e7688", 0.3)); c.rrect(-6.6 * s, -5.0 * s, 2.0 * s, 14.0 * s, 0.8 * s); c.fill()
+	c.ss(ARANY); c.lw(0.8 * s); c.rrect(-10.4 * s, -5.4 * s, 6.2 * s, 14.8 * s, 1.4 * s); c.stroke()
+	c.fs(ARANY); c.poly([-7.3 * s, -1.0 * s, -5.6 * s, 2.0 * s, -7.3 * s, 5.0 * s, -9.0 * s, 2.0 * s])
+	c.restore()

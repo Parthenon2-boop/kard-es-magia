@@ -137,12 +137,22 @@ func scale(sx: float, sy: float) -> void:
 	xf = xf * Transform2D(Vector2(sx, 0), Vector2(0, sy), Vector2.ZERO)
 
 
+## Tónus: minden EGYSZÍNŰ kitöltés és vonal színe ezzel szorzódik (a szörnyek árnyalat-változataihoz).
+var tint := Color.WHITE
+
+
 func fs(c: Variant) -> void:
 	fill_v = col(c)
+	if tint != Color.WHITE and fill_v is Color:
+		var fc: Color = fill_v
+		fill_v = Color(fc.r * tint.r, fc.g * tint.g, fc.b * tint.b, fc.a)
 
 
 func ss(c: Variant) -> void:
 	stroke_v = col(c)
+	if tint != Color.WHITE and stroke_v is Color:
+		var sc: Color = stroke_v
+		stroke_v = Color(sc.r * tint.r, sc.g * tint.g, sc.b * tint.b, sc.a)
 
 
 func lw(w: float) -> void:

@@ -122,6 +122,10 @@ const MONS := {
 	"nurse": {"hp": 26, "atk": 7, "def": 3, "xp": 34, "sp": "mend", "mech": true},
 	"scalpel": {"hp": 14, "atk": 10, "def": 0, "mres": 3, "xp": 38, "sp": "swift", "mech": true},
 	"spore": {"hp": 20, "atk": 5, "def": 1, "xp": 42, "sp": "burst"},
+	"leech": {"hp": 16, "atk": 5, "def": 1, "xp": 16, "sp": "lifesteal"},                       # Csőpióca: vért szív
+	"drone": {"hp": 18, "atk": 8, "def": 2, "mres": 2, "xp": 36, "sp": "ranged", "mech": true},  # Szerelődrón: messziről lő
+	"bloom": {"hp": 30, "atk": 9, "def": 2, "xp": 48, "sp": "spit"},                             # Húsvirág: helyből mérget köp
+	"sentinel": {"hp": 85, "atk": 14, "def": 9, "xp": 95, "sp": "crit", "mech": true},           # Őrautomata: lassú, de kemény
 	# ── a négy zóna ura (a fázisokat lásd game.gd: boss_turn) ──
 	"rust_worm": {"hp": 150, "atk": 13, "def": 8, "xp": 300, "sp": "worm", "boss": true, "mech": true},
 	"dr_karel": {"hp": 210, "atk": 16, "def": 6, "mres": 5, "xp": 420, "sp": "karel", "boss": true, "mech": true},
@@ -130,13 +134,16 @@ const MONS := {
 }
 const BOSS_LVL := {1: "rust_worm", 2: "dr_karel", 3: "symbiote", 4: "weaver"}
 const POOL := {
-	1: ["rat", "rat", "goblin", "skeleton"],
-	2: ["nurse", "scalpel", "skeleton", "orc", "vampire"],
-	3: ["spore", "spore", "spider", "troll", "witch", "golem"],
-	4: ["demon", "assassin", "golem", "witch", "vampire", "troll"],
+	1: ["rat", "rat", "goblin", "skeleton", "leech", "leech"],
+	2: ["nurse", "scalpel", "skeleton", "orc", "vampire", "drone", "assassin"],
+	3: ["spore", "spore", "spider", "troll", "witch", "bloom", "bloom", "leech"],
+	4: ["demon", "sentinel", "golem", "witch", "drone", "sentinel", "assassin"],
 }
 ## a szint "különleges" szörnyei (ritkábban, a szokásos csapat mellé)
-const RARE_POOL := {1: ["spider"], 2: ["assassin", "spider"], 3: ["vampire", "assassin"], 4: ["scalpel", "nurse"]}
+const RARE_POOL := {1: ["spider", "orc"], 2: ["golem", "spider"], 3: ["vampire", "golem"], 4: ["scalpel", "nurse", "vampire", "troll"]}
+## Minden példány kicsit más: méret (szorzó) és árnyalat (a színekre szorzott tónus) a szörny magjából.
+const VAR_MERET := [0.90, 0.97, 1.04, 1.12]
+const VAR_TONUS := [Color(1, 1, 1), Color(1.0, 0.90, 0.78), Color(0.84, 0.94, 1.0), Color(0.86, 1.0, 0.80), Color(1.0, 0.84, 0.86)]
 ## Fertőzött (elit) szörny: erősebb, zölden izzik, és rézötvözetet ejt.
 const ELITE_CHANCE := 0.11
 const ELITE_HP := 1.6

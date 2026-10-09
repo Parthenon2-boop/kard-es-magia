@@ -672,5 +672,17 @@
 	"set.controls.d": "View and rebind the keys.",
 	"set.on": "On",
 	"set.off": "Off",
-	"set.hint": "↑↓: select  ·  ←→: change  ·  Esc: back"
+	"set.hint": "↑↓: select  ·  ←→: change  ·  Esc: back",
+
+	"mon.leech": "Pipe Leech",
+	"mon.drone": "Repair Drone",
+	"mon.bloom": "Flesh Bloom",
+	"mon.sentinel": "Sentinel Automaton",
+	"msg.shot_in": "{0} shoots you: -{1}",
+
+	"set.tempo": "Enemy pace",
+	"set.tempo.d": "While you stand still, enemies step this often on their own.",
+	"set.tempo.0": "Slow",
+	"set.tempo.1": "Medium",
+	"set.tempo.2": "Fast"
 }
