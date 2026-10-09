@@ -269,3 +269,11 @@ Egy `v…` címke feltöltésekor (`git tag v2.0 && git push origin v2.0`) a Git
 `kard_es_magia-windows.zip` (KardEsMagia.exe, beágyazott .pck) és a
 `kard_es_magia-macos.zip` (univerzális .app, ad-hoc aláírással) csomagot, és GitHub-kiadásként
 közzéteszi őket. A **ParthLauncher** innen tölti le és frissíti a játékot.
+
+## Festett figurák
+
+A szörnyek, a főellenségek (mindkét fázis), a hősök, Nora és a Próféta festett képből rajzolódnak:
+`art/figurak/<kulcs>.png` (lásd `scripts/figura.gd`). Ha egy kép hiányzik, a kódból rajzolt változat látszik.
+A hős festett képe a viselt **test**-darabot követi (`hos_<kaszt>_<test-darab>.png`), minden test-darabhoz
+egy teljes öltözet tartozik. A forráslapok a `tools/figuralapok` mappában vannak; újravágás:
+`godot --headless --path . -s res://tools/figura_racs.gd -- <lap> <oszlop>x<sor> <nevek> - fust`

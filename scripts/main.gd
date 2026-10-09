@@ -271,6 +271,9 @@ void fragment() {
 			n.material = d[1]
 		add_child(n)
 		layers[d[0]] = n
+	# a festett figurák simított kicsinyítéssel rajzolódnak (lásd figura.gd)
+	for nev in ["mid", "fx", "ui", "hud", "menu_front"]:
+		layers[nev].texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	# a kis térkép képpontosan (nem elmosva) nagyítódik fel
 	layers["map"].texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	layers["menu_bg"].fn = func(rid: RID) -> void: _lay(rid, "menu_bg")

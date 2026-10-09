@@ -128,8 +128,12 @@ static func cine_done(m: Node) -> bool:
 static func portrait(m: Node, c: Cv, who: String, cx: float, cy: float, sz: float) -> void:
 	match who:
 		"vane": Sprites.hero_cached(c, m.game.player.cls if m.game.player else "Lovag", cx, cy, sz, m.tick, m.skins)
-		"nora": Sprites2.nora(c, cx, cy, sz, m.tick)
-		"profeta": Sprites2.prophet(c, cx, cy, sz, m.tick)
+		"nora":
+			if Figura.van("nora"): Figura.mellkep(c, "nora", cx, cy, sz)
+			else: Sprites2.nora(c, cx, cy, sz, m.tick)
+		"profeta":
+			if Figura.van("profeta"): Figura.mellkep(c, "profeta", cx, cy, sz)
+			else: Sprites2.prophet(c, cx, cy, sz, m.tick)
 		_: Sprites.monster(c, who, cx, cy, sz * 0.62, m.tick, 0.0, false)
 
 

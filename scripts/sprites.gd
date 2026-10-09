@@ -11,6 +11,9 @@ static func rgba(r: float, g: float, b: float, a: float = 1.0) -> Color:
 ## A hős NÉGY kinézet-helyből (fej, test, láb, fegyver) áll össze — a darabokat a skins.gd rajzolja.
 ## Minden hely alapból "" (alap kinézet); a boltban vett darabok csak a külsőt változtatják.
 static func hero(c: Cv, cls: String, cx: float, cy: float, size: float, _t: float, skin := {}) -> void:
+	if Figura.hos_festett(cls, skin):
+		Figura.hos(c, cls, cx, cy, size, skin)   # festett kép az alakzatokból rajzolt hős helyett
+		return
 	c.save()
 	c.translate(cx, cy)
 	if cls == "Sebész":
@@ -60,6 +63,9 @@ static func hero_cached(c: Cv, cls: String, cx: float, cy: float, size: float, t
 	# a talajárnyék a földön marad (nem lebeg vele)
 	c.blit("hsh|%d" % int(roundf(size * 4.0)),
 		func() -> void: Skins.talajarnyek(c, 0, 0, size / 40.0, 12.5), cx, cy)
+	if Figura.hos_festett(cls, skin):
+		Figura.hos(c, cls, cx, cy + hero_bob(cls, t, size), size, skin)
+		return
 	c.blit("h|%s|%d|%s" % [cls, int(roundf(size * 4.0)), Skins.sig(skin, cls)],
 		func() -> void: hero(c, cls, 0, 0, size, 0.0, skin), cx, cy + hero_bob(cls, t, size))
 
@@ -99,6 +105,9 @@ const MON_SHADOW := {"sentinel": 1.25, "leech": 1.1, "drone": 0.7, "bloom": 1.0,
 static func monster(c: Cv, key: String, cx: float, cy: float, sz: float, t: float, sd: float, with_shadow := true) -> void:
 	if with_shadow:
 		mon_shadow(c, key, cx, cy, sz)
+	if Figura.van(key):
+		Figura.szorny(c, key, cx, cy + mon_bob(t, sd), sz)   # festett kép az alakzatokból rajzolt szörny helyett
+		return
 	if Sprites2.has(key):
 		Sprites2.draw(c, key, cx, cy, sz, t, sd)
 		return
@@ -130,7 +139,7 @@ static func monster_cached(c: Cv, key: String, cx: float, cy: float, sz: float, 
 	mon_shadow(c, key, cx, cy, sz)
 	if tonus > 0:
 		c.tint = Data.VAR_TONUS[tonus % Data.VAR_TONUS.size()]
-	if not key in SIMPLE_MONS:
+	if not key in SIMPLE_MONS or Figura.van(key):
 		monster(c, key, cx, cy, sz, t, sd, false)
 		c.tint = Color.WHITE
 		return
