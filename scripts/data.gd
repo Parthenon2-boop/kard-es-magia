@@ -150,8 +150,17 @@ const CLASSES := {
 	"Lovag": {"hp": 46, "atk": 9, "mag": 0, "def": 5, "col": "#70c8e8", "hpUp": 13},
 	"Mágus": {"hp": 26, "atk": 4, "mag": 11, "def": 1, "col": "#6aa8ff", "hpUp": 8},
 	"Íjász": {"hp": 32, "atk": 6, "mag": 0, "def": 2, "col": "#70d860", "hpUp": 10},
+	# A negyedik hős: Vane eredeti teste. A Bronz Klinika elérésével oldódik fel (lásd Meta.sebesz_van).
+	#   Sebész – közelharc: minden vágása vérzést okoz; a legyőzöttekből szerveket operál ki,
+	#   és harc közben be is ülteti őket magába (gyógyulás + erő).
+	"Sebész": {"hp": 34, "atk": 8, "mag": 0, "def": 2, "col": "#a0f0d8", "hpUp": 10},
 }
-const MELEE_MULT := {"Lovag": 1.35, "Íjász": 0.7, "Mágus": 0.6}
+## a feloldható hősök (a CLASS_ORDER a három alap; a hősválasztó a feloldottakat is mutatja)
+const EXTRA_CLASSES := ["Sebész"]
+const MELEE_MULT := {"Lovag": 1.35, "Íjász": 0.7, "Mágus": 0.6, "Sebész": 1.1}
+const ORGAN_MAX := 3
+const ORGAN_CHANCE := 0.3
+const BLEED_MAX := 6
 
 # ══════════ KÜLÖNLEGES TERMEK ══════════
 ## A különleges termek csak a szoba tartalmát változtatják meg (láda, őr, csapda, szobor,
@@ -161,8 +170,20 @@ const ROOM_KINDS := {
 	"szentely": {"col": "#70d0ff", "icon": "✛"},
 	"kereskedo": {"col": "#60d080", "icon": "◉"},
 	"csapda": {"col": "#e05050", "icon": "⚠"},
+	"esemeny": {"col": "#ffd870", "icon": "?"},
 }
-const ROOM_KIND_ORDER := ["kincstar", "szentely", "kereskedo", "csapda"]
+const ROOM_KIND_ORDER := ["kincstar", "szentely", "kereskedo", "csapda", "esemeny"]
+
+# ══════════ ZÓNA-VESZÉLYEK, ESEMÉNYEK, MINI-BOSSOK ══════════
+## Padlórácsok: szabályos időközönként kitör belőlük a zóna csapása (előtte egy körrel jeleznek).
+const VENT_KIND := {1: "steam", 2: "blade", 3: "root", 4: "steam"}
+const VENT_PERIOD := 6
+## Döntési események (a nevük: event.<kulcs>, a két válasz: event.<kulcs>.a / .b)
+const EVENTS := ["fogoly", "verautomata", "mutoasztal"]
+## Zónánként egy vándorló mini-boss: háromszoros életerő, saját csapás, és ereklyét hagy maga után.
+const MINI := {1: "rat", 2: "nurse", 3: "spore", 4: "demon"}
+const MINI_HP := 3.2
+const MINI_ATK := 1.35
 ## a kincstár őre: erős, aranyban gazdag szörny
 const GUARD_POOL := {1: ["orc", "skeleton"], 2: ["orc", "golem"], 3: ["troll", "golem"], 4: ["golem", "demon"]}
 
@@ -200,9 +221,9 @@ const DASH_CD := 6
 const DASH_LEN := 2
 const SKILL_CD := 9
 ## kasztonként: a képesség kulcsa (a neve: ab.<kulcs>, a leírása: ab.<kulcs>.d)
-const SKILL := {"Lovag": "forgoszel", "Mágus": "gozrobbanas", "Íjász": "nyilzapor"}
-const SKILL_ICON := {"Lovag": "⚔", "Mágus": "✳", "Íjász": "➶"}
-const SKILL_COL :={"Lovag": "#ffd060", "Mágus": "#8cc4ff", "Íjász": "#a0e070"}
+const SKILL := {"Lovag": "forgoszel", "Mágus": "gozrobbanas", "Íjász": "nyilzapor", "Sebész": "beultetes"}
+const SKILL_ICON := {"Lovag": "⚔", "Mágus": "✳", "Íjász": "➶", "Sebész": "✚"}
+const SKILL_COL := {"Lovag": "#ffd060", "Mágus": "#8cc4ff", "Íjász": "#a0e070", "Sebész": "#a0f0d8"}
 
 # ══════════ VESZÉLYZÓNÁK (a főellenségek előre jelzett támadásai) ══════════
 ## "warn": a mező egy kör múlva robban (ki lehet lépni belőle); "acid": tócsa, amíg el nem párolog.

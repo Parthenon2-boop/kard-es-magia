@@ -17,6 +17,12 @@ var banner := {}                   # nagy felirat a képernyő közepén: {k, s,
 var shake := 0.0                   # képernyőrázás (a rajzoló csillapítja)
 var run_bio := 0                   # a lezárt kaland zsákmánya (az összegző képernyőhöz)
 var run_rez := 0
+var daily := ""                    # napi kihívás: a nap dátuma ("" = szokásos kaland)
+var run_pont := 0                  # a lezárt napi kihívás pontszáma
+var pending_relic := false         # a hős ereklye-talapzatra lépett: két ereklye közül választhat
+var pending_event: Variant = null  # a hős döntési eseményhez ért
+var focus := {}                    # a kamera egy pillanatra ide úszik: {x, y, t0, dur} (főellenség belépője)
+var flash := {}                    # teljes képernyős villanás: {col, t0, dur} (fázisváltás, főellenség halála)
 var autosave := true               # szintváltáskor mentsen-e (tesztben/képernyőkép-módban nem)
 var now_ms: Callable = func() -> float: return Time.get_ticks_usec() / 1000.0
 
@@ -48,20 +54,37 @@ func prune_fx() -> void:
 	fx = maradt
 
 
-func start(cls: String, diff: String) -> void:
+func start(cls: String, diff: String, napi := "") -> void:
 	player = Player.create(cls)
 	player.on_level_up = _level_up
-	Meta.apply_to(player)   # a Műtőteremben megvett szervek és végtagok
-	world = World.create(player, 1, diff)
+	daily = napi
+	run_pont = 0
+	if daily == "":
+		Meta.apply_to(player)   # a Műtőteremben megvett szervek és végtagok (a napi kihívásban nem számítanak)
+	world = _uj_vilag(1, diff)
 	fx.clear()
 	pending_perks = 0
 	pending_chest = null
 	pending_shop = null
 	pending_dialog = []
 	pending_note = ""
+	pending_relic = false
+	pending_event = null
+	focus = {}
+	flash = {}
 	shake = 0.0
 	player.add_msg(Lang.ref("msg.start"), Data.P["parchGold"])
 	show_zone_banner()
+
+
+## Új zóna. A napi kihívásban a pálya a nap magjából épül: aznap mindenkinek ugyanaz.
+func _uj_vilag(n: int, diff: String) -> World:
+	if daily == "":
+		return World.create(player, n, diff)
+	seed(Daily.mag(daily) + n * 7919)
+	var w := World.create(player, n, diff)
+	randomize()   # a harc szerencséje már nem közös
+	return w
 
 
 ## a zóna neve és célja nagy felirattal (új zónába érkezéskor)
@@ -75,6 +98,8 @@ func show_zone_banner() -> void:
 func _level_up() -> void:
 	play("levelup")
 	pending_perks += 1
+	add_fx({"type": "nova", "x": player.x, "y": player.y, "r": 2.2, "col": Data.P["parchGold"], "dur": 700.0})
+	add_fx({"type": "dmgnum", "x": player.x, "y": player.y, "txt": "⬆", "col": "#ffe070", "dur": 1100.0, "big": true, "dy": -0.5})
 
 
 ## true, ha a játék véget ért (győzelem)
@@ -85,8 +110,9 @@ func next_level() -> bool:
 			SaveGame.erase()   # a befejezett kalandot nincs mit folytatni
 		return true
 	player.add_msg(Lang.ref("msg.depth", Lang.ref("zone." + Story.zone_id(n))), Story.zone(n)["acc"])
-	world = World.create(player, n, world.diff)
+	world = _uj_vilag(n, world.diff)
 	fx.clear()
+	player.spark_used = false   # a Végső szikra zónánként újratölt
 	Meta.reach(n)
 	show_zone_banner()
 	if autosave:
@@ -109,7 +135,88 @@ static func calc_dmg(atk: int, def: int) -> int:
 
 ## varázssebzés: a páncél (védelem) csak harmadában számít, a varázsellenállás teljesen
 static func magic_dmg(mag: int, m: Mon) -> int:
-	return maxi(1, mag + Data.rnd(-1, 3) - int(floorf(m.def / 3.0)) - m.mres)
+	return maxi(1, mag + Data.rnd(-1, 3) - int(floorf(mdef(m) / 3.0)) - m.mres)
+
+
+## A szörny pillanatnyi védelme: a marás (Savmirigy) rétegenként 2-t levesz belőle.
+static func mdef(m: Mon) -> int:
+	return maxi(0, m.def - 2 * m.corr)
+
+
+# ══════════ EREKLYÉK ÉS ÁLLAPOTOK ══════════
+## A hős sebzés-szorzója erre az egy ütésre (Gőzköpeny: félreugrás után dupla). Elhasználja a töltést.
+func hit_mult() -> float:
+	var p := player
+	if p.steam_charge:
+		p.steam_charge = false
+		add_fx({"type": "nova", "x": p.x, "y": p.y, "r": 0.9, "col": "#f0f0e0", "dur": 260.0})
+		return 2.0
+	return 1.0
+
+
+## Minden, a hős által kiosztott találat után: gyújtás, marás, vérzés, villámlánc.
+func on_hit(m: Mon, dmg: int, melee := false) -> void:
+	var p := player
+	if not m.alive or m.hp <= 0:
+		return
+	if p.has_relic("gyujto"):
+		m.burn = Relics.BURN_TURNS
+	if p.has_relic("savmirigy") and m.corr < Relics.CORR_MAX:
+		m.corr += 1
+	# a Sebész minden vágása vérzést okoz
+	if melee and p.cls == "Sebész":
+		m.bleed = mini(Data.BLEED_MAX, m.bleed + 2)
+	if p.has_relic("tesla"):
+		p.hit_count += 1
+		if p.hit_count % 4 == 0:
+			_chain(m, maxi(1, Data.jround(dmg * 0.6)))
+
+
+## Tesla-tekercs: villám ugrik a közeli ellenségekre (Rézbőrrel a martakon duplán sebez és kábít).
+func _chain(from: Mon, dmg: int) -> void:
+	var p := player
+	var n := 0
+	for o in world.mons:
+		if n >= 2:
+			break
+		if o == from or not o.alive or absi(o.x - from.x) > 3 or absi(o.y - from.y) > 3 or not world.is_vis(o.x, o.y):
+			continue
+		var d := dmg
+		if p.has_relic("rezbor") and o.corr > 0:
+			d *= 2
+			o.stun = maxi(o.stun, 1)
+		add_fx({"type": "bolt", "x0": from.x, "y0": from.y, "x1": o.x, "y1": o.y, "dur": 260.0})
+		hit_mon(o, d, "#8cd0ff", 60.0)
+		if o.hp <= 0:
+			kill_reward(o)
+		n += 1
+	if n > 0:
+		play("magic")
+		p.add_msg(Lang.ref("msg.chain", n), "#8cd0ff")
+
+
+## Égés és vérzés: körönként sebez. (A marás nem sebez, csak a védelmet veszi le.)
+func _tick_status() -> void:
+	var dl := world.dungeon_level
+	for m in world.mons:
+		if not m.alive:
+			continue
+		var d := 0
+		if m.burn > 0:
+			m.burn -= 1
+			d += 2 + dl
+		if m.bleed > 0:
+			d += maxi(1, int(ceilf(m.bleed * (0.5 + dl * 0.25))))
+			m.bleed -= 1
+		if d > 0 and world.is_exp(m.x, m.y):
+			m.hp -= d
+			m.hit_ms = now_ms.call()
+			add_fx({"type": "dmgnum", "x": m.x, "y": m.y, "txt": "-%d" % d, "col": "#ff9040", "dur": 600.0, "dy": -0.25})
+			if m.boss and m.phase == 1 and m.hp > 0 and m.hp * 2 <= m.max_hp:
+				boss_phase2(m)
+			if m.hp <= 0:
+				var g := kill_reward(m)
+				player.add_msg(Lang.ref("msg.killed", m.ref(), m.xp, g), Data.P["parchGold"])
 
 
 # ══════════ A HŐST ÉRŐ SEBZÉS ══════════
@@ -211,6 +318,15 @@ func mon_attack(m: Mon) -> void:
 		dmg = int(ceilf(dmg / 2.0))
 		p.add_msg(Lang.ref("msg.block"), "#80a8e0")
 	hurt(dmg, m.boss)
+	m.lunge = 1.0
+	m.lunge_dx = signi(p.x - m.x)
+	m.lunge_dy = signi(p.y - m.y)
+	# Tükörlemez: a kapott ütés negyede visszaverődik a támadóra
+	if p.has_relic("tukor") and m.alive:
+		var vissza := maxi(1, int(ceilf(dmg * 0.25)))
+		hit_mon(m, vissza, "#c0d8f0")
+		if m.hp <= 0:
+			kill_reward(m)
 	p.add_msg(Lang.ref("msg.hit", m.ref(), dmg), Data.P["vein"])
 	add_fx({"type": "dmgnum", "x": p.x, "y": p.y, "txt": "-%d" % dmg, "col": "#ff5040", "dur": 700.0})
 	add_fx({"type": "bite", "x": p.x, "y": p.y, "dx": p.x - m.x, "dy": p.y - m.y, "dur": 220.0})
@@ -222,6 +338,18 @@ func mon_attack(m: Mon) -> void:
 
 func check_death() -> void:
 	var p := player
+	# Végső szikra: zónánként egyszer a halálos ütés 1 életerőn megállít, és elkábítja a szomszédokat
+	if p.hp <= 0 and p.alive and p.has_relic("vegso") and not p.spark_used:
+		p.spark_used = true
+		p.hp = 1
+		shake = maxf(shake, 9.0)
+		add_fx({"type": "nova", "x": p.x, "y": p.y, "r": 2.4, "col": "#ff6050", "dur": 650.0})
+		for m in world.mons:
+			if m.alive and absi(m.x - p.x) <= 1 and absi(m.y - p.y) <= 1:
+				m.stun = maxi(m.stun, 2)
+		p.add_msg(Lang.ref("msg.spark"), "#ff6050")
+		play("levelup")
+		return
 	if p.hp <= 0 and p.alive:
 		p.lives -= 1
 		if p.lives > 0:
@@ -280,7 +408,42 @@ func kill_reward(m: Mon) -> int:
 	p.rez += Data.jround(rez * p.find_mult)
 	if p.kill_heal > 0 and p.alive and p.hp > 0 and p.hp < p.max_hp:
 		p.hp = mini(p.max_hp, p.hp + p.kill_heal)
+	# Vérpumpa: égő vagy vérző ellenség megölése gyógyít
+	if p.has_relic("verpumpa") and (m.burn > 0 or m.bleed > 0) and p.alive and p.hp > 0 and p.hp < p.max_hp:
+		p.hp = mini(p.max_hp, p.hp + 3)
+		add_fx({"type": "dmgnum", "x": p.x, "y": p.y, "txt": "+3", "col": "#50e070", "dur": 700.0, "dy": -0.35})
+	# Óramű-szív: ölés után azonnal újra lehet félreugrani
+	if p.has_relic("oramu"):
+		p.dash_cd = 0
+	# a Sebész szervet operál ki a legyőzöttből (az erősekből mindig)
+	if p.cls == "Sebész" and p.organs < Data.ORGAN_MAX and (m.boss or m.mini or m.elite or randf() < Data.ORGAN_CHANCE):
+		p.organs += 1
+		p.add_msg(Lang.ref("msg.organ", p.organs, Data.ORGAN_MAX), "#a0f0d8")
+	# a tetem: a figura összeroskad és elhalványul; a zsákmány felirata felszáll belőle
+	add_fx({"type": "corpse", "key": m.key + ("#2" if m.boss and m.phase == 2 else ""), "x": m.x, "y": m.y,
+		"facing": m.facing, "sd": m.seedv, "dur": 1500.0 if m.boss else 480.0, "boss": m.boss})
+	add_fx({"type": "dmgnum", "x": m.x, "y": m.y, "txt": "+%d ◉" % g, "col": "#e8c060", "dur": 900.0, "delay": 180.0, "dy": 0.25})
 	add_fx({"type": "puff", "x": m.x, "y": m.y, "col": "#c0a070" if m.mech else "#c04038", "dur": 520.0 if m.boss else 420.0, "big": m.boss})
+	# Robbanó epe: aki egyszerre égett és mart volt, halálakor felrobban, és a szomszédait is meggyújtja
+	if p.has_relic("robbano") and m.burn > 0 and m.corr > 0:
+		var rob := 10 + world.dungeon_level * 4
+		add_fx({"type": "boom", "x": m.x, "y": m.y, "dur": 450.0})
+		add_fx({"type": "nova", "x": m.x, "y": m.y, "r": 1.8, "col": "#ffb040", "dur": 450.0})
+		shake = maxf(shake, 6.0)
+		play("cannon")
+		for o in world.mons:
+			if o.alive and absi(o.x - m.x) <= 1 and absi(o.y - m.y) <= 1:
+				o.burn = Relics.BURN_TURNS
+				hit_mon(o, rob, "#ffb040", 80.0)
+				if o.hp <= 0:
+					kill_reward(o)
+	# a mini-boss ereklye-talapzatot hagy maga után
+	if m.mini:
+		_pedestal(m.x, m.y)
+		p.bio += 5
+		p.rez += 5
+		shake = maxf(shake, 9.0)
+		banner = {"k": "banner.mini_down", "s": "banner.mini_down.s", "col": "#80d0ff", "n": 0, "t0": now_ms.call()}
 	# Tüdőspóra: halálakor méregfelhőt ereget — aki mellette áll, megmérgeződik
 	if m.sp == "burst" and absi(m.x - p.x) <= 1 and absi(m.y - p.y) <= 1:
 		p.poison = maxi(p.poison, 3)
@@ -291,10 +454,33 @@ func kill_reward(m: Mon) -> int:
 	return g
 
 
+## ereklye-talapzat a megadott mező közelébe
+func _pedestal(x: int, y: int) -> void:
+	var q := world.free_near(x, y)
+	world.pedestals.append({"x": q.x, "y": q.y, "taken": false})
+	add_fx({"type": "nova", "x": q.x, "y": q.y, "r": 1.6, "col": "#80d0ff", "dur": 700.0, "delay": 500.0})
+
+
 func _boss_fell(m: Mon) -> void:
-	shake = maxf(shake, 14.0)
+	shake = maxf(shake, 16.0)
 	play("roar")
-	add_fx({"type": "nova", "x": m.x, "y": m.y, "r": 4.0, "col": Story.zone(world.dungeon_level)["acc"], "dur": 900.0})
+	var acc: String = Story.zone(world.dungeon_level)["acc"]
+	# a halál-jelenet: robbanások sora a test körül, a végén nagy fénygyűrű és villanás
+	for i in 7:
+		var ax := m.x + Data.rnd(-1, 1)
+		var ay := m.y + Data.rnd(-1, 1)
+		add_fx({"type": "boom", "x": ax, "y": ay, "dur": 380.0, "delay": i * 170.0})
+		add_fx({"type": "puff", "x": ax, "y": ay, "col": acc, "dur": 420.0, "delay": i * 170.0, "big": i % 2 == 0})
+	add_fx({"type": "nova", "x": m.x, "y": m.y, "r": 5.0, "col": acc, "dur": 1000.0, "delay": 1200.0})
+	add_fx({"type": "nova", "x": m.x, "y": m.y, "r": 3.0, "col": "#ffffff", "dur": 700.0, "delay": 1250.0})
+	flash = {"col": "#ffffff", "t0": float(now_ms.call()) + 1200.0, "dur": 600.0}
+	focus = {"x": m.x, "y": m.y, "t0": now_ms.call(), "dur": 2200.0}
+	# a lejárat megnyílik: fény a lépcsőn
+	var st := Dungeon.center(world.rooms[world.rooms.size() - 1])
+	add_fx({"type": "nova", "x": st.x, "y": st.y, "r": 2.0, "col": acc, "dur": 900.0, "delay": 1700.0})
+	if world.dungeon_level < Data.MAX_LEVEL:
+		_pedestal(m.x, m.y)
+	add_fx({"type": "nova", "x": m.x, "y": m.y, "r": 4.0, "col": acc, "dur": 900.0})
 	world.hazards.clear()
 	Meta.boss_down(m.key)
 	pending_dialog = Story.talk(m.key, "win")
@@ -317,12 +503,14 @@ func kill_check(m: Mon, dmg: int, hit_msg: String, hit_col: String) -> void:
 func p_attack(m: Mon) -> int:
 	var p := player
 	# Láncfogazású Szike: a megkeményedett húst is átfűrészeli — a védelem csak félig számít
-	var mdef := m.def
+	var mdef := Game.mdef(m)
 	if p.weapon and p.weapon.name == "chain_scalpel":
-		mdef = int(floorf(m.def / 2.0))
+		mdef = int(floorf(mdef / 2.0))
 	# közelharc: a lovag erős, az íjász és a mágus gyengébb közelről
-	var dmg := maxi(1, Data.jround(calc_dmg(p.atk, mdef) * float(Data.MELEE_MULT.get(p.cls, 1.0))))
-	hit_mon(m, dmg, "#ffd060")
+	var mult := hit_mult()
+	var dmg := maxi(1, Data.jround(calc_dmg(p.atk, mdef) * float(Data.MELEE_MULT.get(p.cls, 1.0)) * mult))
+	hit_mon(m, dmg, "#ffd060", 0.0, mult > 1.0)
+	on_hit(m, dmg, true)
 	add_fx({"type": "slash", "x": m.x, "y": m.y, "dur": 250.0})
 	play("sword")
 	shake = maxf(shake, 2.0)
@@ -375,11 +563,17 @@ func try_ranged_attack(dx: int, dy: int) -> int:
 			dmg = magic_dmg(p.mag, m)
 			col = "#8cc4ff"
 			var fl := 120.0 + d * 45.0
+			add_fx({"type": "nova", "x": p.x, "y": p.y, "r": 0.7, "col": "#8cc4ff", "dur": 240.0})
 			add_fx({"type": "orb", "x0": p.x, "y0": p.y, "x1": m.x, "y1": m.y, "dur": fl})
 			add_fx({"type": "mburst", "x": m.x, "y": m.y, "dur": 420.0, "delay": fl})
 			play("magic")
 		else:
-			dmg = calc_dmg(p.atk, m.def)
+			dmg = calc_dmg(p.atk, mdef(m))
+			# a lövés visszarúg: a hős egy pillanatra hátrahőköl
+			p.lunge = 0.7
+			p.lunge_dx = -dx
+			p.lunge_dy = -dy
+			add_fx({"type": "puff", "x": m.x, "y": m.y, "col": "#fff0c0", "dur": 260.0, "delay": 180.0})
 			if p.cls == "Íjász" and wep.subtype == "bow" and randf() < p.crit_chance:
 				dmg = int(floorf(dmg * 2.2))
 				big = true
@@ -396,7 +590,12 @@ func try_ranged_attack(dx: int, dy: int) -> int:
 					add_fx({"type": "puff", "x": p.x, "y": p.y, "col": "#ffe0b0", "dur": 300.0})
 			else:
 				play("shoot")
+		var szorzo := hit_mult()
+		if szorzo > 1.0:
+			dmg = Data.jround(dmg * szorzo)
+			big = true
 		hit_mon(m, dmg, col, (120.0 + d * 45.0) if mage else 0.0, big)
+		on_hit(m, dmg)
 		if dx != 0:
 			p.facing = dx
 		apply_lifesteal(dmg)
@@ -444,6 +643,8 @@ func dash() -> bool:
 	p.y = ny
 	p.steps += 1
 	p.dash_cd = p.dash_cd_max
+	if p.has_relic("gozkopeny"):
+		p.steam_charge = true   # a következő ütés duplán sebez
 	w.update_fov()
 	play("dash")
 	_land(nx, ny)
@@ -460,10 +661,42 @@ func skill() -> bool:
 	if p.skill_cd > 0:
 		p.add_msg(Lang.ref("msg.not_ready", p.skill_cd), Data.P["inkDark"])
 		return false
-	var mult := 1.0 + 0.3 * p.perk("tulhevites")
+	var mult := (1.0 + 0.3 * p.perk("tulhevites")) * hit_mult()
 	var targets: Array[Mon] = []
 	var col: String = Data.SKILL_COL[p.cls]
 	match p.cls:
+		"Sebész":
+			# Beültetés: egy kioperált szervet magába varr — gyógyul és erősödik.
+			# Szerv nélkül Metszés: az előtte álló ellenségen mély, vérző sebet ejt.
+			if p.organs > 0:
+				p.organs -= 1
+				var gy := maxi(1, int(ceilf(p.max_hp * 0.35)))
+				p.hp = mini(p.max_hp, p.hp + gy)
+				p.base_atk += 1
+				add_fx({"type": "nova", "x": p.x, "y": p.y, "r": 1.4, "col": col, "dur": 520.0})
+				add_fx({"type": "dmgnum", "x": p.x, "y": p.y, "txt": "+%d" % gy, "col": "#50e070", "dur": 800.0, "big": true})
+				play("chest")
+				p.add_msg(Lang.ref("msg.implant", gy), col)
+				p.skill_cd = p.skill_cd_max
+				advance_turn()
+				return true
+			var cel := w.mon_at(p.x + p.dir_x, p.y + p.dir_y)
+			if cel == null:
+				for m in w.mons:
+					if m.alive and absi(m.x - p.x) <= 1 and absi(m.y - p.y) <= 1:
+						cel = m
+						break
+			if cel == null:
+				p.add_msg(Lang.ref("msg.no_target"), Data.P["inkDark"])
+				return false
+			targets.append(cel)
+			add_fx({"type": "slash", "x": cel.x, "y": cel.y, "dur": 300.0})
+			play("sword")
+			var ds := maxi(1, Data.jround(calc_dmg(p.atk, mdef(cel)) * 2.0 * mult))
+			hit_mon(cel, ds, col, 0.0, true)
+			cel.bleed = Data.BLEED_MAX
+			on_hit(cel, ds, true)
+			kill_check(cel, ds, "msg.hit", "#e0a040")
 		"Lovag":
 			# Forgószél: minden szomszédos ellenséget megvág, és egy körre elkábít
 			for m in w.mons:
@@ -475,8 +708,9 @@ func skill() -> bool:
 			add_fx({"type": "spin", "x": p.x, "y": p.y, "dur": 380.0})
 			play("sword")
 			for m in targets:
-				var d := maxi(1, Data.jround(calc_dmg(p.atk, m.def) * float(Data.MELEE_MULT["Lovag"]) * 1.5 * mult))
+				var d := maxi(1, Data.jround(calc_dmg(p.atk, mdef(m)) * float(Data.MELEE_MULT["Lovag"]) * 1.5 * mult))
 				hit_mon(m, d, col, 0.0, true)
+				on_hit(m, d, true)
 				m.stun = maxi(m.stun, 1)
 				apply_lifesteal(d)
 				kill_check(m, d, "msg.hit", "#e0a040")
@@ -493,6 +727,7 @@ func skill() -> bool:
 			for m in targets:
 				var d := maxi(1, Data.jround(magic_dmg(p.mag, m) * 1.5 * mult))
 				hit_mon(m, d, col, 120.0, true)
+				on_hit(m, d)
 				apply_lifesteal(d)
 				kill_check(m, d, "msg.orb_hit", "#8cc4ff")
 		"Íjász":
@@ -517,8 +752,9 @@ func skill() -> bool:
 				add_fx({"type": "arrow", "x0": p.x, "y0": p.y, "x1": ex, "y1": ey, "dur": 220.0, "delay": k * 60.0})
 			play("shoot")
 			for m in targets:
-				var d := maxi(1, Data.jround(calc_dmg(p.atk, m.def) * 1.8 * mult))
+				var d := maxi(1, Data.jround(calc_dmg(p.atk, mdef(m)) * 1.8 * mult))
 				hit_mon(m, d, col, 80.0, true)
+				on_hit(m, d)
 				apply_lifesteal(d)
 				kill_check(m, d, "msg.shot_hit", "#e0a040")
 	shake = maxf(shake, 5.0)
@@ -609,6 +845,10 @@ func _meet_boss() -> void:
 	b.met = true
 	b.awake = true
 	b.cd = 2
+	b.morph_ms = now_ms.call()
+	focus = {"x": b.x, "y": b.y, "t0": now_ms.call(), "dur": 2600.0}   # a kamera ráúszik
+	shake = maxf(shake, 8.0)
+	add_fx({"type": "nova", "x": b.x, "y": b.y, "r": 3.0, "col": Story.zone(world.dungeon_level)["acc"], "dur": 800.0, "delay": 500.0})
 	pending_dialog = Story.talk(b.key, "pre")
 	banner = {"k": "mon." + b.key, "s": "boss." + b.key + ".s", "col": Story.zone(world.dungeon_level)["acc"], "n": 0, "t0": now_ms.call()}
 	play("roar")
@@ -619,7 +859,12 @@ func boss_phase2(m: Mon) -> void:
 	var p := player
 	m.phase = 2
 	m.cd = 1
-	shake = maxf(shake, 10.0)
+	m.morph_ms = now_ms.call()
+	flash = {"col": "#ff4030", "t0": now_ms.call(), "dur": 500.0}
+	focus = {"x": m.x, "y": m.y, "t0": now_ms.call(), "dur": 1800.0}
+	for i in 3:
+		add_fx({"type": "nova", "x": m.x, "y": m.y, "r": 2.0 + i * 1.4, "col": "#ff5040", "dur": 600.0, "delay": i * 160.0})
+	shake = maxf(shake, 12.0)
 	play("roar")
 	add_fx({"type": "nova", "x": m.x, "y": m.y, "r": 3.0, "col": "#ff5040", "dur": 700.0})
 	match m.sp:
@@ -864,7 +1109,9 @@ func advance_turn(idle := false) -> void:
 		if rg > 0 and p.alive and p.hp > 0 and p.hp < p.max_hp:
 			p.hp = mini(p.max_hp, p.hp + rg)
 		spot_hidden()
+	_tick_status()
 	_tick_hazards()
+	_tick_vents()   # a hazárdok UTÁN: a rács jelzése így egy teljes körig látszik, mielőtt kitör
 	_meet_boss()
 	for m in w.mons:
 		if not m.alive or not p.alive:
@@ -876,6 +1123,16 @@ func advance_turn(idle := false) -> void:
 			continue
 		if m.boss and m.sp != "" and (m.met or m.awake):
 			boss_turn(m)
+		elif m.mini and (w.is_vis(m.x, m.y) or m.awake):
+			# mini-boss: a zóna csapását szórja a hős köré, közben üldöz
+			m.awake = true
+			if m.cd > 0:
+				m.cd -= 1
+			if m.cd == 0 and _dist(m) <= 6 and _dist(m) > 1:
+				_warn_around(2, str(Data.VENT_KIND.get(w.dungeon_level, "steam")), 6 + w.dungeon_level * 2)
+				m.cd = 4
+				play("warn")
+			_mon_act(m)
 		elif w.is_vis(m.x, m.y) or m.awake:
 			if m.sp == "mend" and randf() < 0.35 and _mend(m):
 				continue
@@ -1043,12 +1300,115 @@ func buy(shop: Dictionary, i: int) -> bool:
 	return true
 
 
+## Padlórácsok: szabályos ütemben kitör belőlük a zóna csapása (csak a hős közelében számolunk).
+func _tick_vents() -> void:
+	var w := world
+	if w.vents.is_empty():
+		return
+	var p := player
+	var kind := str(Data.VENT_KIND.get(w.dungeon_level, "steam"))
+	for v in w.vents:
+		if absi(v["x"] - p.x) > 9 or absi(v["y"] - p.y) > 9:
+			continue
+		if (w.turn + int(v["ph"])) % Data.VENT_PERIOD == Data.VENT_PERIOD - 2:
+			warn(v["x"], v["y"], kind, 5 + w.dungeon_level * 2)
+
+
+## Az ereklye-talapzat használata: a választott ereklye a hősé lesz.
+func take_relic(id: String) -> bool:
+	var ped: Variant = world.pedestal_at(player.x, player.y)
+	if ped == null or not Relics.apply(player, id):
+		return false
+	ped["taken"] = true
+	if player.relics.size() >= 3:
+		Meta.award("ereklye3")
+	play("levelup")
+	add_fx({"type": "nova", "x": player.x, "y": player.y, "r": 2.0, "col": Relics.LIST[id]["col"], "dur": 700.0})
+	return true
+
+
+## Ha már minden ereklye megvan, a talapzat nyersanyagot ad.
+func relic_fallback() -> void:
+	var ped: Variant = world.pedestal_at(player.x, player.y)
+	if ped == null:
+		return
+	ped["taken"] = true
+	player.bio += 10
+	player.rez += 10
+	player.add_msg(Lang.ref("msg.relic_none"), "#80d0ff")
+
+
+## Döntési esemény: a két válasz egyike (0 vagy 1). true, ha megtörtént.
+func event_choice(e: Dictionary, i: int) -> bool:
+	var p := player
+	if e.get("used", true):
+		return false
+	e["used"] = true
+	var dl := world.dungeon_level
+	var kulcs := "msg.event.%s.%s" % [e["kind"], "a" if i == 0 else "b"]
+	match str(e["kind"]):
+		"fogoly":
+			if i == 0:
+				# kiszabadítod: hálából egy nagy gyógyitalt ad
+				var it := Item.make(Item.find_base("greater_healing_potion"), "rare", dl)
+				p.inventory.append(it)
+				p.add_msg(Lang.ref(kulcs, it.ref()), "#40c860")
+			else:
+				# kifosztod: arany, de a kiáltása felriasztja a környéket
+				var g := 20 + dl * 12
+				p.gold += g
+				var n := 0
+				for m in world.mons:
+					if m.alive and not m.awake and absi(m.x - p.x) <= Data.ALARM_R and absi(m.y - p.y) <= Data.ALARM_R:
+						m.awake = true
+						n += 1
+				p.add_msg(Lang.ref(kulcs, g, n), "#e0a030")
+				play("growl")
+		"verautomata":
+			if i == 0:
+				# megeteted a véreddel: a maximális életerő negyedéért új képességet ad
+				var ar := maxi(1, int(floorf(p.max_hp * 0.25)))
+				p.hp = maxi(1, p.hp - ar)
+				p.hurt_ms = now_ms.call()
+				pending_perks += 1
+				p.add_msg(Lang.ref(kulcs, ar), Data.P["vein"])
+			else:
+				var r := 6 + dl * 2
+				p.rez += r
+				p.add_msg(Lang.ref(kulcs, r), "#e0a060")
+				play("hit")
+		"mutoasztal":
+			if i == 0:
+				# felfekszel: többnyire megerősödsz, néha megfertőződsz
+				if randf() < 0.65:
+					p.max_hp += 12
+					p.hp = p.max_hp
+					p.add_msg(Lang.ref(kulcs, 12), "#40c860")
+					play("levelup")
+				else:
+					p.poison = maxi(p.poison, 6)
+					p.add_msg(Lang.ref("msg.event.mutoasztal.a2"), "#90c030")
+					play("hit")
+			else:
+				var b := 8 + dl * 2
+				p.bio += b
+				p.add_msg(Lang.ref(kulcs, b), "#b0e060")
+	add_fx({"type": "nova", "x": e["x"], "y": e["y"], "r": 1.4, "col": "#ffd870", "dur": 500.0})
+	return true
+
+
 ## Megérkezés egy mezőre (lépés vagy félreugrás után): csapda, szentély, feljegyzés, kereskedő.
 ## true, ha csapda sült el.
 func _land(nx: int, ny: int) -> bool:
 	var trapped := trigger_trap()
 	trigger_shrine()
 	take_note()
+	var ped: Variant = world.pedestal_at(nx, ny)
+	if ped != null:
+		pending_relic = true
+	var ev: Variant = world.event_at(nx, ny)
+	if ev != null:
+		pending_event = ev
 	var sh: Variant = world.shop_at(nx, ny)
 	if sh != null:
 		pending_shop = sh
@@ -1196,6 +1556,8 @@ func take_chest_item(chest: Dictionary, sel: int) -> Item:
 	var p := player
 	var it: Item = chest["items"][sel]
 	chest["opened"] = true
+	add_fx({"type": "nova", "x": chest["x"], "y": chest["y"], "r": 1.3, "col": it.glow(), "dur": 500.0})
+	add_fx({"type": "puff", "x": chest["x"], "y": chest["y"], "col": Data.P["parchGold"], "dur": 480.0, "big": true})
 	if it.slot == "weapon" and p.weapon == null: p.weapon = it
 	elif it.slot == "armor" and p.armor == null: p.armor = it
 	elif it.slot == "shield" and p.shield == null: p.shield = it

@@ -30,6 +30,16 @@ var phase := 1       # főellenség: 1 vagy 2
 var met := false     # főellenség: a hős már találkozott vele (a párbeszéd lezajlott)
 var cd := 0          # főellenség: hány kör múlva jön a következő különleges támadás
 var hit_ms := 0.0    # mikor kapott utoljára ütést (a kirajzolás villanásához)
+var mini := false    # a zóna mini-bossa: erős, saját csapással, ereklyét hagy maga után
+# ── állapotok (az ereklyék és a Sebész okozzák) ──
+var burn := 0        # ég: ennyi körig sebződik
+var corr := 0        # marás: halmozódik, rétegenként -2 védelem
+var bleed := 0       # vérzés: halmozódik, körönként sebez és fogy
+# ── csak a kirajzoláshoz ──
+var lunge := 0.0     # támadáskor előrelendül (1 -> 0)
+var lunge_dx := 0
+var lunge_dy := 0
+var morph_ms := 0.0  # főellenség: mikor váltott fázist (átalakulás-villanás)
 
 
 static func make(k: String, px: int, py: int, diff: String) -> Mon:
@@ -78,8 +88,22 @@ static func make_guard(k: String, px: int, py: int, diff: String) -> Mon:
 	return m
 
 
+## A zóna mini-bossa.
+static func make_mini(k: String, px: int, py: int, diff: String) -> Mon:
+	var m := make(k, px, py, diff)
+	m.mini = true
+	m.max_hp = Data.jround(m.max_hp * Data.MINI_HP) + 20
+	m.hp = m.max_hp
+	m.atk = Data.jround(m.atk * Data.MINI_ATK) + 1
+	m.def += 2
+	m.xp = Data.jround(m.xp * 4.0)
+	return m
+
+
 ## a szörny neve később fordítandó hivatkozásként (üzenetnaplóhoz)
 func ref() -> Dictionary:
+	if mini:
+		return Lang.ref("mini." + key)
 	if guard:
 		return Lang.ref("mon.guard", Lang.ref("mon." + key))
 	if elite:

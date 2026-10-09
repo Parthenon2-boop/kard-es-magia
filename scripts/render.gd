@@ -142,8 +142,8 @@ static func world_base(m: Node, c: Cv) -> void:
 	for d in w.decor:
 		var dx: int = d["x"]
 		var dy: int = d["y"]
-		if not w.is_exp(dx, dy):
-			continue
+		if not w.is_exp(dx, dy) or d["type"] in Sprites2.ELO_DISZEK:
+			continue   # a mozgó díszek a szörnyekkel együtt, minden képkockán rajzolódnak (world_mid)
 		var sx := (dx - cam.x) * T
 		var sy := (dy - cam.y) * T
 		if sx < -T or sx > W or sy < -T or sy > gh:
@@ -245,6 +245,51 @@ static func world_mid(m: Node, c: Cv) -> void:
 		c.fs(Color(1.0, 0.95, 0.78, 0.85))
 		c.ell(fx0, fy0 - T * 0.06, 1.7, (2.6 + 1.2 * fl))
 		c.ga(1.0)
+	# élő pálya: gőzszelepek, fogaskerekek, csöpögő csövek, lüktető erek a falakon
+	for d in w.decor:
+		if not (d["type"] in Sprites2.ELO_DISZEK):
+			continue
+		var da := seen_a(w, d["x"], d["y"])
+		if da <= 0.01:
+			continue
+		var dsx: float = (d["x"] - cam.x) * T
+		var dsy: float = (d["y"] - cam.y) * T
+		if not _on_screen(dsx, dsy, W, gh, 2.0):
+			continue
+		c.ga(da)
+		Sprites2.prop(c, d["type"], dsx, dsy, T, tick, d["seed"])
+		c.ga(1.0)
+	# padlórácsok: a kitörés előtti körben felizzanak
+	var vkind := Color(str(Data.HAZ_COL.get(Data.VENT_KIND.get(w.dungeon_level, "steam"), "#ffffff")))
+	for v in w.vents:
+		var va := seen_a(w, v["x"], v["y"])
+		if va <= 0.01:
+			continue
+		var vsx: float = (v["x"] - cam.x) * T
+		var vsy: float = (v["y"] - cam.y) * T
+		if not _on_screen(vsx, vsy, W, gh):
+			continue
+		var fazis := (w.turn + int(v["ph"])) % Data.VENT_PERIOD
+		c.ga(va)
+		Sprites2.vent(c, vsx, vsy, T, vkind, 0.5 + 0.5 * sin(tick * 0.2) if fazis == Data.VENT_PERIOD - 3 else 0.0)
+		c.ga(1.0)
+	# ereklye-talapzatok és döntési események
+	for pd in w.pedestals:
+		if pd["taken"]:
+			continue
+		var pda := seen_a(w, pd["x"], pd["y"])
+		if pda > 0.01:
+			c.ga(pda)
+			Sprites2.pedestal(c, (pd["x"] - cam.x) * T, (pd["y"] - cam.y) * T, T, tick)
+			c.ga(1.0)
+	for ev in w.events:
+		if ev["used"]:
+			continue
+		var eva := seen_a(w, ev["x"], ev["y"])
+		if eva > 0.01:
+			c.ga(eva)
+			Sprites2.event_mark(c, (ev["x"] - cam.x) * T, (ev["y"] - cam.y) * T, T, tick)
+			c.ga(1.0)
 	# veszélyzónák: a robbanni készülő mező villogó kerete, illetve a savtócsa
 	for h in w.hazards:
 		var ha := seen_a(w, h["x"], h["y"])
@@ -371,11 +416,19 @@ static func world_mid(m: Node, c: Cv) -> void:
 			ma = seen_a(w, mo.x, mo.y) * 0.6
 		if ma <= 0.02:
 			continue
-		var sx := (mo.rx - cam.x) * T
-		var sy := (mo.ry - cam.y) * T
+		# támadáskor a szörny nekilendül a hősnek
+		var sx := (mo.rx - cam.x) * T + mo.lunge * mo.lunge_dx * T * 0.34
+		var sy := (mo.ry - cam.y) * T + mo.lunge * mo.lunge_dy * T * 0.34
 		if not _on_screen(sx, sy, W, gh, 2.0):
 			continue
 		c.ga(ma)
+		# főellenség: belépőkor és fázisváltáskor megnő, majd visszahúzódik
+		var morph := 1.0
+		var mt: float = now - mo.morph_ms
+		if mo.morph_ms > 0.0 and mt >= 0.0 and mt < 900.0:
+			morph = 1.0 + 0.45 * sin(mt / 900.0 * PI) * (1.0 - mt / 900.0 * 0.4)
+		if mo.mini:
+			c.tex(glow, Rect2(sx + T * 0.5 - T * 1.2, sy + T * 0.5 - T * 1.2, T * 2.4, T * 2.4), rgba(120, 200, 255, 0.28 + 0.14 * sin(tick * 0.07 + mo.seedv)))
 		if mo.boss or mo.guard:
 			var pl := (0.2 + 0.2 * sin(tick * 0.05)) * (1.0 if mo.boss else 0.6)
 			var bc := Color(str(z["acc"])) if mo.boss else Color(1.0, 0.78, 0.16)
@@ -393,8 +446,12 @@ static func world_mid(m: Node, c: Cv) -> void:
 		if mo.facing < 0:
 			c.translate((sx + T / 2) * 2, 0)
 			c.scale(-1, 1)
-		Sprites.monster_cached(c, mo.key + ("#2" if mo.boss and mo.phase == 2 else ""), sx + T / 2 + jolt, sy + T / 2, T * 0.85, tick, mo.seedv)
+		Sprites.monster_cached(c, mo.key + ("#2" if mo.boss and mo.phase == 2 else ""), sx + T / 2 + jolt, sy + T / 2, T * 0.85 * morph * (1.25 if mo.mini else 1.0), tick, mo.seedv)
 		c.restore()
+		if mo.morph_ms > 0.0 and mt >= 0.0 and mt < 500.0:
+			c.tex(glow, Rect2(sx - T * 0.6, sy - T * 0.6, T * 2.2, T * 2.2), Color(1, 1, 1, 0.8 * (1.0 - mt / 500.0)))
+		if mo.burn > 0 or mo.corr > 0 or mo.bleed > 0:
+			Sprites2.status_icons(c, sx + T * 0.2, sy - 12, mo.burn, mo.corr, mo.bleed, tick)
 		if since >= 0.0 and since < 140.0:
 			c.tex(glow, Rect2(sx - T * 0.1, sy - T * 0.1, T * 1.2, T * 1.2), Color(1, 1, 1, 0.75 * (1.0 - since / 140.0)))
 		if mo.stun > 0:
@@ -402,11 +459,13 @@ static func world_mid(m: Node, c: Cv) -> void:
 				var sa2 := tick * 0.12 + i * 2.09
 				c.ftxt("✦", sx + T / 2 + cos(sa2) * T * 0.3, sy + T * 0.08 + sin(sa2) * T * 0.08, "#ffe070", 11, "center")
 		# életerő-csík (a főellenségé fent, külön sávon látszik)
-		if not mo.boss and (mo.hp < mo.max_hp or mo.elite or mo.guard):
+		if not mo.boss and (mo.hp < mo.max_hp or mo.elite or mo.guard or mo.mini):
 			var bw := T - 8
 			var hw := maxf(1.0, floorf(bw * mo.hp / mo.max_hp))
 			c.fs("#140606"); c.fill_rect(sx + 3, sy - 5, bw + 2, 6)
-			c.fs("#90e040" if mo.elite else (Data.P["legendary"] if mo.guard else "#e03c30")); c.fill_rect(sx + 4, sy - 4, hw, 4)
+			c.fs("#70c8ff" if mo.mini else ("#90e040" if mo.elite else (Data.P["legendary"] if mo.guard else "#e03c30"))); c.fill_rect(sx + 4, sy - 4, hw, 4)
+			if mo.mini:
+				c.ftxt_fit(mo.name, sx + T / 2, sy - 9, "#a0dcff", 10, T * 3.0, "center")
 		c.ga(1.0)
 	# a hős (siklás + előrelendülés támadáskor)
 	var lox := p.lunge * p.lunge_dx * T * 0.3
@@ -538,6 +597,37 @@ static func fx(m: Node, c: Cv) -> void:
 			c.ss(rgba(255, 220, 130, 0.6 * (1 - p))); c.lw(2)
 			c.bp(); c.arc(0, 0, T * 0.66, -0.4, 0.6); c.stroke()
 			c.restore()
+		elif ty == "corpse":
+			# a legyőzött szörny: összeroskad és elhalványul (a főellenség közben rázkódik)
+			var x: float = (f["x"] - cam.x) * T + T / 2
+			var y: float = (f["y"] - cam.y) * T + T / 2
+			var boss: bool = f.get("boss", false)
+			var kp := p if not boss else clampf((p - 0.75) / 0.25, 0.0, 1.0)
+			if boss and p < 0.8:
+				x += sin(now * 0.09) * 3.0
+				y += cos(now * 0.11) * 2.0
+			c.save(); c.translate(x, y + T * 0.38)
+			c.scale(1.0 + 0.35 * kp, maxf(0.05, 1.0 - 0.85 * kp))
+			if int(f.get("facing", 1)) < 0:
+				c.scale(-1, 1)
+			c.ga(1.0 - kp)
+			Sprites.monster(c, str(f["key"]), 0, -T * 0.38, T * 0.85, 0.0, float(f.get("sd", 0.0)), false)
+			c.ga(1.0)
+			c.restore()
+		elif ty == "bolt":
+			# villámlánc: törtvonal két mező között
+			var x0: float = (f["x0"] - cam.x) * T + T / 2
+			var y0: float = (f["y0"] - cam.y) * T + T / 2
+			var x1: float = (f["x1"] - cam.x) * T + T / 2
+			var y1: float = (f["y1"] - cam.y) * T + T / 2
+			for k in 2:
+				c.ss(rgba(140, 210, 255, 0.95 * (1 - p)) if k == 0 else rgba(255, 255, 255, 0.95 * (1 - p))); c.lw(4.0 if k == 0 else 1.6)
+				c.bp(); c.mt(x0, y0)
+				for i in range(1, 6):
+					var u := i / 6.0
+					var jx := Data.rnd_seed(i * 3.1 + float(f["t0"]) * 0.01 + floorf(p * 6.0)) - 0.5
+					c.lt(lerpf(x0, x1, u) + jx * T * 0.5, lerpf(y0, y1, u) + (Data.rnd_seed(i * 7.7 + floorf(p * 6.0)) - 0.5) * T * 0.5)
+				c.lt(x1, y1); c.stroke()
 		elif ty == "bite":
 			# a szörny ütése: három vörös karmolás a hősön
 			var x: float = (f["x"] - cam.x) * T + T / 2
@@ -691,6 +781,14 @@ static func overlay(m: Node, c: Cv) -> void:
 				c.tex(m.tex_glow, Rect2(x - r * 2.4, y - r * 2.4, r * 4.8, r * 4.8), Color(fog.r, fog.g, fog.b, a * 1.6))
 			else:
 				c.fs(Color(fog.r, fog.g, fog.b, a)); c.circ(x, y, r)
+	# teljes képernyős villanás (fázisváltás, főellenség halála)
+	var fl: Dictionary = m.game.flash
+	if not fl.is_empty():
+		var ft: float = now - float(fl.get("t0", 0.0))
+		var fd := float(fl.get("dur", 400.0))
+		if ft >= 0.0 and ft < fd:
+			var fc := Color(str(fl.get("col", "#ffffff")))
+			c.fs(Color(fc.r, fc.g, fc.b, 0.55 * (1.0 - ft / fd))); c.fill_rect(0, 0, W, gh)
 	# sérülés: vörös villanás; kevés életerő: lüktető vörös keret
 	var hs: float = now - p.hurt_ms
 	if p.hurt_ms > 0.0 and hs < 220.0:
@@ -879,6 +977,19 @@ static func hud(m: Node, c: Cv) -> void:
 	var sy := y0 + 20
 	_slot(c, ax, sy, ss, Lang.T("key.space_short"), "»", p.col, p.dash_cd, p.dash_cd_max, Lang.T("ab.dash"), p.rooted > 0)
 	_slot(c, ax + 78, sy, ss, "Q", str(Data.SKILL_ICON[p.cls]), str(Data.SKILL_COL[p.cls]), p.skill_cd, p.skill_cd_max, Lang.T("ab." + str(Data.SKILL[p.cls])))
+	# a Sebész kioperált szervei a képesség sarkában; Gőzköpeny: a feltöltött ütés jele
+	if p.cls == "Sebész":
+		c.rrect_fill_c(ax + 78 + ss - 14, sy + ss - 14, 22, 18, 6, "#10221e")
+		c.ftxt(str(p.organs), ax + 78 + ss - 3, sy + ss, "#a0f0d8" if p.organs > 0 else "#6a6a6a", 12, "center", true)
+	if p.steam_charge:
+		c.ftxt("×2", ax + ss - 2, sy + ss - 2, "#ffffff", 12, "right", true)
+	# ereklyék: kis jelvények a sáv fölött
+	for i in p.relics.size():
+		var rd: Dictionary = Relics.LIST[p.relics[i]]
+		var rx := 16.0 + i * 34.0
+		c.rrect_fill_c(rx, y0 - 36, 28, 28, 7, Cv.rgba(10, 8, 6, 0.85))
+		c.rrect_stroke_c(rx, y0 - 36, 28, 28, 7, 1.4, rd["col"])
+		c.ftxt(str(rd["ic"]), rx + 14, y0 - 16, rd["col"], 15, "center")
 	var pots := potions(p)
 	_slot(c, ax + 156, sy, ss, "E", "✚", "#50d070", 0, 1, Lang.T("ab.potion"), pots == 0)
 	c.rrect_fill_c(ax + 156 + ss - 14, sy + ss - 14, 22, 18, 6, "#16280f")

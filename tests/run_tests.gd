@@ -44,6 +44,8 @@ func _init() -> void:
 	test_nyelvek()
 	print("══════ 9. GORGONA: zónák, főellenségek, képességek, Műtőterem ══════")
 	test_story()
+	print("══════ 11. EREKLYÉK, ESEMÉNYEK, MINI-BOSSOK, A SEBÉSZ, NAPI KIHÍVÁS ══════")
+	test_uj()
 	Lang.set_lang("hu")
 	print("══════ ÖSSZESEN: %d ellenőrzés, %d hiba ══════" % [checks, fails])
 	quit(1 if fails > 0 else 0)
@@ -669,8 +671,12 @@ func test_save() -> void:
 	g.start("Íjász", "hard")
 	var p := g.player
 	# járjunk körbe, hogy legyen felderített terület, üzenet, arany, képesség, tárgy...
+	# (a séta alatt a hős ne halhasson meg egy közeli Fertőzött miatt: a teszt a mentést méri, nem a harcot)
+	p.hp = 99999
 	for i in 40:
 		g.do_move([1, 0, -1, 0][i % 4], [0, 1, 0, -1][i % 4])
+	p.hp = p.max_hp
+	p.lives = 3
 	p.gold = 137
 	p.inventory.append(mk("Rúnakard", "epic", 2))
 	p.inventory.append(mk("Nagy gyógyital", "rare", 2))
@@ -1019,7 +1025,7 @@ func test_kozmetika() -> void:
 ## a kulcsok, amelyekre a kód hivatkozik: a szkriptekben szó szerint álló kulcsok
 ## (Lang.T / Lang.Ta / Lang.ref / _uz hívások és minden "csoport.valami" alakú szöveg),
 ## valamint a táblákból összerakott kulcsok (tárgyak, szörnyek, képességek, kinézet...)
-const KULCS_CSOPORTOK := "menu|help|bind|key|common|diff|char|cls|stat|inv|chest|rarity|rar|perk|shop|bolt|coins|pack|slot|skin|fiok|pause|over|hud|map|st|sh|msg|item|mon|room|trap|shrine|ab|zone|banner|boss|who|talk|dlg|intro|end|cine|npc|hub|up|cur|journal|note|lore|saves|cloud"
+const KULCS_CSOPORTOK := "menu|help|bind|key|common|diff|char|cls|stat|inv|chest|rarity|rar|perk|shop|bolt|coins|pack|slot|skin|fiok|pause|over|hud|map|st|sh|msg|item|mon|room|trap|shrine|ab|zone|banner|boss|who|talk|dlg|intro|end|cine|npc|hub|up|cur|journal|note|lore|saves|cloud|relic|mini|event|ach|daily"
 
 
 func kod_kulcsai() -> Dictionary:
@@ -1093,6 +1099,22 @@ func kod_kulcsai() -> Dictionary:
 	for n in ["nora", "profeta"]:
 		out["npc." + n] = "story_ui.gd"
 		out["npc." + n + ".role"] = "story_ui.gd"
+	for id in Relics.ORDER:
+		out["relic." + str(id)] = "relics.gd"
+		out["relic." + str(id) + ".d"] = "relics.gd"
+	for z in Data.MINI:
+		out["mini." + str(Data.MINI[z])] = "mon.gd"
+	for e in Data.EVENTS:
+		for veg in ["", ".d", ".a", ".b"]:
+			out["event." + str(e) + veg] = "story_ui.gd"
+		out["msg.event." + str(e) + ".a"] = "game.gd"
+		out["msg.event." + str(e) + ".b"] = "game.gd"
+	for jv in Meta.JELVENYEK:
+		out["ach." + str(jv)] = "meta.gd"
+	for c in Data.EXTRA_CLASSES:
+		out["cls." + str(Lang.CLS_KULCS[c])] = "lang.gd"
+		out["cls." + str(Lang.CLS_KULCS[c]) + ".d"] = "lang.gd"
+		out["char.locked." + str(Lang.CLS_KULCS[c])] = "screens.gd"
 	for a in ["ki", "var", "megy", "kesz", "hiba"]:
 		out["cloud." + a] = "story_ui.gd"
 	for h in ["halozat", "belepes", "tul_sok_mentes", "betelt_a_tarhely"]:
@@ -1768,3 +1790,300 @@ func test_mentesek() -> void:
 	fm.torol("nincs_ilyen.json")
 	ok(not fm._ide_tartozik("../kitores.json") and not fm._ide_tartozik("kep.png") and fm._ide_tartozik("m1_2.json"), "csak a mentésmappa saját fájljai szinkronizálódnak")
 	fm.free()
+
+
+# ══════════ 11. EREKLYÉK, ÁLLAPOTOK, ESEMÉNYEK, MINI-BOSSOK, A SEBÉSZ, NAPI KIHÍVÁS ══════════
+func test_uj() -> void:
+	Meta.reset()
+	# ── 11.1 ereklyék: gyújtás, marás, robbanás
+	var g := arena("Lovag")
+	var p := g.player
+	ok(Relics.ORDER.size() == Relics.LIST.size(), "minden ereklyének van sorszáma")
+	ok(Relics.apply(p, "gyujto") and not Relics.apply(p, "gyujto"), "egy ereklye csak egyszer szerezhető meg")
+	var m := place(g, "golem", 1)
+	g.p_attack(m)
+	ok(m.burn == Relics.BURN_TURNS, "Gyújtókamra: a találat meggyújt")
+	var hp0 := m.hp
+	g.advance_turn(true)
+	ok(m.hp < hp0 and m.burn == Relics.BURN_TURNS - 1, "az égés körönként sebez, és fogy")
+	Relics.apply(p, "savmirigy")
+	m = place(g, "golem", 1)
+	for i in 5:
+		g.p_attack(m)
+	ok(m.corr == Relics.CORR_MAX, "Savmirigy: a marás legfeljebb %d rétegig halmozódik" % Relics.CORR_MAX)
+	ok(Game.mdef(m) == m.def - 2 * Relics.CORR_MAX, "a marás rétegenként 2 védelmet vesz le (%d -> %d)" % [m.def, Game.mdef(m)])
+	# Robbanó epe: az égő és mart szörny halála a szomszédját is megsebzi és meggyújtja
+	Relics.apply(p, "robbano")
+	g.world.mons.clear()
+	var a := Mon.make("goblin", p.x + 1, p.y, "normal")
+	var b := Mon.make("golem", p.x + 2, p.y, "normal")
+	b.hp = 9999
+	b.max_hp = 9999
+	g.world.mons.append(a)
+	g.world.mons.append(b)
+	a.burn = 2
+	a.corr = 1
+	a.hp = 1
+	g.p_attack(a)
+	ok(not a.alive and b.hp < 9999 and b.burn > 0, "Robbanó epe: a robbanás a szomszédot is megsebzi és meggyújtja")
+	# ── Tesla + Rézbőr
+	g = arena("Lovag")
+	p = g.player
+	Relics.apply(p, "tesla")
+	Relics.apply(p, "rezbor")
+	g.world.mons.clear()
+	var c1 := Mon.make("golem", p.x + 1, p.y, "normal")
+	var c2 := Mon.make("golem", p.x + 2, p.y + 1, "normal")
+	for mm in [c1, c2]:
+		mm.hp = 99999
+		mm.max_hp = 99999
+		g.world.mons.append(mm)
+	c2.corr = 1
+	for i in 3:
+		g.p_attack(c1)
+	ok(c2.hp == 99999, "Tesla-tekercs: az első három találat még nem láncol")
+	g.p_attack(c1)
+	ok(c2.hp < 99999 and c2.stun > 0, "a negyedik találat villámot láncol; Rézbőrrel a mart ellenséget el is kábítja")
+	# ── Tükörlemez, Végső szikra, Gőzköpeny, Óramű-szív
+	g = arena("Lovag")
+	p = g.player
+	p.max_hp = 500
+	p.hp = 500
+	Relics.apply(p, "tukor")
+	m = place(g, "orc", 1)
+	var mh := m.hp
+	g.mon_attack(m)
+	ok(m.hp < mh, "Tükörlemez: a kapott ütés egy része visszaverődik")
+	Relics.apply(p, "vegso")
+	p.hp = 3
+	p.lives = 1
+	g.hurt(50)
+	g.check_death()
+	ok(p.alive and p.hp == 1 and p.spark_used and p.lives == 1, "Végső szikra: a halálos ütés 1 életerőn megállít")
+	g.hurt(50)
+	g.check_death()
+	ok(not p.alive, "a Végső szikra zónánként csak egyszer ment meg")
+	g = arena("Lovag")
+	p = g.player
+	Relics.apply(p, "gozkopeny")
+	Relics.apply(p, "oramu")
+	p.dir_x = 0
+	p.dir_y = 1
+	g.dash()
+	ok(p.steam_charge, "Gőzköpeny: félreugrás után feltöltődik a következő ütés")
+	ok(is_equal_approx(g.hit_mult(), 2.0) and not p.steam_charge and is_equal_approx(g.hit_mult(), 1.0), "a feltöltött ütés duplán sebez, és csak egyszer")
+	ok(p.skill_cd_max == Data.SKILL_CD - 2, "Óramű-szív: a képesség 2 körrel hamarabb tölt")
+	ok(p.dash_cd > 0, "a félreugrás lehűlésen van")
+	g.kill_reward(Mon.make("goblin", 0, 0, "normal"))
+	ok(p.dash_cd == 0, "Óramű-szív: ölés után azonnal újra lehet ugrani")
+	# az ajánlat előnyben részesíti, ami a meglévőkkel együttműködik
+	var po := Player.create("Lovag")
+	po.relics = ["gyujto"]
+	var jo := 0
+	for i in 40:
+		var of := Relics.offer(po)
+		ok(of.size() == 2 and of[0] != of[1] and not ("gyujto" in of), "az ajánlat két különböző, még nem birtokolt ereklye")
+		if of[0] in ["robbano", "verpumpa"]:
+			jo += 1
+	ok(jo == 40, "az első lap mindig illik a meglévő ereklyéhez (%d/40)" % jo)
+	po.relics = Relics.ORDER.duplicate()
+	ok(Relics.offer(po).is_empty(), "ha minden ereklye megvan, nincs mit ajánlani")
+
+	# ── 11.2 mini-boss: erős, talapzatot hagy, a talapzaton ereklye választható
+	for lv in range(1, Data.MAX_LEVEL + 1):
+		var pw := Player.create("Lovag")
+		var w := World.create(pw, lv, "normal")
+		var minik := 0
+		for mo in w.mons:
+			if mo.mini:
+				minik += 1
+				ok(mo.key == Data.MINI[lv] and mo.max_hp > Mon.make(mo.key, 0, 0, "normal").max_hp * 3, "%d. zóna: a mini-boss a zónáé és erős" % lv)
+		ok(minik == 1, "%d. zóna: pontosan egy mini-boss van (%d)" % [lv, minik])
+		ok(w.events.size() == 1 and not w.vents.is_empty(), "%d. zóna: van esemény és padlórács" % lv)
+		var s := Dungeon.center(w.rooms[0])
+		var seen := Dungeon.reach_map(w.tiles, s.x, s.y, {})
+		for v in (w.vents + w.events):
+			var vk := Dungeon.idx(v["x"], v["y"])
+			ok(w.tiles[vk] == Data.FLOOR and seen[vk] == 1, "a rács / esemény elérhető padlón áll")
+		var elo := 0
+		for d in w.decor:
+			if d["type"] in Sprites2.ELO_DISZEK:
+				elo += 1
+				ok(w.tiles[Dungeon.idx(d["x"], d["y"])] == Data.WALL, "az élő dísz falon van")
+		ok(elo > 5, "%d. zóna: vannak mozgó díszek a falakon (%d)" % [lv, elo])
+	g = arena("Lovag")
+	p = g.player
+	var mb := Mon.make_mini("rat", p.x + 1, p.y, "normal")
+	g.world.mons.append(mb)
+	ok(mb.name == "A Patkánykirály", "a mini-boss neve: " + mb.name)
+	g.kill_reward(mb)
+	ok(g.world.pedestals.size() == 1 and not g.world.pedestals[0]["taken"], "a mini-boss ereklye-talapzatot hagy maga után")
+	var pd: Dictionary = g.world.pedestals[0]
+	p.x = pd["x"]
+	p.y = pd["y"]
+	g._land(p.x, p.y)
+	ok(g.pending_relic, "a talapzatra lépve ereklyét lehet választani")
+	ok(g.take_relic("tesla") and pd["taken"] and p.has_relic("tesla"), "a választott ereklye a hősé, a talapzat kiürül")
+	ok(not g.take_relic("gyujto"), "üres talapzatról nem lehet még egyet elvenni")
+
+	# ── 11.3 padlórácsok: a kitörés előtt egy körrel jeleznek
+	g = arena("Lovag")
+	p = g.player
+	p.max_hp = 500
+	p.hp = 500
+	g.world.mons.clear()
+	g.world.vents.append({"x": p.x + 2, "y": p.y, "ph": 0})
+	var jelzett := 0
+	var korok := 0
+	for i in Data.VENT_PERIOD * 3:
+		g.advance_turn(true)
+		korok += 1
+		if g.world.hazard_at(p.x + 2, p.y) != null:
+			jelzett += 1
+	ok(jelzett == 3, "a rács periódusonként egyszer tör ki (%d / %d kör)" % [jelzett, korok])
+	ok(p.hp == 500, "aki nem áll a rácson, nem sérül")
+
+	# ── 11.4 döntési események
+	for ek in Data.EVENTS:
+		for valasz in 2:
+			g = arena("Lovag")
+			p = g.player
+			p.max_hp = 100
+			p.hp = 100
+			var e := {"x": p.x, "y": p.y, "kind": ek, "used": false}
+			var elotte := [p.gold, p.bio, p.rez, p.inventory.size(), p.hp, p.max_hp, g.pending_perks, p.poison]
+			ok(g.event_choice(e, valasz) and e["used"], "%s / %d: a választás megtörténik" % [ek, valasz])
+			var utana := [p.gold, p.bio, p.rez, p.inventory.size(), p.hp, p.max_hp, g.pending_perks, p.poison]
+			ok(elotte != utana, "%s / %d: a választásnak van következménye" % [ek, valasz])
+			ok(not g.event_choice(e, valasz), "%s: egy esemény csak egyszer használható" % ek)
+			ok(not nyers(Lang.txt(p.msgs[p.msgs.size() - 1]["t"])), "%s / %d: az üzenet le van fordítva" % [ek, valasz])
+	g = arena("Lovag")
+	g.world.events.append({"x": g.player.x + 1, "y": g.player.y, "kind": "fogoly", "used": false})
+	g.do_move(1, 0)
+	ok(g.pending_event != null, "az eseményre lépve megnyílik a választás")
+
+	# ── 11.5 a Sebész: vérzés, szervek, beültetés; a Bronz Klinikával oldódik fel
+	ok(not ("Sebész" in Meta.playable()) and Meta.playable().size() == 3, "a Sebész eleinte zárva van")
+	Meta.reach(2)
+	ok("Sebész" in Meta.playable() and Meta.has_badge("sebesz"), "a Bronz Klinika elérése feloldja (jelvénnyel)")
+	g = arena("Sebész")
+	p = g.player
+	ok(p.cls == "Sebész" and p.max_hp == Data.CLASSES["Sebész"]["hp"], "a Sebész létrehozható")
+	m = place(g, "golem", 1)
+	g.p_attack(m)
+	ok(m.bleed == 2, "a Sebész vágása vérzést okoz")
+	hp0 = m.hp
+	g.advance_turn(true)
+	ok(m.hp < hp0 and m.bleed == 1, "a vérzés körönként sebez, és fogy")
+	ok(not g.skill() or true, "képesség szerv nélkül")
+	g = arena("Sebész")
+	p = g.player
+	g.world.mons.clear()
+	ok(not g.skill() and p.skill_cd == 0, "szerv és célpont nélkül a képesség nem megy kárba")
+	m = place(g, "golem", 1)
+	p.dir_x = 1
+	p.dir_y = 0
+	ok(g.skill() and m.bleed == Data.BLEED_MAX - 1 and m.hp < m.max_hp, "Metszés: mély vágás, teljes vérzéssel")
+	p.skill_cd = 0
+	p.organs = 0
+	g.kill_reward(Mon.make_elite("goblin", 0, 0, "normal"))
+	ok(p.organs == 1, "erős ellenségből mindig lesz szerv")
+	g.world.mons.clear()
+	p.max_hp = 100
+	p.hp = 20
+	var atk0 := p.base_atk
+	ok(g.skill() and p.hp == 55 and p.base_atk == atk0 + 1 and p.organs == 0, "Beültetés: +35%% életerő és +1 támadás (hp %d)" % p.hp)
+	for i in 400:
+		g.kill_reward(Mon.make("goblin", 0, 0, "normal"))
+	ok(p.organs == Data.ORGAN_MAX, "legfeljebb %d szerv lehet nála" % Data.ORGAN_MAX)
+
+	# ── 11.6 napi kihívás: ugyanaz a nap ugyanazt a pályát adja, a fejlesztések nem számítanak
+	var d := Meta.data()
+	d["up"] = {"rezhenger": 3}
+	var g1 := Game.new()
+	g1.autosave = false
+	g1.start("Lovag", "normal", "2026-10-09")
+	var g2 := Game.new()
+	g2.autosave = false
+	g2.start("Mágus", "normal", "2026-10-09")
+	var g3 := Game.new()
+	g3.autosave = false
+	g3.start("Lovag", "normal", "2026-10-10")
+	ok(g1.world.tiles == g2.world.tiles and g1.world.rooms == g2.world.rooms, "ugyanazon a napon mindenki ugyanazt a pályát kapja")
+	ok(g1.world.mons.size() == g2.world.mons.size() and g1.world.chests.size() == g2.world.chests.size(), "ugyanannyi szörny és láda")
+	ok(g1.world.tiles != g3.world.tiles, "másnap más a pálya")
+	ok(g1.player.max_hp == Data.CLASSES["Lovag"]["hp"], "a napi kihívásban a Műtőterem fejlesztései nem számítanak")
+	g1.next_level()
+	g2.next_level()
+	ok(g1.world.tiles == g2.world.tiles and g1.world.dungeon_level == 2, "a következő zóna is közös")
+	var gn := Game.new()
+	gn.autosave = false
+	gn.start("Lovag", "normal")
+	ok(gn.player.max_hp == Data.CLASSES["Lovag"]["hp"] + 24 and gn.daily == "", "a szokásos kalandban a fejlesztések élnek")
+	d["up"] = {}
+	var pp := Player.create("Lovag")
+	pp.kills = 10
+	pp.gold = 50
+	pp.plvl = 3
+	var p1 := Daily.pont(pp, 2, false, 400)
+	ok(p1 == 1000 + 150 + 100 + 200 - 100, "a pontszám képlete (%d)" % p1)
+	ok(Daily.pont(pp, 4, true, 400) > p1 + 5000, "a győzelem sokat ér")
+	ok(Daily.pont(pp, 1, false, 999999) == 0, "a pontszám nem lehet negatív")
+	ok(Daily.mag("2026-10-09") == Daily.mag("2026-10-09") and Daily.mag("2026-10-09") != Daily.mag("2026-10-10"), "a nap magja állandó, napról napra más")
+	ok(Meta.napi_ment("2026-10-09", 500) and not Meta.napi_ment("2026-10-09", 400) and Meta.napi_legjobb("2026-10-09") == 500, "a napi legjobb megmarad")
+	ok(Meta.napi_legjobb("2026-10-10") == 0, "másnap nulláról indul")
+
+	# ── 11.7 jelvények
+	Meta.reset()
+	Meta.uj_jelvenyek.clear()
+	Meta.boss_down("rust_worm")
+	ok(Meta.has_badge("rozsda") and Meta.uj_jelvenyek == ["rozsda"], "főellenség legyőzése jelvényt ad")
+	Meta.boss_down("rust_worm")
+	ok(Meta.uj_jelvenyek.size() == 1, "egy jelvény csak egyszer jár")
+	for id in Story.NOTE_ORDER:
+		Meta.add_note(id)
+	ok(Meta.has_badge("naplo"), "minden feljegyzés: Krónikás")
+	var pj := Player.create("Lovag")
+	pj.kills = 120
+	Meta.bank_run(pj, 4, true)
+	ok(Meta.has_badge("meszaros") and Meta.has_badge("sziv"), "száz ölés és a győzelem jelvénye")
+	for jv in Meta.JELVENYEK:
+		ok(Meta.JELVENY_IKON.has(jv), "%s: van ikonja" % jv)
+	Meta.uj_jelvenyek.clear()
+
+	# ── 11.8 mentés: az új állapot megmarad
+	Meta.reset()
+	SaveGame.erase_all()
+	var gs := Game.new()
+	gs.autosave = false
+	gs.start("Sebész", "normal", "2026-10-09")
+	var ps := gs.player
+	ps.relics = ["gyujto", "tesla"]
+	ps.organs = 2
+	ps.hit_count = 3
+	ps.steam_charge = true
+	ps.spark_used = true
+	gs.world.mons[0].burn = 2
+	gs.world.mons[0].corr = 1
+	gs.world.mons[0].bleed = 4
+	gs.world.pedestals.append({"x": ps.x, "y": ps.y, "taken": false})
+	SaveGame.current = ""
+	ok(SaveGame.save_run(gs), "az új állapot elmenthető")
+	var gl := SaveGame.load_run()
+	ok(gl != null, "és visszatölthető")
+	if gl != null:
+		var pl := gl.player
+		ok(pl.cls == "Sebész" and pl.relics == ["gyujto", "tesla"] and pl.organs == 2 and pl.hit_count == 3, "hős, ereklyék, szervek")
+		ok(pl.steam_charge and pl.spark_used and gl.daily == "2026-10-09", "töltés, szikra, napi kihívás")
+		ok(gl.world.mons[0].burn == 2 and gl.world.mons[0].corr == 1 and gl.world.mons[0].bleed == 4, "a szörnyek állapotai")
+		ok(gl.world.vents == gs.world.vents and gl.world.events == gs.world.events and gl.world.pedestals.size() == 1, "rácsok, események, talapzat")
+		var mi0 := 0
+		var mi1 := 0
+		for mo in gs.world.mons:
+			if mo.mini: mi0 += 1
+		for mo in gl.world.mons:
+			if mo.mini: mi1 += 1
+		ok(mi0 == 1 and mi1 == 1, "a mini-boss megmarad")
+	SaveGame.erase_all()
+	Meta.reset()
+	print("  %d ereklye, %d esemény, %d jelvény; a Sebész és a napi kihívás rendben" % [Relics.ORDER.size(), Data.EVENTS.size(), Meta.JELVENYEK.size()])

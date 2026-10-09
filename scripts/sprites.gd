@@ -13,7 +13,10 @@ static func rgba(r: float, g: float, b: float, a: float = 1.0) -> Color:
 static func hero(c: Cv, cls: String, cx: float, cy: float, size: float, _t: float, skin := {}) -> void:
 	c.save()
 	c.translate(cx, cy)
-	Skins.hos(c, cls, size / 40.0, skin)
+	if cls == "Sebész":
+		Sprites2.surgeon(c, size / 40.0)   # a negyedik hős: nincs kozmetikája, mindig így néz ki
+	else:
+		Skins.hos(c, cls, size / 40.0, skin)
 	c.restore()
 
 
@@ -42,7 +45,7 @@ static func star(c: Cv, x: float, y: float, r: float) -> void:
 ## Nyugalmi mozgás: a KÉSZ háló csak fel-le tolódik (nincs képkockánkénti újrarajzolás).
 ## A fázis 16 lépésre kerekített — a rajzréteg ebből tudja, mikor kell egyáltalán frissítenie.
 const HERO_PERIOD := TAU / 0.05
-const HERO_FAZIS := {"Lovag": 0.0, "Mágus": 2.1, "Íjász": 4.2}
+const HERO_FAZIS := {"Lovag": 0.0, "Mágus": 2.1, "Íjász": 4.2, "Sebész": 1.0}
 
 
 static func hero_phase(t: float) -> int:

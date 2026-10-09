@@ -200,7 +200,8 @@ static func _write(g: Game, id: String, auto: bool) -> bool:
 		mons.append({"key": m.key, "x": m.x, "y": m.y, "seedv": m.seedv, "facing": m.facing,
 			"max_hp": m.max_hp, "hp": m.hp, "atk": m.atk, "def": m.def, "mres": m.mres, "xp": m.xp,
 			"sp": m.sp, "boss": m.boss, "alive": m.alive, "guard": m.guard, "awake": m.awake, "stun": m.stun,
-			"elite": m.elite, "mech": m.mech, "phase": m.phase, "met": m.met, "cd": m.cd})
+			"elite": m.elite, "mech": m.mech, "phase": m.phase, "met": m.met, "cd": m.cd,
+			"mini": m.mini, "burn": m.burn, "corr": m.corr, "bleed": m.bleed})
 	var chests: Array = []
 	for c in w.chests:
 		chests.append({"x": c["x"], "y": c["y"], "opened": c["opened"], "items": _items_to(c["items"])})
@@ -214,7 +215,7 @@ static func _write(g: Game, id: String, auto: bool) -> bool:
 		"v": VERSION,
 		"idő": Time.get_datetime_string_from_system(),
 		"info": {"nev": "", "auto": auto},
-		"jatek": {"melyseg": w.dungeon_level, "nehezseg": w.diff, "kor": w.turn, "pending_perks": g.pending_perks},
+		"jatek": {"melyseg": w.dungeon_level, "nehezseg": w.diff, "kor": w.turn, "pending_perks": g.pending_perks, "daily": g.daily},
 		"hos": {"cls": p.cls, "x": p.x, "y": p.y, "col": p.col, "facing": p.facing,
 			"max_hp": p.max_hp, "hp": p.hp, "base_atk": p.base_atk, "base_mag": p.base_mag, "base_def": p.base_def,
 			"lives": p.lives, "xp": p.xp, "plvl": p.plvl, "xp_next": p.xp_next, "poison": p.poison,
@@ -222,6 +223,8 @@ static func _write(g: Game, id: String, auto: bool) -> bool:
 			"bio": p.bio, "rez": p.rez, "kills": p.kills, "kill_heal": p.kill_heal, "cd_cut": p.cd_cut,
 			"find_mult": p.find_mult, "dash_cd": p.dash_cd, "skill_cd": p.skill_cd, "stun": p.stun,
 			"rooted": p.rooted, "dir_x": p.dir_x, "dir_y": p.dir_y,
+			"relics": p.relics.duplicate(), "hit_count": p.hit_count, "steam_charge": p.steam_charge,
+			"spark_used": p.spark_used, "organs": p.organs,
 			"weapon": item_to(p.weapon), "armor": item_to(p.armor), "shield": item_to(p.shield),
 			"inventory": _items_to(p.inventory), "msgs": p.msgs.duplicate(true)},
 		"palya": {
@@ -232,7 +235,8 @@ static func _write(g: Game, id: String, auto: bool) -> bool:
 			"mons": mons, "chests": chests, "shops": shops,
 			"traps": w.traps.duplicate(true), "secrets": w.secrets.duplicate(true),
 			"shrines": w.shrines.duplicate(true), "notes": w.notes.duplicate(true),
-			"hazards": w.hazards.duplicate(true), "decor": w.decor.duplicate(true), "torches": w.torches.duplicate(true),
+			"hazards": w.hazards.duplicate(true), "vents": w.vents.duplicate(true), "events": w.events.duplicate(true),
+			"pedestals": w.pedestals.duplicate(true), "decor": w.decor.duplicate(true), "torches": w.torches.duplicate(true),
 		},
 	}
 	DirAccess.make_dir_recursive_absolute(DIR)
@@ -314,6 +318,15 @@ static func load_run(id := "") -> Game:
 	p.rooted = maxi(0, int(hs.get("rooted", 0)))
 	p.dir_x = clampi(int(hs.get("dir_x", 1)), -1, 1)
 	p.dir_y = clampi(int(hs.get("dir_y", 0)), -1, 1)
+	p.relics = []
+	if hs.get("relics") is Array:
+		for r in (hs["relics"] as Array):
+			if Relics.LIST.has(str(r)) and not (str(r) in p.relics):
+				p.relics.append(str(r))
+	p.hit_count = maxi(0, int(hs.get("hit_count", 0)))
+	p.steam_charge = bool(hs.get("steam_charge", false))
+	p.spark_used = bool(hs.get("spark_used", false))
+	p.organs = clampi(int(hs.get("organs", 0)), 0, Data.ORGAN_MAX)
 	p.perks = {}
 	if hs.get("perks") is Dictionary:
 		for k in (hs["perks"] as Dictionary):
@@ -390,6 +403,10 @@ static func load_run(id := "") -> Game:
 			m.phase = clampi(int(md.get("phase", 1)), 1, 2)
 			m.met = bool(md.get("met", false))
 			m.cd = maxi(0, int(md.get("cd", 0)))
+			m.mini = bool(md.get("mini", false))
+			m.burn = maxi(0, int(md.get("burn", 0)))
+			m.corr = clampi(int(md.get("corr", 0)), 0, Relics.CORR_MAX)
+			m.bleed = clampi(int(md.get("bleed", 0)), 0, Data.BLEED_MAX)
 			w.mons.append(m)
 	w.chests = []
 	if mp.get("chests") is Array:
@@ -426,6 +443,9 @@ static func load_run(id := "") -> Game:
 	w.shrines = _dict_list(mp.get("shrines"), {"x": 0, "y": 0, "kind": "gyogyulas", "used": false})
 	w.notes = _dict_list(mp.get("notes"), {"x": 0, "y": 0, "id": "n041", "taken": false})
 	w.hazards = _dict_list(mp.get("hazards"), {"x": 0, "y": 0, "kind": "acid", "ttl": 1, "dmg": 1, "warn": false})
+	w.vents = _dict_list(mp.get("vents"), {"x": 0, "y": 0, "ph": 0})
+	w.events = _dict_list(mp.get("events"), {"x": 0, "y": 0, "kind": "fogoly", "used": false})
+	w.pedestals = _dict_list(mp.get("pedestals"), {"x": 0, "y": 0, "taken": false})
 	w.decor = _dict_list(mp.get("decor"), {"x": 0, "y": 0, "type": "bones", "seed": 0.0})
 	w.torches = _dict_list(mp.get("torches"), {"x": 0, "y": 0, "ph": 0.0})
 	w.dungeon_level = clampi(int(jt.get("melyseg", 1)), 1, Data.MAX_LEVEL)
@@ -437,6 +457,7 @@ static func load_run(id := "") -> Game:
 	w.update_fov()
 	g.world = w
 	g.pending_perks = maxi(0, int(jt.get("pending_perks", 0)))
+	g.daily = str(jt.get("daily", ""))
 	return g
 
 

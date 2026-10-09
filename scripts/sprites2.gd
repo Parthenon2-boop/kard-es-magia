@@ -727,3 +727,191 @@ static func lombik(c: Cv, x: float, y: float, w: float, h: float, t: float) -> v
 			c.ss(rgba(120, 230, 200, 0.6)); c.lw(1.2 * k)
 			for j in 4:
 				c.bp(); c.mt(tx + (-9 + j * 6) * k, by - 76 * k); c.qt(tx + (-30 + j * 20) * k, ty + 10 * k, tx + (-40 + j * 27) * k, ty); c.stroke()
+
+
+# ══════════ ÉLŐ PÁLYA: mozgó díszek a falakon ══════════
+## Ezek a díszek MOZOGNAK (gőz, forgás, csöpögés, lüktetés), ezért nem a ritkán frissülő
+## csemperétegen, hanem a szörnyekkel együtt, minden képkockán rajzolódnak.
+const ELO_DISZEK := ["valve", "gear", "drip", "veincluster", "tank", "brazier"]
+## zónánként milyen élő díszek kerülnek a falakra
+const ZONA_DISZEK := {1: ["valve", "gear", "drip", "valve"], 2: ["tank", "drip", "gear", "tank"],
+	3: ["veincluster", "drip", "veincluster"], 4: ["gear", "brazier", "valve", "brazier"]}
+
+
+static func prop(c: Cv, type: String, px: float, py: float, s: float, t: float, sd: float) -> void:
+	c.save(); c.translate(px, py)
+	match type:
+		"valve":
+			# rézcső kézikerékkel; időnként gőzt fúj a padló felé
+			c.fs(sot(REZ, 0.45)); c.fill_rect(0, s * 0.40, s, s * 0.20)
+			c.fs(REZ); c.fill_rect(0, s * 0.40, s, s * 0.07)
+			c.fs(sot(REZ, 0.3)); c.fill_rect(s * 0.42, s * 0.34, s * 0.16, s * 0.42)
+			c.save(); c.translate(s * 0.5, s * 0.5); c.rotate(sin(t * 0.02 + sd) * 0.6)
+			c.ss("#a02a20"); c.lw(s * 0.06); c.bp(); c.arc(0, 0, s * 0.17, 0, TAU); c.stroke()
+			c.line(-s * 0.17, 0, s * 0.17, 0); c.line(0, -s * 0.17, 0, s * 0.17)
+			c.restore()
+			var g := fmod(t * 0.012 + sd, 1.0)
+			if g < 0.45:
+				var u := g / 0.45
+				for i in 3:
+					c.fs(rgba(240, 240, 228, 0.34 * (1.0 - u)))
+					c.circ(s * 0.5 + sin(u * 5.0 + i * 2.0) * s * 0.10, s * (0.80 + u * 0.75 + i * 0.10), s * (0.07 + u * 0.16))
+		"gear":
+			c.save(); c.translate(s * 0.5, s * 0.5); c.rotate(t * 0.02 * (1.0 if fmod(sd, 2.0) < 1.0 else -1.0))
+			c.fs(sot(ARANY, 0.5))
+			for i in 8:
+				var a := i / 8.0 * TAU
+				c.poly([cos(a - 0.16) * s * 0.26, sin(a - 0.16) * s * 0.26, cos(a - 0.10) * s * 0.36, sin(a - 0.10) * s * 0.36,
+					cos(a + 0.10) * s * 0.36, sin(a + 0.10) * s * 0.36, cos(a + 0.16) * s * 0.26, sin(a + 0.16) * s * 0.26])
+			c.circ(0, 0, s * 0.28)
+			c.fs(sot(ARANY, 0.25)); c.circ(-s * 0.02, -s * 0.02, s * 0.23)
+			c.fs("#1a140c"); c.circ(0, 0, s * 0.08)
+			c.ss("#1a140c"); c.lw(s * 0.04)
+			for i in 3:
+				var a2 := i / 3.0 * TAU
+				c.line(cos(a2) * s * 0.08, sin(a2) * s * 0.08, cos(a2) * s * 0.22, sin(a2) * s * 0.22)
+			c.restore()
+		"drip":
+			c.fs(sot(REZ, 0.5)); c.fill_rect(s * 0.40, s * 0.30, s * 0.20, s * 0.42)
+			c.fs(REZ); c.fill_rect(s * 0.40, s * 0.30, s * 0.07, s * 0.42)
+			c.fs(sot(REZ, 0.2)); c.fill_rect(s * 0.34, s * 0.64, s * 0.32, s * 0.10)
+			var d := fmod(t * 0.016 + sd, 1.0)
+			if d < 0.6:
+				var y := s * (0.78 + d / 0.6 * 0.85)
+				c.fs(rgba(150, 215, 190, 0.85)); c.ell(s * 0.5, y, s * 0.035, s * 0.07)
+			else:
+				var k := (d - 0.6) / 0.4
+				c.ss(rgba(150, 215, 190, 0.7 * (1.0 - k))); c.lw(1.2)
+				c.bp(); c.ellipse(s * 0.5, s * 1.63, s * 0.22 * k, s * 0.07 * k, 0, 0, TAU); c.stroke()
+		"veincluster":
+			var pu := 0.5 + 0.5 * sin(t * 0.09 + sd)
+			c.ss(rgba(150, 30, 50, 0.9)); c.lw(s * 0.06)
+			c.bp(); c.mt(s * 0.1, s * 0.1); c.qt(s * 0.4, s * 0.5, s * 0.5, s * 0.55); c.stroke()
+			c.bp(); c.mt(s * 0.9, s * 0.15); c.qt(s * 0.7, s * 0.4, s * 0.5, s * 0.55); c.stroke()
+			c.bp(); c.mt(s * 0.5, s * 0.55); c.qt(s * 0.55, s * 0.8, s * 0.42, s * 0.98); c.stroke()
+			c.fs(rgba(255, 90, 110, 0.25 + 0.25 * pu)); c.circ(s * 0.5, s * 0.55, s * (0.20 + 0.06 * pu))
+			c.fs(sot(HUS, 0.2)); c.circ(s * 0.5, s * 0.55, s * (0.13 + 0.03 * pu))
+			c.fs("#f09aa4"); c.circ(s * 0.46, s * 0.51, s * 0.045)
+		"tank":
+			c.fs(sot(REZ, 0.4)); c.fill_rect(s * 0.28, s * 0.12, s * 0.44, s * 0.08); c.fill_rect(s * 0.28, s * 0.80, s * 0.44, s * 0.08)
+			c.fs(rgba(60, 200, 170, 0.35)); c.fill_rect(s * 0.32, s * 0.20, s * 0.36, s * 0.60)
+			c.fs(rgba(200, 255, 240, 0.25)); c.fill_rect(s * 0.34, s * 0.20, s * 0.06, s * 0.60)
+			for i in 3:
+				var b := fmod(t * 0.01 + sd + i * 0.37, 1.0)
+				c.fs(rgba(220, 255, 245, 0.7 * (1.0 - b))); c.circ(s * (0.42 + i * 0.09), s * (0.78 - b * 0.55), s * 0.03)
+			c.fs(rgba(40, 20, 30, 0.75)); c.ell(s * 0.5, s * (0.52 + sin(t * 0.03 + sd) * 0.03), s * 0.07, s * 0.14)
+		"brazier":
+			var fl := 0.6 + 0.4 * sin(t * 0.13 + sd)
+			if Sprites.glow_tex != null:
+				c.tex(Sprites.glow_tex, Rect2(-s * 0.3, -s * 0.1, s * 1.6, s * 1.6), rgba(255, 190, 60, 0.20 + 0.10 * fl))
+			c.fs("#2a2018"); c.poly([s * 0.24, s * 0.58, s * 0.76, s * 0.58, s * 0.64, s * 0.84, s * 0.36, s * 0.84])
+			c.fs(ARANY); c.fill_rect(s * 0.22, s * 0.54, s * 0.56, s * 0.07)
+			c.fs(rgba(255, 150, 30, 0.9)); c.ell(s * 0.5, s * 0.46, s * 0.17, s * (0.16 + 0.07 * fl))
+			c.fs(rgba(255, 230, 140, 0.95)); c.ell(s * 0.5, s * 0.49, s * 0.08, s * (0.09 + 0.04 * fl))
+	c.restore()
+
+
+## Padlórács (zóna-veszély): időnként kitör belőle a zóna csapása. `u`: 0..1, mennyire közel a kitörés.
+static func vent(c: Cv, px: float, py: float, s: float, col: Color, u: float) -> void:
+	c.fs("#0c0a08"); c.rrect(px + s * 0.16, py + s * 0.16, s * 0.68, s * 0.68, s * 0.08); c.fill()
+	c.ss(sot(REZ, 0.3)); c.lw(2.0); c.rrect(px + s * 0.16, py + s * 0.16, s * 0.68, s * 0.68, s * 0.08); c.stroke()
+	c.ss(sot(REZ, 0.45)); c.lw(1.6)
+	for i in 4:
+		c.line(px + s * (0.26 + i * 0.16), py + s * 0.20, px + s * (0.26 + i * 0.16), py + s * 0.80)
+	if u > 0.0 and Sprites.glow_tex != null:
+		c.tex(Sprites.glow_tex, Rect2(px, py, s, s), Color(col.r, col.g, col.b, 0.55 * u))
+
+
+## Ereklye-talapzat: a főellenség / mini-boss után marad, rálépve ereklyét választhatsz.
+static func pedestal(c: Cv, px: float, py: float, s: float, t: float) -> void:
+	var gl := 0.5 + 0.5 * sin(t * 0.08)
+	if Sprites.glow_tex != null:
+		c.tex(Sprites.glow_tex, Rect2(px - s * 0.4, py - s * 0.5, s * 1.8, s * 1.8), rgba(120, 220, 255, 0.24 + 0.16 * gl))
+	c.fs("#2a2630"); c.poly([px + s * 0.22, py + s * 0.90, px + s * 0.78, py + s * 0.90, px + s * 0.68, py + s * 0.62, px + s * 0.32, py + s * 0.62])
+	c.fs("#4a4656"); c.fill_rect(px + s * 0.26, py + s * 0.56, s * 0.48, s * 0.08)
+	c.fs(ARANY); c.fill_rect(px + s * 0.26, py + s * 0.56, s * 0.48, s * 0.025)
+	var y := py + s * (0.30 - 0.05 * gl)
+	c.fs(rgba(120, 220, 255, 0.9)); c.poly([px + s * 0.5, y - s * 0.16, px + s * 0.62, y, px + s * 0.5, y + s * 0.16, px + s * 0.38, y])
+	c.fs(rgba(230, 250, 255, 0.95)); c.poly([px + s * 0.5, y - s * 0.12, px + s * 0.56, y, px + s * 0.5, y + s * 0.05, px + s * 0.45, y])
+
+
+## Esemény-jel: ketrec / asztal helyett egy sejtelmes alak, fölötte kérdőjel.
+static func event_mark(c: Cv, px: float, py: float, s: float, t: float) -> void:
+	var gl := 0.5 + 0.5 * sin(t * 0.07)
+	if Sprites.glow_tex != null:
+		c.tex(Sprites.glow_tex, Rect2(px - s * 0.3, py - s * 0.3, s * 1.6, s * 1.6), rgba(255, 210, 110, 0.18 + 0.12 * gl))
+	c.fs("#3a2c1e"); c.fill_rect(px + s * 0.18, py + s * 0.56, s * 0.64, s * 0.10)
+	c.fs("#2a2016"); c.fill_rect(px + s * 0.22, py + s * 0.66, s * 0.07, s * 0.24); c.fill_rect(px + s * 0.71, py + s * 0.66, s * 0.07, s * 0.24)
+	c.fs("#c8b890"); c.ell(px + s * 0.5, py + s * 0.52, s * 0.22, s * 0.06)
+	c.fs(rgba(180, 30, 40, 0.8)); c.ell(px + s * 0.56, py + s * 0.52, s * 0.07, s * 0.03)
+	c.ftxt("?", px + s * 0.5, py + s * (0.36 - 0.05 * gl), "#ffd870", s * 0.42, "center")
+
+
+# ══════════ A NEGYEDIK HŐS: A SEBÉSZ (Vane eredeti teste) ══════════
+## Ugyanaz a lépték, mint a többi hősnél (s = méret / 40). Kozmetikája nincs: mindig így néz ki.
+static func surgeon(c: Cv, s: float) -> void:
+	const KABAT := "#2c3a44"
+	const KOTENY := "#c8bfa8"
+	# lábak + csizma
+	c.fs("#1c2228"); c.rrect(-5.4 * s, 8.0 * s, 4.4 * s, 9.0 * s, 1.2 * s); c.fill(); c.rrect(1.0 * s, 8.0 * s, 4.4 * s, 9.0 * s, 1.2 * s); c.fill()
+	c.fs("#3a2a1c"); c.rrect(-6.2 * s, 14.6 * s, 5.6 * s, 3.6 * s, 1.2 * s); c.fill(); c.rrect(0.6 * s, 14.6 * s, 5.6 * s, 3.6 * s, 1.2 * s); c.fill()
+	# hosszú kabát
+	c.fs(sot(KABAT, 0.4)); c.poly([-8.0 * s, -6.0 * s, 8.0 * s, -6.0 * s, 9.6 * s, 12.0 * s, -9.6 * s, 12.0 * s])
+	c.fs(KABAT); c.poly([-7.0 * s, -6.0 * s, 7.4 * s, -6.0 * s, 8.4 * s, 11.4 * s, -8.2 * s, 11.4 * s])
+	c.fs(vil(KABAT, 0.18)); c.poly([2.0 * s, -5.6 * s, 6.8 * s, -5.6 * s, 7.8 * s, 11.0 * s, 4.0 * s, 11.0 * s])
+	# vérfoltos kötény
+	c.fs(sot(KOTENY, 0.2)); c.poly([-4.4 * s, -3.0 * s, 4.4 * s, -3.0 * s, 5.4 * s, 10.0 * s, -5.4 * s, 10.0 * s])
+	c.fs(KOTENY); c.poly([-3.8 * s, -3.0 * s, 4.0 * s, -3.0 * s, 4.8 * s, 9.6 * s, -4.8 * s, 9.6 * s])
+	c.fs(rgba(150, 26, 34, 0.85)); c.ell(-1.4 * s, 4.0 * s, 1.8 * s, 2.6 * s, 0.3); c.ell(2.2 * s, 7.0 * s, 1.2 * s, 1.6 * s)
+	c.fs(rgba(150, 26, 34, 0.6)); c.circ(0.8 * s, 0.4 * s, 0.7 * s)
+	c.fs("#3a2a1c"); c.fill_rect(-7.2 * s, 2.6 * s, 14.6 * s, 1.5 * s)
+	c.fs(REZ); c.rrect(-1.2 * s, 2.2 * s, 2.4 * s, 2.3 * s, 0.5 * s); c.fill()
+	# bal kar: csontfűrész-tartó kesztyű
+	c.fs(sot(KABAT, 0.2)); c.rrect(-10.6 * s, -4.6 * s, 3.8 * s, 10.0 * s, 1.6 * s); c.fill()
+	c.fs("#d8c8a0"); c.circ(-8.8 * s, 6.0 * s, 1.9 * s)
+	# jobb kar: hidraulikus rézkar láncfogazású szikével
+	c.ss(sot(REZ, 0.3)); c.lw(2.6 * s)
+	c.bp(); c.mt(7.6 * s, -4.0 * s); c.lt(10.6 * s, 1.6 * s); c.lt(9.4 * s, 6.4 * s); c.stroke()
+	c.fs(REZ); c.circ(10.6 * s, 1.6 * s, 1.6 * s)
+	c.fs(vil(REZ, 0.4)); c.circ(10.2 * s, 1.2 * s, 0.6 * s)
+	c.save(); c.translate(9.4 * s, 6.4 * s); c.rotate(-0.5)
+	c.fs("#3a2a1c"); c.rrect(-1.0 * s, -1.4 * s, 2.0 * s, 4.4 * s, 0.6 * s); c.fill()
+	c.fs("#8a98a8"); c.poly([-1.2 * s, -1.4 * s, 1.2 * s, -1.4 * s, 1.8 * s, -9.0 * s, 0.2 * s, -14.4 * s, -1.2 * s, -8.0 * s])
+	c.fs("#e4ecf4"); c.poly([0.0, -1.8 * s, 1.0 * s, -1.8 * s, 1.5 * s, -9.0 * s, 0.3 * s, -13.6 * s])
+	c.fs("#5a6470")
+	for i in 5:
+		c.poly([-1.2 * s, (-2.6 - i * 1.5) * s, -2.2 * s, (-3.2 - i * 1.5) * s, -1.2 * s, (-3.8 - i * 1.5) * s])
+	c.restore()
+	# magas gallér
+	c.fs(sot(KABAT, 0.15)); c.poly([-6.4 * s, -6.0 * s, -3.6 * s, -9.6 * s, 0, -6.4 * s, 3.6 * s, -9.6 * s, 6.4 * s, -6.0 * s])
+	# fej: sebészsapka, üveg-szemüveg, maszk
+	c.fs("#b89878"); c.ell(0, -11.6 * s, 4.8 * s, 5.2 * s)
+	c.fs("#d8ae88"); c.ell(0.3 * s, -11.8 * s, 4.3 * s, 4.7 * s)
+	c.fs("#e8e4d8"); c.poly([-4.4 * s, -10.6 * s, 4.6 * s, -10.6 * s, 3.6 * s, -6.6 * s, 0, -5.6 * s, -3.4 * s, -6.6 * s])
+	c.ss("#b8b0a0"); c.lw(0.5 * s); c.line(-3.4 * s, -8.8 * s, 3.6 * s, -8.8 * s)
+	c.fs("#3a2a1c"); c.fill_rect(-4.8 * s, -13.2 * s, 9.8 * s, 1.2 * s)
+	for xx in [-2.2, 2.4]:
+		c.fs(REZ); c.circ(xx * s, -12.6 * s, 2.0 * s)
+		c.fs("#2a4a52"); c.circ(xx * s, -12.6 * s, 1.35 * s)
+		c.fs("#a0f0e0"); c.circ(xx * s + 0.4 * s, -13.0 * s, 0.5 * s)
+	c.fs("#cfd8cc"); c.poly([-4.8 * s, -14.0 * s, 5.0 * s, -14.0 * s, 4.2 * s, -18.0 * s, -4.0 * s, -18.0 * s])
+	c.fs("#e8efe4"); c.poly([0.6 * s, -14.2 * s, 4.6 * s, -14.2 * s, 3.9 * s, -17.6 * s, 0.6 * s, -17.6 * s])
+	c.fs("#c03030"); c.fill_rect(-0.5 * s, -17.2 * s, 1.0 * s, 2.6 * s); c.fill_rect(-1.3 * s, -16.4 * s, 2.6 * s, 1.0 * s)
+
+
+# ══════════ ÁLLAPOT-JELEK a szörnyek fölött ══════════
+static func status_icons(c: Cv, x: float, y: float, burn: int, corr: int, bleed: int, t: float) -> void:
+	var xx := x
+	if burn > 0:
+		var fl := 0.6 + 0.4 * sin(t * 0.2 + x)
+		c.fs(rgba(255, 110, 20, 0.95)); c.ell(xx, y, 3.2, 4.4 + fl)
+		c.fs(rgba(255, 230, 120, 0.95)); c.ell(xx, y + 1.0, 1.5, 2.2)
+		xx += 9
+	if corr > 0:
+		c.fs(rgba(170, 230, 40, 0.95)); c.poly([xx, y - 5, xx + 3.4, y + 1, xx, y + 4, xx - 3.4, y + 1])
+		if corr > 1:
+			c.ftxt(str(corr), xx + 4, y + 4, "#d8ff80", 9, "left", true)
+		xx += 13 if corr > 1 else 9
+	if bleed > 0:
+		c.fs(rgba(220, 30, 40, 0.95)); c.poly([xx, y - 5, xx + 3.0, y + 1.5, xx, y + 4, xx - 3.0, y + 1.5])
+		c.fs(rgba(255, 150, 150, 0.9)); c.circ(xx - 0.8, y + 0.6, 1.0)

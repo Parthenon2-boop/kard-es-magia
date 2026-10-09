@@ -8,7 +8,7 @@ const DEFAULT_BINDS := {"up": "ArrowUp", "down": "ArrowDown", "left": "ArrowLeft
 	"stair": "Control", "inventory": "i", "menu": "Escape"}
 const KEY_DIRS := {"ArrowUp": Vector2i(0, -1), "ArrowDown": Vector2i(0, 1), "ArrowLeft": Vector2i(-1, 0), "ArrowRight": Vector2i(1, 0),
 	"w": Vector2i(0, -1), "s": Vector2i(0, 1), "a": Vector2i(-1, 0), "d": Vector2i(1, 0)}
-const WORLD_STATES := ["play", "inv", "chest", "over", "win", "perk", "shop", "pause", "dialog", "note"]
+const WORLD_STATES := ["play", "inv", "chest", "over", "win", "perk", "shop", "pause", "dialog", "note", "relic", "event"]
 
 var game := Game.new()
 var audio: Audio
@@ -46,6 +46,10 @@ var saves_sel := 0
 var saves_back := "menu"
 var saves_arm := ""                # a törlésre kijelölt mentés (második megerősítésre törlődik)
 var saves_msg := ""                # rövid visszajelzés fordítási kulcsa (pl. "saves.saved")
+# ereklye-választó és döntési esemény
+var relic_ui: Variant = null       # {"ids": Array, "sel": int}
+var event_ui: Variant = null       # {"ev": Dictionary, "sel": int}
+var daily_mode := false            # a hősválasztó a napi kihívásból nyílt: a kaland a nap pályáján indul
 # automata térkép (Tab)
 var map_on := false
 var map_img: Image
@@ -324,6 +328,9 @@ func _lay2(rid: RID, which: String) -> void:
 				"journal": StoryUI.journal(self, cv)
 				"hub": StoryUI.hub(self, cv)
 				"saves": StoryUI.saves(self, cv)
+				"relic": StoryUI.relic_pick(self, cv)
+				"daily": StoryUI.daily(self, cv)
+				"event": StoryUI.event(self, cv)
 				"over": Screens.game_over(self, cv, false)
 				"win": Screens.game_over(self, cv, true)
 			if not borito_mod: Screens.mute_button(self, cv)
@@ -464,12 +471,18 @@ func set_state(s: String) -> void:
 
 func start_game(cls: String, diff: String) -> void:
 	# a legelső leereszkedés előtt lepereg a bevezető (a Naplóból később újranézhető)
-	if not Meta.intro_seen() and shot_path == "":
+	if not Meta.intro_seen() and shot_path == "" and not daily_mode:
 		pending_start = [cls, diff]
 		start_cine("intro", "start")
 		return
 	SaveGame.current = ""   # új kaland: új automata mentés (a meglévők megmaradnak)
-	game.start(cls, diff)
+	if daily_mode:
+		# napi kihívás: mindenkinek ugyanaz a pálya, közepes nehézségen, fejlesztések nélkül
+		game.start(cls, "normal", Daily.nap())
+		game.player.add_msg(Lang.ref("msg.daily", Daily.nap()), "#ffd870")
+		daily_mode = false
+	else:
+		game.start(cls, diff)
 	inv_scroll = 0
 	chest_ui = null
 	perk_ui = null
@@ -580,6 +593,11 @@ func end_run(won: bool) -> void:
 	run_banked = true
 	game.run_bio = game.player.bio
 	game.run_rez = game.player.rez
+	if game.daily != "":
+		# napi kihívás: a pontszám a helyi csúcsok közé és (belépve) a ranglistára kerül
+		game.run_pont = Daily.pont(game.player, game.world.dungeon_level, won, game.world.turn)
+		Meta.napi_ment(game.daily, game.run_pont)
+		fiok.napi_bekuld(game.daily, game.run_pont, game.player.cls, game.world.dungeon_level, game.player.kills, won)
 	Meta.bank_run(game.player, game.world.dungeon_level, won)
 	if game.autosave:
 		SaveGame.erase()
@@ -637,8 +655,23 @@ func use_inv(i: int) -> void:
 
 
 func go_diff() -> void:
+	daily_mode = false
 	diff_sel = 1
 	set_state("diff")
+
+
+# ══════════ NAPI KIHÍVÁS ══════════
+func open_daily() -> void:
+	fiok.olvas()
+	fiok.napi_leker(Daily.nap())   # a mai ranglista (aszinkron; belépés nélkül csak a saját eredmény látszik)
+	set_state("daily")
+
+
+func daily_start() -> void:
+	daily_mode = true
+	diff_sel = 1
+	char_sel = 0
+	set_state("char")
 
 
 func go_char() -> void:
@@ -661,6 +694,12 @@ func toggle_mute() -> void:
 
 
 func _after_move() -> void:
+	# most megszerzett jelvények: üzenet a naplóba
+	if not Meta.uj_jelvenyek.is_empty() and game.player != null:
+		for jv in Meta.uj_jelvenyek:
+			game.player.add_msg(Lang.ref("msg.ach", Lang.ref("ach." + str(jv))), "#ffe070")
+		Meta.uj_jelvenyek.clear()
+		audio.play("levelup")
 	if game.player and not game.player.alive:
 		end_run(false)   # az elesett hőst nem lehet folytatni: a zsákmánya a Műtőterembe kerül
 		set_state("over")
@@ -678,6 +717,22 @@ func _after_move() -> void:
 		game.pending_note = ""
 		held["active"] = false
 		set_state("note")
+		return
+	if game.pending_relic:
+		game.pending_relic = false
+		var rids := Relics.offer(game.player)
+		if rids.is_empty():
+			game.relic_fallback()   # már minden ereklye megvan: nyersanyagot ad
+		else:
+			relic_ui = {"ids": rids, "sel": 0}
+			held["active"] = false
+			set_state("relic")
+			return
+	if game.pending_event != null:
+		event_ui = {"ev": game.pending_event, "sel": 0}
+		game.pending_event = null
+		held["active"] = false
+		set_state("event")
 		return
 	if game.pending_chest != null:
 		chest_ui = {"chest": game.pending_chest, "sel": 0}
@@ -714,6 +769,53 @@ func pick_perk(i: int) -> void:
 	perk_ui = null
 	set_state("play")
 	_check_perk()
+
+
+func pick_relic(i: int) -> void:
+	if relic_ui == null:
+		return
+	var ids: Array = relic_ui["ids"]
+	if i < 0 or i >= ids.size():
+		return
+	game.take_relic(str(ids[i]))
+	relic_ui = null
+	set_state("play")
+	_after_move()
+
+
+## Esc: a talapzat megmarad, később is visszajöhetsz érte
+func close_relic() -> void:
+	relic_ui = null
+	set_state("play")
+
+
+func pick_event(i: int) -> void:
+	if event_ui == null:
+		return
+	game.event_choice(event_ui["ev"], i)
+	event_ui = null
+	set_state("play")
+	_after_move()
+
+
+func close_event() -> void:
+	event_ui = null
+	set_state("play")
+
+
+## A hősválasztó lapjai: a három alap, és a feloldható hősök (zárva is látszanak).
+func char_list() -> Array:
+	return Data.CLASS_ORDER + Data.EXTRA_CLASSES
+
+
+func char_ok(i: int) -> bool:
+	var l := char_list()
+	return i >= 0 and i < l.size() and (l[i] in Meta.playable())
+
+
+func char_start(i: int) -> void:
+	if char_ok(i):
+		start_game(str(char_list()[i]), Data.DIFF_ORDER[diff_sel])
 
 
 func buy_shop(i: int) -> void:
@@ -996,6 +1098,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				open_journal("menu")
 			elif k == "b":
 				open_saves("menu")
+			elif k == "n":
+				open_daily()
 		"help":
 			if k == "Escape" or k == "Enter":
 				bind_edit = ""
@@ -1008,11 +1112,14 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_state("char")
 			if k == "Escape": set_state("menu")
 		"char":
-			var n := Data.CLASS_ORDER.size()
+			var n := char_list().size()
 			if k in ["ArrowLeft", "a"]: char_sel = (char_sel + n - 1) % n
 			if k in ["ArrowRight", "d"]: char_sel = (char_sel + 1) % n
-			if k == "Enter": start_game(Data.CLASS_ORDER[char_sel], Data.DIFF_ORDER[diff_sel])
-			if k == "Escape": set_state("diff")
+			if k == "Enter": char_start(char_sel)
+			if k == "Escape": set_state("daily" if daily_mode else "diff")
+		"daily":
+			if k == "Escape" or k == binds["menu"]: set_state("menu")
+			elif k == "Enter": daily_start()
 		"play":
 			var d: Variant = dir_of(k)
 			if d != null:
@@ -1115,6 +1222,22 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif k in ["ArrowRight", "d"]: perk_ui["sel"] = (perk_ui["sel"] + 1) % (perk_ui["ids"] as Array).size()
 			elif k == "Enter": pick_perk(perk_ui["sel"])
 			elif k in ["1", "2", "3"]: pick_perk(int(k) - 1)
+		"relic":
+			if relic_ui == null:
+				set_state("play")
+			elif k == "Escape": close_relic()
+			elif k in ["ArrowLeft", "a"]: relic_ui["sel"] = (relic_ui["sel"] + (relic_ui["ids"] as Array).size() - 1) % (relic_ui["ids"] as Array).size()
+			elif k in ["ArrowRight", "d"]: relic_ui["sel"] = (relic_ui["sel"] + 1) % (relic_ui["ids"] as Array).size()
+			elif k == "Enter": pick_relic(relic_ui["sel"])
+			elif k in ["1", "2", "3"]: pick_relic(int(k) - 1)
+		"event":
+			if event_ui == null:
+				set_state("play")
+			elif k == "Escape": close_event()
+			elif k in ["ArrowLeft", "a", "ArrowUp", "w"]: event_ui["sel"] = 0
+			elif k in ["ArrowRight", "d", "ArrowDown", "s"]: event_ui["sel"] = 1
+			elif k == "Enter": pick_event(event_ui["sel"])
+			elif k in ["1", "2"]: pick_event(int(k) - 1)
 		"shop":
 			if k == "Escape" or k == binds["menu"] or k == "Enter":
 				close_shop()
@@ -1248,7 +1371,8 @@ func _update_layers() -> void:
 	var wo := in_world()
 	# menü: a háttér csak átméretezéskor, az élő rétegek (sárkány, tűz, parázs) minden kockán
 	layers["menu_bg"].visible = menu
-	if menu and _bg_size != Vector2(W, H):
+	# a festett Gorgona-háttér lassan úszik: minden képkockán újrarajzolódik (egyetlen textúra)
+	if menu and (_bg_size != Vector2(W, H) or StoryUI.art_tex("gorgona") != null):
 		_bg_size = Vector2(W, H)
 		layers["menu_bg"].queue_redraw()
 	_show("menu_clip", menu, true)
@@ -1325,6 +1449,7 @@ func _hud_sig() -> Array:
 	return [W, H, p.hp, p.max_hp, p.xp, p.xp_next, p.lives, p.poison, p.regen, p.lifesteal,
 		p.cls, p.plvl, p.atk, p.mag, p.def, p.msg_seq, w.turn, w.dungeon_level, w.diff,
 		p.weapon, p.armor, p.shield, game.on_stair(), binds["stair"], p.gold, p.perk_seq, Lang.seq,
+		p.relic_seq, p.organs, p.steam_charge,
 		p.dash_cd, p.skill_cd, p.bio, p.rez, p.stun, p.rooted, Render.potions(p), game.can_descend(),
 		binds["inventory"], Skins.sig(skins, p.cls)]
 
@@ -1336,6 +1461,14 @@ func _ui_sig() -> Array:
 			s.append(audio.music_started if audio else false)
 			s.append(SaveGame.has_save())
 		"pause": s.append(pause_sel)
+		"daily": s.append_array([fiok.seq if fiok else 0, Meta.seq, Daily.nap()])
+		"relic":
+			if relic_ui != null:
+				s.append_array(relic_ui["ids"])
+				s.append(relic_ui["sel"])
+		"event":
+			if event_ui != null:
+				s.append_array([event_ui["ev"]["kind"], event_ui["sel"]])
 		"saves":
 			s.append_array([saves_sel, saves_arm, saves_msg, SaveGame.list().size(), felho.allapot, felho.hiba, Sprites.hero_phase(tick)])
 			for e in SaveGame.list():
@@ -1399,12 +1532,27 @@ func _update_motion(now: float) -> void:
 			m.ry = _glide(m.ry, m.y, mon_d)
 	if p.lunge > 0:
 		p.lunge = maxf(0.0, p.lunge - dt * 0.008)
+	for m in game.world.mons:
+		if m.lunge > 0:
+			m.lunge = maxf(0.0, m.lunge - dt * 0.007)
 	var t := float(Data.TILE)
 	var gh := H - Data.HUD_H
 	var cam_w := ceilf(W / t) + 2
 	var cam_h := ceilf(gh / t) + 2
-	cam.x = clampf(p.rx - cam_w / 2, 0, maxf(0, Data.MAP_W - cam_w))
-	cam.y = clampf(p.ry - cam_h / 2, 0, maxf(0, Data.MAP_H - cam_h))
+	# a kamera a hőst követi; főellenség belépőjénél és halálánál egy pillanatra ráúszik
+	var kx := p.rx
+	var ky := p.ry
+	var fo: Dictionary = game.focus
+	if not fo.is_empty():
+		var ft: float = (now - float(fo["t0"])) / maxf(1.0, float(fo["dur"]))
+		if ft >= 0.0 and ft < 1.0:
+			var suly := smoothstep(0.0, 0.25, ft) * (1.0 - smoothstep(0.7, 1.0, ft))
+			kx = lerpf(p.rx, float(fo["x"]), suly * 0.85)
+			ky = lerpf(p.ry, float(fo["y"]), suly * 0.85)
+		elif ft >= 1.0:
+			game.focus = {}
+	cam.x = clampf(kx - cam_w / 2, 0, maxf(0, Data.MAP_W - cam_w))
+	cam.y = clampf(ky - cam_h / 2, 0, maxf(0, Data.MAP_H - cam_h))
 
 
 static func _glide(cur: float, to: float, d: float) -> float:
@@ -1457,6 +1605,17 @@ func _setup_shot() -> void:
 			start_cine(shot_scene, "menu")
 			cine_ui["i"] = clampi(shot_depth - 1, 0, (cine_ui["slides"] as Array).size() - 1)
 			cine_ui["t0"] = now_ms() - 4000.0
+		"daily":
+			Meta.reset()
+			Meta.data()["napi"] = {"nap": Daily.nap(), "pont": 3480}
+			fiok.offline_mod = true
+			fiok.betoltve = true
+			fiok.napi_allapot = "kesz"
+			fiok.napi_lista = [{"nev": "Wulfstan", "pont": 9120, "kaszt": "Mágus", "zona": 4, "gyozelem": true, "en": false},
+				{"nev": "Ragnhild", "pont": 6340, "kaszt": "Lovag", "zona": 4, "gyozelem": false, "en": false},
+				{"nev": "te", "pont": 3480, "kaszt": "Íjász", "zona": 3, "gyozelem": false, "en": true},
+				{"nev": "Cadell", "pont": 2210, "kaszt": "Sebész", "zona": 2, "gyozelem": false, "en": false}]
+			set_state("daily")
 		"hub", "journal":
 			Meta.reset()
 			var md := Meta.data()
@@ -1481,7 +1640,7 @@ func _setup_shot() -> void:
 				map_on = true
 			else:
 				set_state("menu")
-		"play", "orb", "inv", "chest", "over", "win", "walk", "perk", "shop", "trap", "map", "pause", "boss", "boss2", "dialog", "note", "saves":
+		"play", "orb", "inv", "chest", "over", "win", "walk", "perk", "shop", "trap", "map", "pause", "boss", "boss2", "dialog", "note", "saves", "relic", "event", "harc":
 			start_game(shot_cls, "normal")
 			if shot_scene != "play":
 				game.banner = {}
@@ -1541,6 +1700,14 @@ func _setup_shot() -> void:
 			elif shot_scene == "dialog":
 				dialog_ui = {"lines": Story.talk(Data.BOSS_LVL[game.world.dungeon_level], "pre"), "i": 0, "t0": now_ms() - 60000.0}
 				set_state("dialog")
+			elif shot_scene == "relic":
+				game.player.relics = ["gyujto"]
+				game.world.pedestals.append({"x": game.player.x, "y": game.player.y, "taken": false})
+				relic_ui = {"ids": ["robbano", "tesla"], "sel": 0}
+				set_state("relic")
+			elif shot_scene == "event":
+				event_ui = {"ev": {"x": game.player.x, "y": game.player.y, "kind": "verautomata", "used": false}, "sel": 0}
+				set_state("event")
 			elif shot_scene == "note":
 				note_ui = Story.NOTES[game.world.dungeon_level][0]
 				set_state("note")
@@ -1587,6 +1754,25 @@ func _shot_populate() -> void:
 					om.alive = false
 			w.mons.append(bm)
 			break
+	if shot_scene == "harc":
+		p.relics = ["gyujto", "savmirigy", "tesla"]
+		p.relic_seq += 1
+		var hi := 0
+		for om in w.mons:
+			if om.alive and not om.boss and absi(om.x - p.x) < 6 and absi(om.y - p.y) < 6:
+				om.burn = 3 if hi % 2 == 0 else 0
+				om.corr = hi % 3
+				om.bleed = 2 if hi % 4 == 3 else 0
+				om.hp = int(om.max_hp * 0.6)
+				hi += 1
+		for dd in [Vector2i(3, -1), Vector2i(-2, -2)]:
+			if not w.blocked(p.x + dd.x, p.y + dd.y) and w.mon_at(p.x + dd.x, p.y + dd.y) == null:
+				w.mons.append(Mon.make_mini(str(Data.MINI[w.dungeon_level]), p.x + dd.x, p.y + dd.y, "normal"))
+				break
+		w.vents.append({"x": p.x + 1, "y": p.y + 1, "ph": (Data.VENT_PERIOD - 3 - w.turn) % Data.VENT_PERIOD})
+		w.pedestals.append({"x": p.x - 1, "y": p.y + 1, "taken": false})
+		w.events.append({"x": p.x + 2, "y": p.y - 1, "kind": "fogoly", "used": false})
+		game.banner = {}
 	if shot_scene in ["boss", "boss2"]:
 		game.banner = {}
 		game.warn(p.x + 1, p.y, "steam", 5)

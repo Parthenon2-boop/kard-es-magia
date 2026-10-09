@@ -14,7 +14,7 @@ extends RefCounted
 const NYELVEK := ["hu", "en", "de"]
 const MAPPA := "res://lang/%s.json"
 ## a kasztok belső azonosítója (a mentésben és a táblákban ez áll) → fordítási kulcs
-const CLS_KULCS := {"Lovag": "knight", "Mágus": "mage", "Íjász": "archer"}
+const CLS_KULCS := {"Lovag": "knight", "Mágus": "mage", "Íjász": "archer", "Sebész": "surgeon"}
 
 static var current := ""
 static var seq := 0

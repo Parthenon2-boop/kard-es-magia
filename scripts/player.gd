@@ -48,6 +48,14 @@ var rooted := 0          # gyökerek fogják: támadhat, de nem léphet
 var dir_x := 1           # az utolsó irány (a félreugrás és a képesség ebbe megy)
 var dir_y := 0
 var hurt_ms := 0.0       # mikor érte utoljára ütés (a kirajzolás villanásához)
+# ── ereklyék (kalandonként gyűlnek; lásd relics.gd) ──
+var relics: Array = []   # ereklye-azonosítók, a megszerzés sorrendjében
+var relic_seq := 0       # nő minden új ereklyénél (a HUD ebből tudja, hogy változott)
+var hit_count := 0       # hányadik találat (Tesla-tekercs: minden negyedik láncol)
+var steam_charge := false  # Gőzköpeny: a félreugrás utáni következő ütés duplán sebez
+var spark_used := false  # Végső szikra: zónánként egyszer ment meg
+# ── a Sebész ──
+var organs := 0          # kioperált szervek (a Beültetés ezekből gyógyít és erősít)
 
 
 static func create(c: String) -> Player:
@@ -77,7 +85,11 @@ var dash_cd_max: int:
 	get: return maxi(2, Data.DASH_CD - cd_cut - (2 if perk("idegfonat") > 0 else 0))
 
 var skill_cd_max: int:
-	get: return maxi(3, Data.SKILL_CD - cd_cut)
+	get: return maxi(3, Data.SKILL_CD - cd_cut - (2 if has_relic("oramu") else 0))
+
+
+func has_relic(id: String) -> bool:
+	return id in relics
 
 ## a mágus varázsereje: a fegyver fele is hozzáadódik (a rúnakard jobban vezeti a mágiát)
 var mag: int:

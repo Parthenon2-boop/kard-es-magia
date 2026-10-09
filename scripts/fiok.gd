@@ -323,6 +323,44 @@ func vasarol(kulcs: String, kesz := Callable()) -> void:
 			kesz.call(siker, uzenet))
 
 
+# ══════════ NAPI KIHÍVÁS: ranglista ══════════
+## "" (még nem kértük) | "tolt" | "kesz" | "hiba" | "nincs" (nincs belépve)
+var napi_allapot := ""
+var napi_lista: Array = []    # [{nev, pont, kaszt, zona, gyozelem, en}], a legjobb elöl
+
+
+## A nap ranglistája (a legjobb 20). Az eredmény a napi_lista / napi_allapot mezőkbe kerül.
+func napi_leker(nap: String) -> void:
+	if not betoltve:
+		napi_allapot = "nincs"
+		_valt()
+		return
+	napi_allapot = "tolt"
+	_valt()
+	_post_auth("/rest/v1/rpc/kem_napi_lista", JSON.stringify({"p_nap": nap}), func(kod: int, t: String) -> void:
+		var j: Variant = json(t) if kod == 200 else null
+		if j is Array:
+			napi_lista = []
+			for e in (j as Array):
+				if e is Dictionary:
+					napi_lista.append({"nev": str(e.get("nev", "?")), "pont": int(e.get("pont", 0)), "kaszt": str(e.get("kaszt", "")),
+						"zona": int(e.get("zona", 1)), "gyozelem": bool(e.get("gyozelem", false)), "en": bool(e.get("en", false))})
+			napi_allapot = "kesz"
+		else:
+			napi_allapot = "hiba"
+		_valt())
+
+
+## A pontszám beküldése (a kiszolgáló a nap legjobbját tartja meg). Belépés nélkül nem csinál semmit.
+func napi_bekuld(nap: String, pont: int, kaszt: String, zona: int, olesek: int, gyozelem: bool) -> void:
+	if not betoltve:
+		return
+	_post_auth("/rest/v1/rpc/kem_napi_bekuld", JSON.stringify({"p_nap": nap, "p_pont": pont, "p_kaszt": kaszt,
+		"p_zona": zona, "p_olesek": olesek, "p_gyozelem": gyozelem}), func(kod: int, _t: String) -> void:
+			if kod >= 200 and kod < 300:
+				napi_leker(nap))
+
+
 static func bolt_megnyit(i: int) -> void:
 	if i >= 0 and i < GUMROAD.size():
 		OS.shell_open(str(GUMROAD[i]["url"]))

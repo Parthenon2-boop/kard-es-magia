@@ -19,6 +19,8 @@ static func art_tex(art: String) -> Texture2D:
 		return _art_cache[art]
 	var t: Texture2D = null
 	var ut := "res://art/%s.jpg" % art
+	if art.ends_with("_elo"):
+		ut = "res://art/%s.png" % art
 	if ResourceLoader.exists(ut):
 		t = load(ut) as Texture2D
 	_art_cache[art] = t
@@ -27,7 +29,7 @@ static func art_tex(art: String) -> Texture2D:
 
 ## Egy háttérkép kirakása lassú közelítéssel és úsztatással (a kép sosem áll).
 ## u: 0..1, a képsor előrehaladása; irany: melyik felé úszik.
-static func art(c: Cv, name: String, x: float, y: float, w: float, h: float, tick: float, u: float, irany := 0) -> void:
+static func art(c: Cv, name: String, x: float, y: float, w: float, h: float, tick: float, u: float, irany := 0, melyseg := false) -> void:
 	var t := art_tex(name)
 	if t == null:
 		Sprites2.scene(c, name, x, y, w, h, tick)
@@ -41,6 +43,20 @@ static func art(c: Cv, name: String, x: float, y: float, w: float, h: float, tic
 	var fx := (ts.x - vw) * (0.5 + (0.5 - u) * 0.8 * (1.0 if irany % 2 == 0 else -1.0) * 0.5)
 	var fy := (ts.y - vh) * (0.5 + (u - 0.5) * 0.6 * (1.0 if irany % 3 == 0 else -1.0) * 0.5)
 	c.tex_region(t, Rect2(x, y, w, h), Rect2(clampf(fx, 0, ts.x - vw), clampf(fy, 0, ts.y - vh), vw, vh))
+	# mélység: az előtér-réteg (res://art/<név>_elo.png, átlátszó háttérrel) nagyobb léptékben és
+	# gyorsabban mozog, mint a háttér — ettől térbelinek hat a kép
+	var elo := art_tex(name + "_elo")
+	if elo != null:
+		var es := elo.get_size()
+		var ez := maxf(w / es.x, h / es.y) * (1.16 + 0.22 * u)
+		var evw := w / ez
+		var evh := h / ez
+		var irx := 1.0 if irany % 2 == 0 else -1.0
+		var efx := (es.x - evw) * clampf(0.5 + (0.5 - u) * 0.95 * irx, 0.0, 1.0)
+		var efy := (es.y - evh) * clampf(0.62 + (u - 0.5) * 0.4, 0.0, 1.0)
+		c.tex_region(elo, Rect2(x, y, w, h), Rect2(efx, efy, evw, evh))
+	elif melyseg:
+		_eloter(c, x, y, w, h, tick, u, irany)
 	# a festmény fölé élő réteg: felszálló gőz és parázs
 	for i in 26:
 		var s1 := Data.rnd_seed(i * 1.9 + 0.3)
@@ -67,7 +83,7 @@ static func cine(m: Node, c: Cv) -> void:
 	c.fs("#050403"); c.fill_rect(0, 0, W, H)
 	var th := clampf(H * 0.26, 170.0, 230.0)
 	var ah := H - th
-	art(c, str(sl["art"]), 0, 0, W, ah, m.tick, clampf(el / SLIDE_MS, 0.0, 1.0), i)
+	art(c, str(sl["art"]), 0, 0, W, ah, m.tick, clampf(el / SLIDE_MS, 0.0, 1.0), i, true)
 	# szélesvásznú keret + puha átmenet a szövegsáv felé
 	c.fs("#050403"); c.fill_rect(0, 0, W, 26)
 	var g := Cv.linear(0, ah - 120, 0, ah)
@@ -351,7 +367,15 @@ static func hub(m: Node, c: Cv) -> void:
 		[Lang.T("hub.st.kills"), str(int(d["kills"]))],
 		[Lang.T("hub.st.deepest"), (Lang.T("zone." + Story.zone_id(int(d["deepest"]))) if int(d["deepest"]) > 0 else "—")],
 		[Lang.T("hub.st.notes"), "%d / %d" % [(d["notes"] as Array).size(), Story.NOTE_ORDER.size()]],
+		[Lang.T("hub.st.badges"), "%d / %d" % [(d["jelvenyek"] as Array).size(), Meta.JELVENYEK.size()]],
 	]
+	# jelvények: megszerezve színesek
+	for i in Meta.JELVENYEK.size():
+		var jv: String = Meta.JELVENYEK[i]
+		var megvan := Meta.has_badge(jv)
+		var jx := cx - (Meta.JELVENYEK.size() - 1) * 12.0 + i * 24.0
+		c.fs("#2e2210" if megvan else "#14100a"); c.circ(jx, oy + 384, 10)
+		c.ftxt(str(Meta.JELVENY_IKON[jv]), jx, oy + 389, "#ffe070" if megvan else "#3a3026", 12, "center")
 	for i in stats.size():
 		var sy := oy + 90 + i * 40
 		c.ftxt_fit(str(stats[i][0]), cx, sy, P["inkDark"], 10, mid - 20, "center")
@@ -468,3 +492,203 @@ static func saves(m: Node, c: Cv) -> void:
 		c.ftxt_fit(str(gombok[i][0]), gx + i * (gw + 16) + gw / 2, by + 27, gombok[i][1], 13, gw - 14, "center")
 		m.add_hit(gx + i * (gw + 16), by, gw, 42, gombok[i][4])
 	c.ftxt_fit(Lang.T("saves.hint.run") if futo else Lang.T("saves.hint"), W / 2, H - 6, P["inkDark"], 10, W - 40, "center")
+
+
+# ══════════ EREKLYE-VÁLASZTÓ ══════════
+static func relic_pick(m: Node, c: Cv) -> void:
+	if m.relic_ui == null:
+		return
+	var W: float = m.W
+	var H: float = m.H
+	var P := Data.P
+	var p: Player = m.game.player
+	var ids: Array = m.relic_ui["ids"]
+	var sel: int = m.relic_ui["sel"]
+	var n := maxi(1, ids.size())
+	c.fs(rgba(0, 0, 0, 0.88)); c.fill_rect(0, 0, W, H)
+	var pw := minf(360.0 * n + 40, W - 24)
+	var card_h := minf(280.0, H - 190)
+	var ph := 96 + card_h + 44
+	var ox := (W - pw) / 2
+	var oy := maxf(12, (H - ph) / 2)
+	c.soft_shadow(ox, oy, pw, ph, 10, rgba(120, 210, 255, 0.4), 30)
+	c.panel(ox, oy, pw, ph, "#0e141a", "#80d0ff", 2, 10)
+	c.ftxt_fit(Lang.T("relic.title"), W / 2, oy + 34, "#a0dcff", 19, pw - 40, "center")
+	c.orna(ox + 16, oy + 46, pw - 32, "#2a4a5a")
+	c.ftxt_fit(Lang.T("relic.sub"), W / 2, oy + 68, P["inkDark"], 11, pw - 40, "center")
+	var cw := (pw - 24 - (n - 1) * 12) / n
+	for i in ids.size():
+		var id: String = ids[i]
+		var d := Relics.info(id)
+		var cx := ox + 12 + i * (cw + 12)
+		var cy := oy + 84
+		var bd: String = d["col"]
+		if i == sel:
+			c.soft_shadow(cx, cy, cw, card_h, 8, Color(Cv.col(bd), 0.5), 16)
+		c.panel(cx, cy, cw, card_h, "#12100c", bd, 3.0 if i == sel else 1.6, 8)
+		var gl := 0.5 + 0.5 * sin(m.tick * 0.08 + i)
+		c.tex(m.tex_glow, Rect2(cx + cw / 2 - 60, cy + 4, 120, 120), Color(Cv.col(bd), 0.20 + 0.14 * gl))
+		c.rrect_fill_c(cx + cw / 2 - 30, cy + 22, 60, 60, 12, Color(Cv.col(bd), 0.18))
+		c.ftxt(str(d["ic"]), cx + cw / 2, cy + 66, bd, 34, "center")
+		c.ftxt_fit(str(d["n"]), cx + cw / 2, cy + 112, P["parchGold"], 16, cw - 16, "center")
+		c.orna(cx + cw * 0.28, cy + 123, cw * 0.44, P["parchEdge"])
+		c.wrap_text(str(d["d"]), cx + cw / 2, cy + 148, cw - 30, 12, P["ink"], "center")
+		# együttműködés a meglévő ereklyékkel
+		var egy := Relics.synergy_with(p, id)
+		if not egy.is_empty():
+			var nevek: Array = []
+			for e in egy:
+				nevek.append(Lang.T("relic." + str(e)))
+			c.rrect_fill_c(cx + 10, cy + card_h - 62, cw - 20, 24, 6, Color(Cv.col("#80d0ff"), 0.14))
+			c.ftxt_fit(Lang.T("relic.synergy", ", ".join(nevek)), cx + cw / 2, cy + card_h - 45, "#a0dcff", 11, cw - 30, "center")
+		c.ftxt("[%d]" % (i + 1), cx + cw / 2, cy + card_h - 14, bd, 12, "center")
+		m.add_hit(cx, cy, cw, card_h, func() -> void: m.pick_relic(i))
+	c.ftxt_fit(Lang.T("relic.hint"), W / 2, oy + ph - 14, P["inkDark"], 10, pw - 30, "center")
+
+
+# ══════════ DÖNTÉSI ESEMÉNY ══════════
+static func event(m: Node, c: Cv) -> void:
+	if m.event_ui == null:
+		return
+	var W: float = m.W
+	var H: float = m.H
+	var P := Data.P
+	var kind := str(m.event_ui["ev"]["kind"])
+	var sel: int = m.event_ui["sel"]
+	c.fs(rgba(0, 0, 0, 0.84)); c.fill_rect(0, 0, W, H)
+	var pw := minf(640.0, W - 24)
+	var ph := 360.0
+	var ox := (W - pw) / 2
+	var oy := maxf(12, (H - ph) / 2)
+	c.soft_shadow(ox, oy, pw, ph, 10, rgba(255, 210, 110, 0.35), 28)
+	c.panel(ox, oy, pw, ph, "#16110a", "#ffd870", 2, 10)
+	Sprites2.event_mark(c, ox + 22, oy + 14, 64, m.tick)
+	c.ftxt_fit(Lang.T("event." + kind), ox + 104, oy + 46, "#ffd870", 20, pw - 130)
+	c.orna(ox + 104, oy + 58, pw - 130, P["parchEdge"])
+	c.wrap_text(Lang.T("event." + kind + ".d"), ox + 30, oy + 108, pw - 60, 14, P["ink"])
+	for i in 2:
+		var by := oy + 190 + i * 70
+		var on := sel == i
+		c.panel(ox + 24, by, pw - 48, 58, "#2e2210" if on else "#1a140c", P["parchGold"] if on else P["parchEdge"], 2.5 if on else 1.2, 8)
+		c.ftxt("[%d]" % (i + 1), ox + 44, by + 36, P["parchGold"], 14)
+		var sorok := Cv.wrap_lines(Lang.T("event." + kind + (".a" if i == 0 else ".b")), pw - 130, 13)
+		for j in mini(2, sorok.size()):
+			c.ftxt(sorok[j], ox + 80, by + (36 if sorok.size() == 1 else 26 + j * 18), "#f0e4c8" if on else P["ink"], 13)
+		m.add_hit(ox + 24, by, pw - 48, 58, func() -> void: m.pick_event(i))
+	c.ftxt_fit(Lang.T("event.hint"), W / 2, oy + ph - 14, P["inkDark"], 10, pw - 30, "center")
+
+
+# ══════════ NAPI KIHÍVÁS ══════════
+static func daily(m: Node, c: Cv) -> void:
+	var W: float = m.W
+	var H: float = m.H
+	var P := Data.P
+	var nap := Daily.nap()
+	c.fs("#080604"); c.fill_rect(0, 0, W, H)
+	art(c, "gorgona", 0, 0, W, H, m.tick, 0.5 + 0.5 * sin(m.tick * 0.0016), 1)
+	c.fs(rgba(6, 5, 4, 0.82)); c.fill_rect(0, 0, W, H)
+	MenuArt.ls_text(c, Lang.T("daily.title").to_upper(), W / 2, 56, "#ffd870", 28, 4.0, "center")
+	c.ftxt(nap.replace("-", ". ") + ".", W / 2, 82, P["ink"], 14, "center")
+	var tot := minf(900.0, W - 32)
+	var ox := (W - tot) / 2
+	var lw := tot * 0.46
+	var oy := 108.0
+	var ph := H - oy - 30
+	# bal oldal: a szabályok, a mai legjobb, indulás
+	c.panel(ox, oy, lw, ph, rgba(16, 12, 8, 0.92), "#b08a30", 2, 10)
+	c.wrap_text(Lang.T("daily.desc"), ox + 22, oy + 40, lw - 44, 13, P["ink"])
+	var best := Meta.napi_legjobb(nap)
+	c.rrect_fill_c(ox + 18, oy + ph - 180, lw - 36, 64, 8, "#120e08")
+	c.ftxt_fit(Lang.T("daily.best", best) if best > 0 else Lang.T("daily.none"), ox + lw / 2, oy + ph - 141, "#ffd870" if best > 0 else P["inkDark"], 16, lw - 60, "center")
+	c.soft_shadow(ox + 18, oy + ph - 100, lw - 36, 52, 8, rgba(212, 168, 75, 0.45), 16)
+	c.panel(ox + 18, oy + ph - 100, lw - 36, 52, "#2e2210", P["parchGold"], 2.2, 8)
+	c.ftxt_fit(Lang.T("daily.start"), ox + lw / 2, oy + ph - 66, P["parchGold"], 17, lw - 60, "center")
+	m.add_hit(ox + 18, oy + ph - 100, lw - 36, 52, m.daily_start)
+	c.panel(ox + 18, oy + ph - 40, 120, 30, "#1c1408", P["parchEdge"], 1.2, 6)
+	c.ftxt_fit(Lang.T("common.back"), ox + 78, oy + ph - 20, P["ink"], 11, 110, "center")
+	m.add_hit(ox + 18, oy + ph - 40, 120, 30, func() -> void: m.set_state("menu"))
+	# jobb oldal: a mai ranglista
+	var rx := ox + lw + 16
+	var rw := tot - lw - 16
+	c.panel(rx, oy, rw, ph, rgba(16, 12, 8, 0.92), "#3a6a60", 2, 10)
+	c.ftxt_fit(Lang.T("daily.top"), rx + rw / 2, oy + 32, "#a0f0d8", 17, rw - 30, "center")
+	c.orna(rx + 18, oy + 44, rw - 36, "#2a4a44")
+	var fa: String = m.fiok.napi_allapot
+	if fa != "kesz":
+		var k := "daily.loading"
+		if fa == "nincs": k = "daily.login"
+		elif fa == "hiba": k = "daily.error"
+		c.wrap_text(Lang.T(k), rx + rw / 2, oy + ph * 0.4, rw - 50, 13, P["inkDark"], "center")
+	elif m.fiok.napi_lista.is_empty():
+		c.wrap_text(Lang.T("daily.empty"), rx + rw / 2, oy + ph * 0.4, rw - 50, 13, P["inkDark"], "center")
+	else:
+		var sor := minf(34.0, (ph - 70) / 20.0 * 1.6)
+		for i in mini(m.fiok.napi_lista.size(), int((ph - 64) / sor)):
+			var e: Dictionary = m.fiok.napi_lista[i]
+			var y := oy + 58 + i * sor
+			if e["en"]:
+				c.rrect_fill_c(rx + 10, y, rw - 20, sor - 4, 6, Color(Cv.col("#ffd870"), 0.14))
+			var hc: String = "#ffd870" if i == 0 else ("#d0d4dc" if i == 1 else ("#d09060" if i == 2 else P["ink"]))
+			c.ftxt("%d." % (i + 1), rx + 22, y + sor * 0.62, hc, 13)
+			c.ftxt_fit(str(e["nev"]), rx + 56, y + sor * 0.62, "#ffe9a0" if e["en"] else P["ink"], 13, rw * 0.36)
+			var ks := str(e["kaszt"])
+			var info := (Lang.cls(ks) if Data.CLASSES.has(ks) else "") + "  ·  " + (Lang.T("daily.won") if e["gyozelem"] else Lang.T("daily.zone", int(e["zona"])))
+			c.ftxt_fit(info, rx + 60 + rw * 0.36, y + sor * 0.62, P["inkDark"], 10.5, rw * 0.30)
+			c.ftxt(Lang.T("daily.points", int(e["pont"])), rx + rw - 18, y + sor * 0.62, hc, 13, "right")
+	c.ftxt_fit(Lang.T("daily.hint"), W / 2, H - 10, P["inkDark"], 10, W - 40, "center")
+
+
+## Rajzolt előtér-réteg a festmények elé (ha nincs külön festett): a kép két szélén és alján sötét
+## csövek, szelepek, fogaskerekek és lelógó kábelek. Nagyobb léptékben és gyorsabban mozog, mint a
+## háttér, ezért a kép térbelinek hat (közel – távol).
+static func _eloter(c: Cv, x: float, y: float, w: float, h: float, tick: float, u: float, irany: int) -> void:
+	var k := h / 400.0
+	var ir := 1.0 if irany % 2 == 0 else -1.0
+	var tol := (0.5 - u) * w * 0.10 * ir       # az előtér vízszintes úszása (a háttérénél jóval nagyobb)
+	var lep := 1.0 + 0.10 * u                    # és közelít is
+	var sot := Color(0.035, 0.028, 0.022, 0.96)
+	var perem := Color(0.55, 0.36, 0.16, 0.55)   # meleg peremfény a széleken
+	for oldal_v in [-1.0, 1.0]:
+		var oldal: float = oldal_v
+		var bx: float = (x if oldal < 0 else x + w) + tol
+		# függőleges csőköteg a kép szélén
+		for i in 3:
+			var cw := (26.0 - i * 6.0) * k * lep
+			var cx: float = (bx - (34.0 + i * 32.0) * k * lep) if oldal > 0 else (bx + (8.0 + i * 32.0) * k * lep)
+			c.fs(sot); c.fill_rect(cx, y, cw, h)
+			c.fs(perem); c.fill_rect(cx + (0.0 if oldal > 0 else cw - 2.0 * k), y, 2.0 * k, h)
+			# karimák
+			for j in 4:
+				var jy := y + h * (0.12 + j * 0.24) + sin(i * 2.1 + j) * 14.0 * k
+				c.fs(sot); c.fill_rect(cx - 4.0 * k, jy, cw + 8.0 * k, 10.0 * k)
+				c.fs(perem); c.fill_rect(cx - 4.0 * k, jy, cw + 8.0 * k, 1.5 * k)
+		# nagy fogaskerék félig a képen kívül
+		var gx: float = bx - oldal * 10.0 * k
+		var gy: float = y + h * (0.74 if oldal < 0 else 0.30)
+		var gr := 70.0 * k * lep
+		c.save(); c.translate(gx, gy); c.rotate(tick * 0.004 * oldal)
+		c.fs(sot)
+		for i in 12:
+			var a := i / 12.0 * TAU
+			c.poly([cos(a - 0.11) * gr, sin(a - 0.11) * gr, cos(a - 0.07) * gr * 1.2, sin(a - 0.07) * gr * 1.2,
+				cos(a + 0.07) * gr * 1.2, sin(a + 0.07) * gr * 1.2, cos(a + 0.11) * gr, sin(a + 0.11) * gr])
+		c.circ(0, 0, gr * 1.02)
+		c.ss(perem); c.lw(2.0 * k); c.bp(); c.arc(0, 0, gr * 0.72, 0, TAU); c.stroke()
+		c.restore()
+	# lelógó kábelek felülről (lassan lengenek)
+	c.ss(sot); c.lw(5.0 * k)
+	for i in 5:
+		var kx := x + w * (0.10 + i * 0.20) + tol * 1.4
+		var leng := sin(tick * 0.012 + i * 1.7) * 10.0 * k
+		c.bp(); c.mt(kx, y - 4); c.qt(kx + 70.0 * k + leng, y + (60.0 + (i % 3) * 34.0) * k, kx + 150.0 * k, y - 4); c.stroke()
+	# alul korlát és szelepkerekek sziluettje
+	var ay := y + h - 26.0 * k
+	c.fs(sot); c.fill_rect(x, ay, w, 26.0 * k + 2)
+	c.fs(perem); c.fill_rect(x, ay, w, 1.5 * k)
+	for i in 9:
+		var px := x + fposmod(i * w / 8.0 + tol * 1.6, w + 80.0 * k) - 40.0 * k
+		c.fs(sot); c.fill_rect(px - 3.0 * k, ay - 30.0 * k, 6.0 * k, 32.0 * k)
+		if i % 3 == 0:
+			c.ss(sot); c.lw(5.0 * k); c.bp(); c.arc(px, ay - 40.0 * k, 13.0 * k, 0, TAU); c.stroke()
+			c.line(px - 13.0 * k, ay - 40.0 * k, px + 13.0 * k, ay - 40.0 * k)
+	c.fs(sot); c.fill_rect(x, ay - 14.0 * k, w, 4.0 * k)

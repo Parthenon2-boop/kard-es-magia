@@ -19,12 +19,28 @@ static func _menu_geo(m: Node) -> Dictionary:
 	return {"W": W, "H": H, "k": k, "floor_y": floor_y, "arch_r": arch_r, "spring": spring}
 
 
+## A főmenü háttere: a festett Gorgona lassan úszva (ha megvan a kép), különben a régi kőfal.
 static func menu_bg(m: Node, c: Cv) -> void:
-	MenuArt.static_bg(c, m.W, m.H, m.tex_grain)
+	if StoryUI.art_tex("gorgona") == null:
+		MenuArt.static_bg(c, m.W, m.H, m.tex_grain)
+		return
+	var W: float = m.W
+	var H: float = m.H
+	StoryUI.art(c, "gorgona", 0, 0, W, H, m.tick, 0.5 + 0.5 * sin(m.tick * 0.0016), 0)
+	# sötétítés: fent a címnek, lent a hősöknek kell a kontraszt
+	c.fs(rgba(8, 6, 4, 0.30)); c.fill_rect(0, 0, W, H)
+	var g := Cv.linear(0, H * 0.55, 0, H)
+	g.stop(0.0, rgba(8, 6, 4, 0.0)).stop(1.0, rgba(8, 6, 4, 0.92))
+	c.fs(g); c.fill_rect(0, H * 0.55, W, H * 0.45)
+	var g2 := Cv.linear(0, 0, 0, H * 0.3)
+	g2.stop(0.0, rgba(8, 6, 4, 0.75)).stop(1.0, rgba(8, 6, 4, 0.0))
+	c.fs(g2); c.fill_rect(0, 0, W, H * 0.3)
 
 
 ## a sárkány a boltív belsejében (a réteg árnyalója vág a boltív alakjára)
 static func menu_clip(m: Node, c: Cv) -> void:
+	if StoryUI.art_tex("gorgona") != null:
+		return   # az új háttéren nincs boltív és sárkány
 	var g := _menu_geo(m)
 	var W: float = g["W"]
 	var arch_r: float = g["arch_r"]
@@ -59,13 +75,14 @@ static func menu_front(m: Node, c: Cv) -> void:
 	# fáklyák (a textúrás fényudvarok egyben, utána a rajzolt részek: így kevesebb rajzhívás kell)
 	var torch_x := [W * 0.18, W * 0.82]
 	var torch_y := H * 0.36
-	MenuArt.torch_glow(c, torch_x[0], torch_y, k, tick, 0, m.tex_menu_torch)
-	MenuArt.torch_glow(c, torch_x[1], torch_y, k, tick, 2.4, m.tex_menu_torch)
-	# fénytócsák a fáklyák alatt
-	for tx in torch_x:
-		c.tex(m.tex_glow, Rect2(tx - 180 * k, floor_y + 50 * k - 70 * k, 360 * k, 140 * k), rgba(200, 100, 20, 0.18))
-	MenuArt.torch(c, torch_x[0], torch_y, k, tick, 0)
-	MenuArt.torch(c, torch_x[1], torch_y, k, tick, 2.4)
+	if StoryUI.art_tex("gorgona") == null:
+		MenuArt.torch_glow(c, torch_x[0], torch_y, k, tick, 0, m.tex_menu_torch)
+		MenuArt.torch_glow(c, torch_x[1], torch_y, k, tick, 2.4, m.tex_menu_torch)
+		# fénytócsák a fáklyák alatt
+		for tx in torch_x:
+			c.tex(m.tex_glow, Rect2(tx - 180 * k, floor_y + 50 * k - 70 * k, 360 * k, 140 * k), rgba(200, 100, 20, 0.18))
+		MenuArt.torch(c, torch_x[0], torch_y, k, tick, 0)
+		MenuArt.torch(c, torch_x[1], torch_y, k, tick, 2.4)
 	# hősök: előbb mind a három fénye és árnyéka (textúrák), utána mind a három figura
 	var spread := W * 0.22
 	var feet_y := H * 0.88
@@ -208,7 +225,8 @@ static func menu_top(m: Node, c: Cv) -> void:
 	var b_shop := {"t": Lang.T("menu.shop"), "c": "#c9a6ff", "bg": "#1d1430", "bd": "#6a4aa8", "fn": func() -> void: m.open_bolt("menu")}
 	var b_ctl := {"t": Lang.T("menu.controls"), "c": P["ink"], "bg": "#241a0c", "bd": P["parchEdge"], "fn": func() -> void: m.set_state("help")}
 	var b_quit := {"t": Lang.T("menu.quit"), "c": "#c08070", "bg": "#1e1008", "bd": "#6a3a2a", "fn": m.quit_app}
-	var rows: Array = [[b_new], [b_hub, b_jrn], [b_shop, b_ctl], [b_quit]]
+	var b_napi := {"t": Lang.T("menu.daily"), "c": "#ffd870", "bg": "#2a2008", "bd": "#b08a30", "fn": m.open_daily}
+	var rows: Array = [[b_new, b_napi], [b_hub, b_jrn], [b_shop, b_ctl], [b_quit]]
 	if SaveGame.has_save():
 		rows.push_front([{"t": Lang.T("menu.continue"), "c": "#9ce0a0", "bg": "#16280f", "bd": "#5aa050", "fn": func() -> void: m.continue_game()},
 			{"t": Lang.T("menu.saves", SaveGame.list().size()), "c": "#a0d0ff", "bg": "#101c2a", "bd": "#4a7aa8", "fn": func() -> void: m.open_saves("menu")}])
@@ -379,17 +397,28 @@ static func char_sel(m: Node, c: Cv) -> void:
 	var P := Data.P
 	c.fs("#080604"); c.fill_rect(0, 0, W, H)
 	c.ftxt(Lang.T("char.title"), W / 2, maxf(44, H * 0.08), P["parchGold"], 24, "center")
-	var n := Data.CLASS_ORDER.size()
-	var bw2 := minf(200, (W - 100) / 3)
+	var lista: Array = m.char_list()
+	var n := lista.size()
+	var bw2 := minf(200, (W - 60 - (n - 1) * 20) / n)
 	var bh := minf(H * 0.6, 400)
-	var start_x := (W - bw2 * 3 - 40) / 2
+	var start_x := (W - bw2 * n - (n - 1) * 20) / 2
 	var by := H * 0.14
 	for i in n:
-		var name: String = Data.CLASS_ORDER[i]
+		var name: String = lista[i]
 		var s: Dictionary = Data.CLASSES[name]
 		var bx := start_x + i * (bw2 + 20)
 		var sel: bool = m.char_sel == i
 		c.panel(bx, by, bw2, bh, "#2e2210" if sel else "#1a1206", s["col"] if sel else P["parchEdge"], 2.5 if sel else 1.0, 10)
+		if not m.char_ok(i):
+			# még zárt hős: sötét árny és a feloldás feltétele
+			c.ga(0.22)
+			Sprites.hero_cached(c, name, bx + bw2 / 2, by + bh * 0.23, minf(110, bh * 0.3), 0.0, m.skins)
+			c.ga(1.0)
+			c.ftxt("🔒", bx + bw2 / 2, by + bh * 0.27, P["inkDark"], 30, "center")
+			c.ftxt_fit(Lang.cls(name), bx + bw2 / 2, by + bh * 0.46, P["inkDark"], 18, bw2 - 16, "center")
+			c.wrap_text(Lang.T("char.locked." + str(Lang.CLS_KULCS[name])), bx + bw2 / 2, by + bh * 0.58, bw2 - 30, 11, P["inkDark"], "center")
+			m.add_hit(bx, by, bw2, bh, func() -> void: m.char_sel = i)
+			continue
 		Sprites.hero_cached(c, name, bx + bw2 / 2, by + bh * 0.23, minf(110, bh * 0.3), m.tick, m.skins)
 		c.ftxt_fit(Lang.cls(name), bx + bw2 / 2, by + bh * 0.46, P["parchGold"] if sel else P["ink"], 18, bw2 - 16, "center")
 		var stats := [[Lang.T("stat.hp"), s["hp"], "#d04030"],
@@ -407,7 +436,7 @@ static func char_sel(m: Node, c: Cv) -> void:
 			c.ftxt("✓", bx + bw2 - 22, by + 26, s["col"], 18, "center")
 		m.add_hit(bx, by, bw2, bh, func() -> void:
 			if m.char_sel == i:
-				m.start_game(Data.CLASS_ORDER[i], Data.DIFF_ORDER[m.diff_sel])
+				m.char_start(i)
 			else:
 				m.char_sel = i)
 	var sw := 260.0
@@ -416,7 +445,7 @@ static func char_sel(m: Node, c: Cv) -> void:
 	var sy3 := by + bh + 24
 	c.panel(sx3, sy3, sw, sh, "#2e2210", P["parchGold"], 2.5, 10)
 	c.ftxt_fit(Lang.T("char.start"), W / 2, sy3 + 34, P["parchGold"], 17, sw - 16, "center")
-	m.add_hit(sx3, sy3, sw, sh, func() -> void: m.start_game(Data.CLASS_ORDER[m.char_sel], Data.DIFF_ORDER[m.diff_sel]))
+	m.add_hit(sx3, sy3, sw, sh, func() -> void: m.char_start(m.char_sel))
 	_back_btn(m, c, "diff")
 
 
@@ -862,6 +891,8 @@ static func game_over(m: Node, c: Cv, won: bool) -> void:
 		var p: Player = m.game.player
 		var zn := Lang.T("zone." + Story.zone_id(m.game.world.dungeon_level))
 		c.ftxt_fit(Lang.T("over.stats", p.plvl, m.game.world.turn, zn), W / 2, oy + 150, P["inkDark"], 12, pw - 30, "center")
+		if m.game.daily != "":
+			c.ftxt_fit(Lang.T("over.daily", m.game.run_pont), W / 2, oy + 268, "#ffd870", 17, pw - 30, "center")
 		# a kaland zsákmánya: ez kerül a Műtőterembe
 		var cells := [["☠", str(p.kills), Lang.T("over.kills"), "#e06050"], ["☣", "+%d" % m.game.run_bio, Lang.T("cur.bio"), "#b0e060"],
 			["⚙", "+%d" % m.game.run_rez, Lang.T("cur.rez"), "#e0a060"]]

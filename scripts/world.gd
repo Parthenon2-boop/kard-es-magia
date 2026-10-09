@@ -14,6 +14,9 @@ var shrines: Array = []      # {x, y, kind, used}
 var shops: Array = []        # {x, y, stock:[{kind, item, price, sold}]}
 var notes: Array = []        # {x, y, id, taken} — megtalálható feljegyzések (a Napló lapjai)
 var hazards: Array = []      # {x, y, kind, ttl, dmg, warn} — előre jelzett csapások és savtócsák
+var vents: Array = []        # {x, y, ph} — padlórácsok: időnként kitör belőlük a zóna csapása
+var events: Array = []       # {x, y, kind, used} — döntési események
+var pedestals: Array = []    # {x, y, taken} — ereklye-talapzatok (főellenség / mini-boss után)
 var decor: Array = []
 var torches: Array = []
 var vis := PackedByteArray()       # most látható mezők
@@ -48,7 +51,9 @@ static func create(p: Player, dl: int, df: String) -> World:
 	w.shops = Dungeon.spawn_shops(w.tiles, w.rooms, w.room_kind, dl, used)
 	w.traps = Dungeon.spawn_traps(w.tiles, w.rooms, w.room_kind, dl, used)
 	w.notes = Dungeon.spawn_notes(w.tiles, w.rooms, w.room_kind, dl, used)
-	w.decor = Dungeon.spawn_decor(w.tiles, w.rooms)
+	w.events = Dungeon.spawn_events(w.tiles, w.rooms, w.room_kind, used)
+	w.vents = Dungeon.spawn_vents(w.tiles, w.rooms, w.room_kind, used)
+	w.decor = Dungeon.spawn_decor(w.tiles, w.rooms, dl)
 	w.torches = Dungeon.seed_torches(w.rooms)
 	w.dungeon_level = dl
 	w.diff = df
@@ -137,6 +142,35 @@ func shrine_at(x: int, y: int) -> Variant:
 		if s["x"] == x and s["y"] == y:
 			return s
 	return null
+
+
+func event_at(x: int, y: int) -> Variant:
+	for e in events:
+		if not e["used"] and e["x"] == x and e["y"] == y:
+			return e
+	return null
+
+
+func pedestal_at(x: int, y: int) -> Variant:
+	for e in pedestals:
+		if not e["taken"] and e["x"] == x and e["y"] == y:
+			return e
+	return null
+
+
+## a legközelebbi szabad, járható mező (a talapzatnak) — maga a mező, ha szabad
+func free_near(x: int, y: int) -> Vector2i:
+	for r in 4:
+		for ax in range(-r, r + 1):
+			for ay in range(-r, r + 1):
+				var tx := x + ax
+				var ty := y + ay
+				if blocked(tx, ty) or tile(tx, ty) != Data.FLOOR:
+					continue
+				if chest_at(tx, ty) != null or pedestal_at(tx, ty) != null or shop_at(tx, ty) != null:
+					continue
+				return Vector2i(tx, ty)
+	return Vector2i(x, y)
 
 
 func note_at(x: int, y: int) -> Variant:

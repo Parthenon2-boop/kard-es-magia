@@ -30,6 +30,13 @@ const UPGRADES := {
 }
 const ORDER := ["rezhenger", "mellvert", "elezes", "lombik", "szivpumpa", "mirigy", "uvegszem", "gyomor"]
 
+## Jelvények (teljesítmények): a nevük ach.<kulcs>. Megszerzésükkor üzenet jelenik meg.
+const JELVENYEK := ["rozsda", "selyem", "anya", "sziv", "ereklye3", "naplo", "sebesz", "meszaros"]
+const JELVENY_IKON := {"rozsda": "⚙", "selyem": "✂", "anya": "⚘", "sziv": "♥", "ereklye3": "◈", "naplo": "✎", "sebesz": "✚", "meszaros": "☠"}
+const BOSS_JELVENY := {"rust_worm": "rozsda", "dr_karel": "selyem", "symbiote": "anya"}
+## a most megszerzett, még ki nem írt jelvények (a főjelenet üríti)
+static var uj_jelvenyek: Array = []
+
 static var persist := true
 static var d := {}
 static var seq := 0          # nő minden változásnál (a felület ebből tudja, hogy újra kell rajzolni)
@@ -38,7 +45,8 @@ static var _loaded := false
 
 static func _alap() -> Dictionary:
 	return {"bio": 0, "rez": 0, "up": {}, "notes": [], "runs": 0, "wins": 0, "deaths": 0,
-		"deepest": 0, "last_death": 0, "kills": 0, "intro": false, "bosses": []}
+		"deepest": 0, "last_death": 0, "kills": 0, "intro": false, "bosses": [], "jelvenyek": [],
+		"napi": {"nap": "", "pont": 0}}
 
 
 static func data() -> Dictionary:
@@ -76,6 +84,12 @@ static func load_meta() -> void:
 		for n in (src["notes"] as Array):
 			if str(n) in Story.NOTE_ORDER and not (str(n) in d["notes"]):
 				d["notes"].append(str(n))
+	if src.get("jelvenyek") is Array:
+		for jv in (src["jelvenyek"] as Array):
+			if str(jv) in JELVENYEK and not (str(jv) in d["jelvenyek"]):
+				d["jelvenyek"].append(str(jv))
+	if src.get("napi") is Dictionary:
+		d["napi"] = {"nap": str((src["napi"] as Dictionary).get("nap", "")), "pont": maxi(0, int((src["napi"] as Dictionary).get("pont", 0)))}
 	if src.get("bosses") is Array:
 		for b in (src["bosses"] as Array):
 			if Story.BOSS_TALK.has(str(b)) and not (str(b) in d["bosses"]):
@@ -94,6 +108,37 @@ static func save_meta() -> void:
 	f.close()
 	if on_write.is_valid():
 		on_write.call(FAJL)
+
+
+# ══════════ JELVÉNYEK ÉS NAPI KIHÍVÁS ══════════
+## Egy jelvény megszerzése. true, ha most lett meg.
+static func award(id: String) -> bool:
+	var dd := data()
+	if not (id in JELVENYEK) or id in dd["jelvenyek"]:
+		return false
+	dd["jelvenyek"].append(id)
+	uj_jelvenyek.append(id)
+	save_meta()
+	return true
+
+
+static func has_badge(id: String) -> bool:
+	return id in data()["jelvenyek"]
+
+
+## a mai napi kihívás legjobb helyi pontszáma (0, ha ma még nem volt)
+static func napi_legjobb(nap: String) -> int:
+	var n: Dictionary = data()["napi"]
+	return int(n["pont"]) if str(n["nap"]) == nap else 0
+
+
+## true, ha ez új napi csúcs
+static func napi_ment(nap: String, pont: int) -> bool:
+	if pont <= napi_legjobb(nap):
+		return false
+	data()["napi"] = {"nap": nap, "pont": pont}
+	save_meta()
+	return true
 
 
 # ══════════ FEJLESZTÉSEK ══════════
@@ -150,7 +195,10 @@ static func bank_run(p: Player, zona: int, won: bool) -> void:
 	dd["kills"] = int(dd["kills"]) + p.kills
 	dd["runs"] = int(dd["runs"]) + 1
 	dd["deepest"] = maxi(int(dd["deepest"]), zona)
+	if int(dd["kills"]) >= 100:
+		award("meszaros")
 	if won:
+		award("sziv")
 		dd["wins"] = int(dd["wins"]) + 1
 		dd["last_death"] = 0
 	else:
@@ -166,6 +214,8 @@ static func reach(zona: int) -> void:
 	if zona > int(dd["deepest"]):
 		dd["deepest"] = zona
 		save_meta()
+	if zona >= 2:
+		award("sebesz")   # a Bronz Klinika elérése feloldja Vane eredeti testét
 
 
 static func add_note(id: String) -> bool:
@@ -174,6 +224,8 @@ static func add_note(id: String) -> bool:
 		return false
 	dd["notes"].append(id)
 	save_meta()
+	if (dd["notes"] as Array).size() >= Story.NOTE_ORDER.size():
+		award("naplo")
 	return true
 
 
@@ -186,6 +238,21 @@ static func boss_down(key: String) -> void:
 	if not (key in dd["bosses"]):
 		dd["bosses"].append(key)
 		save_meta()
+	if BOSS_JELVENY.has(key):
+		award(str(BOSS_JELVENY[key]))
+
+
+## A Sebész (Vane eredeti teste) akkor választható, ha a hős már eljutott a Bronz Klinikára.
+static func sebesz_van() -> bool:
+	return int(data()["deepest"]) >= 2
+
+
+## A választható hősök: a három alap, és ami már feloldódott.
+static func playable() -> Array:
+	var out: Array = Data.CLASS_ORDER.duplicate()
+	if sebesz_van():
+		out.append("Sebész")
+	return out
 
 
 static func intro_seen() -> bool:

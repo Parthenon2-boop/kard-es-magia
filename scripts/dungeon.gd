@@ -288,7 +288,7 @@ static func spawn_mons(rooms: Array[Rect2i], level: int, diff: String, kinds: Ar
 	for i in range(1, rooms.size() - 1):
 		var r := rooms[i]
 		var kind: String = kinds[i] if i < kinds.size() else ""
-		if kind == "kereskedo" or kind == "szentely":
+		if kind == "kereskedo" or kind == "szentely" or kind == "esemeny":
 			continue   # a kereskedő és a szentély terme békés
 		var cnt := Data.rnd(1, 2 + int(level / 2))
 		for j in cnt:
@@ -304,6 +304,12 @@ static func spawn_mons(rooms: Array[Rect2i], level: int, diff: String, kinds: Ar
 		if kind == "kincstar":
 			var g := center(r)
 			mons.append(Mon.make_guard(Data.pick(Data.GUARD_POOL.get(level, ["orc"])), g.x, g.y, diff))
+	# a zóna mini-bossa: egy hétköznapi szobában, a pálya kétharmadánál
+	for i in range(int(rooms.size() * 0.62), rooms.size() - 1):
+		if (kinds[i] if i < kinds.size() else "") == "":
+			var mc := center(rooms[i])
+			mons.append(Mon.make_mini(str(Data.MINI.get(level, "rat")), mc.x, mc.y, diff))
+			break
 	var b := center(rooms[rooms.size() - 1])
 	mons.append(Mon.make(Data.BOSS_LVL[level], b.x, b.y, diff))
 	return mons
@@ -321,7 +327,7 @@ static func spawn_chests(rooms: Array[Rect2i], lvl: int, kinds: Array[String] = 
 			bonus = 1        # a kincstárban értékesebb a zsákmány
 		elif kind == "csapda":
 			n = 1            # a csapdateremben egy láda garantált
-		elif kind == "kereskedo" or kind == "szentely":
+		elif kind == "kereskedo" or kind == "szentely" or kind == "esemeny":
 			n = 0
 		elif randf() < 0.42:
 			n = 1
@@ -403,6 +409,39 @@ static func spawn_notes(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Arr
 	return out
 
 
+# ══════════ DÖNTÉSI ESEMÉNYEK ÉS PADLÓRÁCSOK ══════════
+## Az esemény-terem közepén áll (járható mezőn): rálépve két válasz közül lehet választani.
+static func spawn_events(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Array[String], used: Dictionary) -> Array:
+	var out: Array = []
+	for i in kinds.size():
+		if kinds[i] != "esemeny":
+			continue
+		var c := _free_spot(tiles, rooms[i], used)
+		if c.x < 0:
+			continue
+		used[idx(c.x, c.y)] = true
+		out.append({"x": c.x, "y": c.y, "kind": str(Data.pick(Data.EVENTS)), "used": false})
+	return out
+
+
+## Padlórácsok a hétköznapi szobák belsejében (a kezdőszobában és a főellenségnél nincs).
+## Szoba belsejében vannak, tehát mindig kikerülhetők.
+static func spawn_vents(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Array[String], used: Dictionary) -> Array:
+	var out: Array = []
+	for i in range(2, rooms.size() - 1):
+		if (kinds[i] if i < kinds.size() else "") != "" or rooms[i].size.x < 5 or rooms[i].size.y < 4:
+			continue
+		if randf() > 0.38:
+			continue
+		for j in Data.rnd(1, 2):
+			var q := _free_spot(tiles, rooms[i], used)
+			if q.x < 0:
+				continue
+			used[idx(q.x, q.y)] = true
+			out.append({"x": q.x, "y": q.y, "ph": Data.rnd(0, Data.VENT_PERIOD - 1)})
+	return out
+
+
 # ══════════ CSAPDÁK ══════════
 ## Csapda csak szoba belsejébe kerül (folyosóra soha), így sosem áll az EGYETLEN út közepén:
 ## a szobán belül mindig ki lehet kerülni. A kezdőszoba csapdamentes.
@@ -414,7 +453,7 @@ static func spawn_traps(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Arr
 		var n := 0
 		if kind == "csapda":
 			n = Data.rnd(4, 7)
-		elif kind == "szentely" or kind == "kereskedo":
+		elif kind == "szentely" or kind == "kereskedo" or kind == "esemeny":
 			n = 0
 		elif randf() < 0.34:
 			n = Data.rnd(1, 1 + int(level / 2))
@@ -501,7 +540,7 @@ static func pick_dir() -> Vector2i:
 
 
 # ══════════ DEKORÁCIÓK (amfora, pókháló, repedés...) ══════════
-static func spawn_decor(tiles: PackedByteArray, rooms: Array[Rect2i]) -> Array:
+static func spawn_decor(tiles: PackedByteArray, rooms: Array[Rect2i], level := 1) -> Array:
 	var decor: Array = []
 	var used := {}
 	var place := func(x: int, y: int, type: String) -> void:
@@ -532,6 +571,16 @@ static func spawn_decor(tiles: PackedByteArray, rooms: Array[Rect2i]) -> Array:
 			var dy := Data.rnd(ry + 1, ry + rh - 2)
 			if tiles[idx(dx, dy)] == Data.FLOOR:
 				place.call(dx, dy, Data.pick(["bones", "skull", "rubble", "moss", "puddle"]))
+	# Élő díszek a szobák felső falán (gőzszelep, fogaskerék, csöpögő cső, lüktető ér...)
+	var elo: Array = Sprites2.ZONA_DISZEK.get(level, ["gear"])
+	for r in rooms:
+		if r.position.y < 2 or randf() > 0.6:
+			continue
+		for j in Data.rnd(1, 2):
+			var wx := Data.rnd(r.position.x, r.position.x + r.size.x - 1)
+			var wy := r.position.y - 1
+			if tiles[idx(wx, wy)] == Data.WALL and tiles[idx(wx, wy + 1)] == Data.FLOOR:
+				place.call(wx, wy, str(Data.pick(elo)))
 	# Repedések a látható falakon (padló melletti falcsempék)
 	for x in range(1, W - 1):
 		for y in range(1, H - 1):

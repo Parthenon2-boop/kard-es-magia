@@ -26,6 +26,28 @@ Vane, az Elfeledett Sebész ereszkedik le a lebegő henger-város, Gorgona tetej
 - Új szörnyek (Gőzpatkány, Automata-ápoló, Lebegő szike, Tüdőspóra), **Fertőzött** elitek, új tárgyak
   (Láncfogazású Szike, Gőzsugár-Karbély) és beültetések (Savas Epehólyag, Réz-Idegfonat, Túlhevített tartály).
 
+### 4.1: animációk, ereklyék, események, a Sebész, napi kihívás
+
+- **Animációk:** a szörnyek ütéskor nekilendülnek, halálkor összeroskadnak; a lövés visszarúg; a
+  főellenség belépőjénél és halálánál a kamera ráúszik, fázisváltáskor a figura megnő és a kép
+  felvillan. **Élő pálya:** gőzszelepek, fogaskerekek, csöpögő csövek, lüktető erek a falakon
+  (`Sprites2.prop`). A főmenü háttere a lassan úszó Gorgona; a képsorok előtt rajzolt előtér-réteg
+  mozog gyorsabban, mint a festmény (mélységhatás).
+- **Ereklyék** (`scripts/relics.gd`): tíz darab, a főellenségek és a mini-bossok talapzatán két lap
+  közül választva. Egymást erősítik (Gyújtókamra + Savmirigy + Robbanó epe; Tesla-tekercs + Rézbőr...).
+  Új szörny-állapotok: égés, marás (−2 védelem rétegenként), vérzés.
+- **Zóna-veszélyek és események:** padlórácsok szabályos ütemben törnek ki (előtte egy körrel
+  jeleznek); zónánként egy **mini-boss** (Patkánykirály, Főnővér, Anyaspóra, Olvadt Őr) és egy
+  **döntési esemény** két válasszal (ötödik különleges terem).
+- **A Sebész:** negyedik hős, a Bronz Klinika elérésével oldódik fel. Vágásai vérzést okoznak, a
+  legyőzöttekből szerveket operál ki, a `Q` (Beültetés) ezekből gyógyít és erősít.
+- **Napi kihívás** (`scripts/daily.gd`, főmenü, `N`): aznap mindenkinek ugyanaz a pálya, a Műtőterem
+  fejlesztései nélkül; a pontszám belépve a ranglistára kerül
+  (`Birodalom_Godot/server/supabase/schema_kem_napi.sql`). **Jelvények:** nyolc teljesítmény a Műtőteremben.
+
+Képernyőkép-jelenetek ehhez: `harc`, `relic`, `event`, `daily`; élő próbák: `tests/felho_elo.gd`,
+`tests/napi_elo.gd`.
+
 Képernyőkép-jelenetek ehhez: `intro`, `ending` (`--depth=N` a képsor sorszáma), `hub`, `journal`,
 `boss`, `boss2`, `dialog`, `note`.
 
