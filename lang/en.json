@@ -689,5 +689,15 @@
 	"hud.emelet": "floor {0}/{1}",
 	"msg.emelet": "▼ You descend: floor {0}/{1}.",
 	"banner.emelet": "Deeper floor",
-	"banner.emelet.ur": "The last floor — the zone's master waits here"
+	"banner.emelet.ur": "The last floor — the zone's master waits here",
+	"room.rejtveny": "Puzzle Room",
+	"msg.haz.spora": "☣ Spore cloud! -{0} — you are poisoned",
+	"msg.haz.gear": "⚙ The gear's teeth bite! -{0}",
+	"msg.gubo": "⚘ The spore pod swells — step away from it!",
+	"msg.korong": "⚙ The gear floor turned with you on it.",
+	"msg.gep_olt": "⚙ The dungeon finished it off: {0}",
+	"msg.lap.jo": "◈ The pressure plate clicks into place ({0}/{1}).",
+	"msg.lap.rossz": "◈ Wrong plate! The signs go dark — start over, and get clear!",
+	"msg.rejtveny.kesz": "◈ The chains fall away: the strongbox is open!",
+	"msg.lada.zart": "🔒 Chained strongbox ({0}/{1}). Step on the pressure plates in the order of the signs glowing above it."
 }

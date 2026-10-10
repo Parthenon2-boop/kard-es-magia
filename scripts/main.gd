@@ -128,7 +128,7 @@ func _ready() -> void:
 	add_child(audio)
 	audio.setup(shot_path == "")
 	audio.set_muted(_cfg_muted)
-	game.sfx = func(n: String) -> void: audio.play(n)
+	game.sfx = func(n: String, v: float = 1.0) -> void: audio.play(n, v)
 	game.autosave = shot_path == ""   # képernyőkép-módban nem írunk mentést
 	Meta.persist = shot_path == ""    # ...és a Műtőterem állását sem
 	if shot_path != "":
@@ -692,7 +692,7 @@ func continue_game(id := "") -> bool:
 		set_state("menu")
 		return false
 	game = g
-	game.sfx = func(n: String) -> void: audio.play(n)
+	game.sfx = func(n: String, v: float = 1.0) -> void: audio.play(n, v)
 	game.autosave = shot_path == ""
 	inv_scroll = 0
 	chest_ui = null
@@ -1534,7 +1534,7 @@ func _map_col(w: World, i: int) -> Color:
 		return MAP_COL_WALL
 	var k := w.kind_map[i] if i < w.kind_map.size() else 0
 	if k > 0:
-		var cc: Color = Cv.col(Data.ROOM_KINDS[Data.ROOM_KIND_ORDER[k - 1]]["col"])
+		var cc: Color = Cv.col(Data.ROOM_KINDS[Data.ROOM_KIND_ALL[k - 1]]["col"])
 		return Color(cc.r * 0.62, cc.g * 0.62, cc.b * 0.62, 0.92)
 	return MAP_COL_FLOOR
 
@@ -1743,7 +1743,7 @@ func _setup_shot() -> void:
 				map_on = true
 			else:
 				set_state("menu")
-		"play", "orb", "inv", "chest", "over", "win", "walk", "perk", "shop", "trap", "map", "pause", "boss", "boss2", "dialog", "note", "saves", "relic", "event", "harc":
+		"play", "orb", "inv", "chest", "over", "win", "walk", "perk", "shop", "trap", "map", "pause", "boss", "boss2", "dialog", "note", "saves", "relic", "event", "harc", "elemek":
 			start_game(shot_cls, "normal")
 			if shot_scene != "play":
 				game.banner = {}
@@ -1753,7 +1753,9 @@ func _setup_shot() -> void:
 				game.player.max_hp = 500
 				game.player.hp = 500
 				game.next_level()
-			if shot_scene != "orb" and shot_scene != "walk" and shot_scene != "map":
+			if shot_scene == "elemek":
+				_shot_elemek()
+			elif shot_scene != "orb" and shot_scene != "walk" and shot_scene != "map":
 				_shot_populate()
 			if shot_scene == "inv":
 				_shot_items()
@@ -1887,6 +1889,89 @@ func _shot_populate() -> void:
 		p.bio = 14
 		p.rez = 9
 		p.skill_cd = 4
+
+
+## A zóna saját pályaeleme és egy rejtvényszoba a hős köré (--scene=elemek --depth=<zóna 1-4>).
+## Csak a képhez: a kezdőszoba helyén egy tágas termet nyitunk, hogy minden elférjen.
+func _shot_elemek() -> void:
+	var w := game.world
+	var p := game.player
+	game.banner = {}
+	for ax in range(-8, 9):
+		for ay in range(-4, 5):
+			var x := p.x + ax
+			var y := p.y + ay
+			if x > 1 and y > 1 and x < Data.MAP_W - 2 and y < Data.MAP_H - 2:
+				w.tiles[x * Data.MAP_H + y] = Data.FLOOR
+	for mo in w.mons:
+		if absi(mo.x - p.x) < 12 and absi(mo.y - p.y) < 8:
+			mo.alive = false
+	w.traps.clear()
+	w.vents.clear()
+	w.gepek.clear()
+	w.chests = w.chests.filter(func(ch: Dictionary) -> bool: return absi(int(ch["x"]) - p.x) > 9 or absi(int(ch["y"]) - p.y) > 5)
+	var uj := func(tip: String, x: int, y: int) -> Dictionary:
+		var g := {"tip": tip, "x": x, "y": y, "dx": 0, "dy": 0, "n": 0, "ph": 0, "p": 0, "t": 0, "all": 0}
+		w.gepek.append(g)
+		return g
+	var kulcs := str(Data.POOL[w.dungeon_level][0])
+	match str(Data.GEP_ZONA.get(w.dungeon_level, "")):
+		"zsilip":
+			# két folyosó a hőstől jobbra és fölfelé (belát rajtuk): az egyiken épp jelez a nyomásmérő,
+			# a másikon már fúj a gőz
+			for i in range(2, 8):
+				for o in [-1, 1]:
+					w.tiles[(p.x + i) * Data.MAP_H + p.y + o] = Data.WALL
+					w.tiles[(p.x + o) * Data.MAP_H + p.y - i] = Data.WALL
+				w.tiles[p.x * Data.MAP_H + p.y - i] = Data.FLOOR
+			var g: Dictionary = uj.call("zsilip", p.x + 3, p.y)
+			g["dx"] = 1
+			g["n"] = 3
+			g["p"] = 8
+			g["ph"] = posmod(5 - w.turn, 8)
+			var g2: Dictionary = uj.call("zsilip", p.x, p.y - 4)
+			g2["dy"] = 1
+			g2["n"] = 2
+			g2["p"] = 8
+			g2["ph"] = posmod(7 - w.turn, 8)
+			w.mons.append(Mon.make(kulcs, p.x + 4, p.y, "normal"))
+		"szike":
+			var a: Dictionary = uj.call("szike", p.x + 2, p.y - 2)
+			a["dx"] = 1
+			a["n"] = 6
+			a["ph"] = posmod(2 - w.turn, 10)
+			var b: Dictionary = uj.call("szike", p.x - 3, p.y - 3)
+			b["dy"] = 1
+			b["n"] = 5
+			b["ph"] = posmod(5 - w.turn, 8)
+			w.mons.append(Mon.make(kulcs, p.x + 5, p.y - 2, "normal"))
+		"gubo":
+			uj.call("gubo", p.x + 5, p.y + 2)
+			# a hős melletti gubó a kör végén megduzzad (figyelmeztet)
+			uj.call("gubo", p.x + 1, p.y - 1)
+			var pukkant: Dictionary = uj.call("gubo", p.x - 3, p.y - 2)
+			pukkant["all"] = 2
+			pukkant["t"] = w.turn + 9
+			for ax in range(-1, 2):
+				for ay in range(-1, 2):
+					w.hazards.append({"x": p.x - 3 + ax, "y": p.y - 2 + ay, "kind": "spora", "ttl": 3, "dmg": 3, "warn": false, "mind": true})
+			w.mons.append(Mon.make("goblin", p.x - 4, p.y - 2, "normal"))
+		"korong":
+			var k1: Dictionary = uj.call("korong", p.x + 4, p.y - 1)
+			k1["p"] = 7
+			k1["ph"] = posmod(5 - w.turn, 7)
+			var k2: Dictionary = uj.call("korong", p.x - 5, p.y + 2)
+			k2["p"] = 7
+			k2["ph"] = posmod(1 - w.turn, 7)
+			w.mons.append(Mon.make(kulcs, p.x + 5, p.y - 1, "normal"))
+	# rejtvény: leláncolt láda, négy lap, az első már lenyomva
+	var lx := p.x - 1
+	var ly := p.y + 3
+	w.chests.append({"x": lx, "y": ly, "opened": false, "zart": true, "items": [Item.random(2), Item.random(2)]})
+	w.lapok = [{"x": lx - 2, "y": ly - 1, "jel": 2, "sor": 0, "le": true}, {"x": lx + 2, "y": ly, "jel": 0, "sor": 1, "le": false},
+		{"x": lx - 3, "y": ly + 1, "jel": 3, "sor": 2, "le": false}, {"x": lx + 3, "y": ly - 2, "jel": 1, "sor": 3, "le": false}]
+	game._tick_gepek()   # a gépek most esedékes jelzései (villogó mezők) is látsszanak
+	w.update_fov()
 
 
 ## Kinézet bolt képernyőképe: bejelentkezett fiók, érmék és néhány már megvásárolt darab.

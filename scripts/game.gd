@@ -25,11 +25,14 @@ var focus := {}                    # a kamera egy pillanatra ide úszik: {x, y, 
 var flash := {}                    # teljes képernyős villanás: {col, t0, dur} (fázisváltás, főellenség halála)
 var autosave := true               # szintváltáskor mentsen-e (tesztben/képernyőkép-módban nem)
 var now_ms: Callable = func() -> float: return Time.get_ticks_usec() / 1000.0
+## a hangok ritkításához saját véletlenforrás (a játék közös véletlenjéhez nem nyúl)
+var _hang_rng := RandomNumberGenerator.new()
 
 
-func play(n: String) -> void:
+## `vol`: 0..1 hangerő (a távoli szörny hangja halkabb)
+func play(n: String, vol: float = 1.0) -> void:
 	if sfx.is_valid():
-		sfx.call(n)
+		sfx.call(n, vol)
 
 
 func add_fx(o: Dictionary) -> void:
@@ -209,15 +212,17 @@ func _chain(from: Mon, dmg: int) -> void:
 ## Égés és vérzés: körönként sebez. (A marás nem sebez, csak a védelmet veszi le.)
 func _tick_status() -> void:
 	var dl := world.dungeon_level
+	# a szörnyek életereje pályánként szorzódik: az égés és a vérzés ugyanennyivel erősebb, hogy megérje
+	var hs := Data.palya_hp(world.szakasz())
 	for m in world.mons:
 		if not m.alive:
 			continue
 		var d := 0
 		if m.burn > 0:
 			m.burn -= 1
-			d += 2 + dl
+			d += Data.jround((2 + dl) * hs)
 		if m.bleed > 0:
-			d += maxi(1, int(ceilf(m.bleed * (0.5 + dl * 0.25))))
+			d += maxi(1, int(ceilf(m.bleed * (0.5 + dl * 0.25) * hs)))
 			m.bleed -= 1
 		if d > 0 and world.is_exp(m.x, m.y):
 			m.hp -= d
@@ -242,7 +247,7 @@ func hurt(dmg: int, big := false) -> void:
 	shake = maxf(shake, 7.0 if big else 4.0)
 	var n := p.perk("epeholyag")
 	if n > 0:
-		var acid := 3 * n + world.dungeon_level * 2
+		var acid := Data.jround((3 * n + world.dungeon_level * 2) * Data.palya_hp(world.szakasz()))
 		var hit := false
 		for m in world.mons:
 			if m.alive and absi(m.x - p.x) <= 1 and absi(m.y - p.y) <= 1:
@@ -279,16 +284,16 @@ func mon_special(m: Mon) -> void:
 	elif m.sp == "regen" and randf() < 0.28:
 		m.hp = mini(m.max_hp, m.hp + int(floorf(m.max_hp * 0.05)))
 	elif m.sp == "crit" and randf() < 0.3:
-		var x := int(floorf(m.atk * 0.9))
+		var x := int(floorf(m.atk * Data.SZORNY_KRIT))
 		hurt(x, true)
 		p.add_msg(Lang.ref("msg.crit_in", x), Data.P["vein"])
 	elif m.sp == "fireball" and randf() < 0.22:
-		var d := Data.rnd(12, 20)
+		var d := Data.jround(Data.rnd(12, 20) * Data.varazs_szorzo(w.szakasz()))
 		hurt(d, true)
 		p.add_msg(Lang.ref("msg.fireball_in", d), "#e06020")
 		add_fx({"type": "boom", "x": p.x, "y": p.y, "dur": 400.0})
 	elif m.sp == "aoe" and randf() < 0.18:
-		var d := Data.rnd(8, 16)
+		var d := Data.jround(Data.rnd(8, 16) * Data.varazs_szorzo(w.szakasz()))
 		hurt(d, true)
 		p.add_msg(Lang.ref("msg.explosion", d), "#e08020")
 		add_fx({"type": "boom", "x": p.x, "y": p.y, "dur": 400.0})
@@ -298,7 +303,7 @@ func mon_special(m: Mon) -> void:
 		var sy := m.y + Data.rnd(-2, 2)
 		# az idézett szörny csak járható, szabad mezőre kerülhet (falba nem)
 		if not w.blocked(sx, sy) and w.mon_at(sx, sy) == null and not (sx == p.x and sy == p.y):
-			w.mons.append(Mon.make(Data.pick(pool), sx, sy, w.diff))
+			w.mons.append(w.erosit(Mon.make(Data.pick(pool), sx, sy, w.diff)))
 			p.add_msg(Lang.ref("msg.summon", m.ref()), Data.P["vein"])
 	elif m.sp == "teleport" and randf() < 0.22:
 		var r: Rect2i = Data.pick(w.rooms)
@@ -437,7 +442,7 @@ func kill_reward(m: Mon) -> int:
 	add_fx({"type": "puff", "x": m.x, "y": m.y, "col": "#c0a070" if m.mech else "#c04038", "dur": 520.0 if m.boss else 420.0, "big": m.boss})
 	# Robbanó epe: aki egyszerre égett és mart volt, halálakor felrobban, és a szomszédait is meggyújtja
 	if p.has_relic("robbano") and m.burn > 0 and m.corr > 0:
-		var rob := 10 + world.dungeon_level * 4
+		var rob := Data.jround((10 + world.dungeon_level * 4) * Data.palya_hp(world.szakasz()))
 		add_fx({"type": "boom", "x": m.x, "y": m.y, "dur": 450.0})
 		add_fx({"type": "nova", "x": m.x, "y": m.y, "r": 1.8, "col": "#ffb040", "dur": 450.0})
 		shake = maxf(shake, 6.0)
@@ -793,21 +798,22 @@ func quick_heal() -> bool:
 # ══════════ VESZÉLYZÓNÁK ══════════
 ## Egy előre jelzett csapás: a mező egy kör múlva "robban". A hősnek egy lépése (vagy egy
 ## félreugrása) van kitérni. A falakra nem kerül.
-func warn(x: int, y: int, kind: String, dmg: int) -> void:
+## `mind`: a szörnyeket is eléri (a pályaelemek csapásai ilyenek; a főellenségeké nem).
+func warn(x: int, y: int, kind: String, dmg: int, mind := false) -> void:
 	var w := world
 	if w.blocked(x, y):
 		return
 	for h in w.hazards:
 		if h["x"] == x and h["y"] == y and h["warn"]:
 			return
-	w.hazards.append({"x": x, "y": y, "kind": kind, "ttl": 1, "dmg": dmg, "warn": true})
+	w.hazards.append({"x": x, "y": y, "kind": kind, "ttl": 1, "dmg": dmg, "warn": true, "mind": mind})
 
 
 func acid_pool(x: int, y: int, ttl: int, dmg: int) -> void:
 	var w := world
 	if w.blocked(x, y) or w.tile(x, y) == Data.STAIR or w.hazard_at(x, y, "acid") != null:
 		return
-	w.hazards.append({"x": x, "y": y, "kind": "acid", "ttl": ttl, "dmg": dmg, "warn": false})
+	w.hazards.append({"x": x, "y": y, "kind": "acid", "ttl": ttl, "dmg": dmg, "warn": false, "mind": false})
 
 
 func _tick_hazards() -> void:
@@ -823,8 +829,11 @@ func _tick_hazards() -> void:
 			if int(h["ttl"]) > 0:
 				maradt.append(h)
 				continue
-			boomed = true
 			var kind := str(h["kind"])
+			var mind: bool = h.get("mind", false)
+			# a pályaelemek távoli, nem látott kitörése néma (különben folyton sziszegne a pálya)
+			if not mind or w.is_vis(h["x"], h["y"]):
+				boomed = true
 			add_fx({"type": "burst", "x": h["x"], "y": h["y"], "col": Data.HAZ_COL.get(kind, "#ffffff"), "kind": kind, "dur": 420.0})
 			if h["x"] == p.x and h["y"] == p.y and p.alive:
 				var d := maxi(1, int(h["dmg"]) - int(floorf(p.def / 3.0)))
@@ -833,12 +842,19 @@ func _tick_hazards() -> void:
 				p.add_msg(Lang.ref("msg.haz." + kind, d), Data.P["vein"])
 				if kind == "root":
 					p.rooted = 2
+			if mind:
+				_gep_talalat(h["x"], h["y"], int(h["dmg"]), kind)
 		else:
+			var kind2 := str(h["kind"])
 			if h["x"] == p.x and h["y"] == p.y and p.alive:
 				var d2 := int(h["dmg"])
 				hurt(d2)
 				add_fx({"type": "dmgnum", "x": p.x, "y": p.y, "txt": "-%d" % d2, "col": "#b0e030", "dur": 700.0})
-				p.add_msg(Lang.ref("msg.haz.acid", d2), "#b0e030")
+				p.add_msg(Lang.ref("msg.haz." + kind2, d2), str(Data.HAZ_COL.get(kind2, "#b0e030")))
+				if kind2 == "spora":
+					p.poison = maxi(p.poison, 2)   # a spórafelhő mérgez is
+			if h.get("mind", false):
+				_gep_talalat(h["x"], h["y"], int(h["dmg"]), kind2)
 			if int(h["ttl"]) > 0:
 				maradt.append(h)
 	w.hazards = maradt
@@ -877,6 +893,7 @@ func boss_phase2(m: Mon) -> void:
 		add_fx({"type": "nova", "x": m.x, "y": m.y, "r": 2.0 + i * 1.4, "col": "#ff5040", "dur": 600.0, "delay": i * 160.0})
 	shake = maxf(shake, 12.0)
 	play("roar")
+	play("fazis")
 	add_fx({"type": "nova", "x": m.x, "y": m.y, "r": 3.0, "col": "#ff5040", "dur": 700.0})
 	match m.sp:
 		"worm":
@@ -889,7 +906,7 @@ func boss_phase2(m: Mon) -> void:
 			m.def += 2
 		"weaver":
 			# Tükör-fázis: lemásolja a hős felszerelését, és az ő stílusában harcol
-			m.atk = maxi(m.atk, Data.jround(maxi(p.atk, p.mag) * 1.15) + 6)
+			m.atk = maxi(m.atk, Data.jround(maxi(p.atk, p.mag) * Data.boss_csapas("weaver", "tukor")) + 6)
 			m.def = maxi(6, mini(m.def, p.def + 4))
 			m.mres = maxi(2, mini(m.mres, int(p.def / 2.0)))
 	p.add_msg(Lang.ref("msg.phase2." + m.sp, m.ref()), "#ff8060")
@@ -941,27 +958,27 @@ func _warn_around(n: int, kind: String, dmg: int) -> void:
 func boss_turn(m: Mon) -> void:
 	var p := player
 	var w := world
-	var dl := w.dungeon_level
 	var dist := _dist(m)
 	if m.cd > 0:
 		m.cd -= 1
+	# a csapások ereje főellenségenként a Data.BOSS_CSAPAS táblában áll
 	match m.sp:
 		"worm":
 			if m.cd == 0 and dist <= 7 and dist > 1:
-				_warn_line(m, 7, "steam", 9 + dl * 2)
+				_warn_line(m, 7, "steam", int(Data.boss_csapas("worm", "goz")))
 				m.cd = 3 if m.phase == 1 else 2
 				play("warn")
 				p.add_msg(Lang.ref("msg.boss.steam", m.ref()), "#ffe0b0")
 				return
 			if m.phase == 2 and randf() < 0.4:
 				for i in 3:
-					acid_pool(p.x + Data.rnd(-2, 2), p.y + Data.rnd(-2, 2), 5, 3 + dl)
+					acid_pool(p.x + Data.rnd(-2, 2), p.y + Data.rnd(-2, 2), 5, int(Data.boss_csapas("worm", "sav")))
 			_mon_act(m)
 			if m.phase == 2 and _dist(m) > 1:
 				_mon_act(m)   # a páncél nélkül kétszer olyan gyorsan csapódik
 		"karel":
 			if m.cd == 0 and dist <= 6:
-				_warn_around(2 if m.phase == 1 else 4, "blade", 8 + dl * 2)
+				_warn_around(2 if m.phase == 1 else 4, "blade", int(Data.boss_csapas("karel", "penge")))
 				m.cd = 2
 				play("warn")
 				p.add_msg(Lang.ref("msg.boss.blade", m.ref()), "#e0e8f0")
@@ -971,7 +988,7 @@ func boss_turn(m: Mon) -> void:
 				p.add_msg(Lang.ref("msg.boss.gas"), "#c8f0e8")
 			# 2. fázis: a transzfúziós gépekre csatlakozva szívja a hős életerejét
 			if m.phase == 2 and dist <= 5 and w.turn % 2 == 0:
-				var d := 3 + dl
+				var d := int(Data.boss_csapas("karel", "szivas"))
 				hurt(d)
 				m.hp = mini(m.max_hp, m.hp + d * 2)
 				add_fx({"type": "drain", "x0": p.x, "y0": p.y, "x1": m.x, "y1": m.y, "dur": 450.0})
@@ -985,9 +1002,9 @@ func boss_turn(m: Mon) -> void:
 		"symbiote":
 			# gyökerekkel a mennyezethez nőtt: nem mozdul
 			if m.phase == 2 and m.hp < m.max_hp:
-				m.hp = mini(m.max_hp, m.hp + 2)
+				m.hp = mini(m.max_hp, m.hp + int(Data.boss_csapas("symbiote", "gyogyul")))
 			if m.cd == 0 and dist <= 9:
-				_warn_around(3 if m.phase == 1 else 6, "root", 8 + dl * 2)
+				_warn_around(3 if m.phase == 1 else 6, "root", int(Data.boss_csapas("symbiote", "gyoker")))
 				m.cd = 3 if m.phase == 1 else 2
 				play("warn")
 				p.add_msg(Lang.ref("msg.boss.root", m.ref()), "#70d060")
@@ -999,7 +1016,7 @@ func boss_turn(m: Mon) -> void:
 				var sx := m.x + Data.rnd(-2, 2)
 				var sy := m.y + Data.rnd(-2, 2)
 				if spores < 4 and not w.blocked(sx, sy) and w.mon_at(sx, sy) == null and not (sx == p.x and sy == p.y):
-					var sm := Mon.make("spore", sx, sy, w.diff)
+					var sm := w.erosit(Mon.make("spore", sx, sy, w.diff))
 					sm.awake = true
 					w.mons.append(sm)
 					add_fx({"type": "puff", "x": sx, "y": sy, "col": "#d8e860", "dur": 400.0})
@@ -1011,9 +1028,9 @@ func boss_turn(m: Mon) -> void:
 				# a korábbi zónák urainak csapásait keveri: gőz, szikék, gyökerek
 				if m.cd == 0 and dist <= 8:
 					match int(w.turn / 2.0) % 3:
-						0: _warn_line(m, 8, "steam", 14 + dl)
-						1: _warn_around(4, "blade", 14 + dl)
-						_: _warn_around(5, "root", 12 + dl)
+						0: _warn_line(m, 8, "steam", int(Data.boss_csapas("weaver", "goz")))
+						1: _warn_around(4, "blade", int(Data.boss_csapas("weaver", "penge")))
+						_: _warn_around(5, "root", int(Data.boss_csapas("weaver", "gyoker")))
 					m.cd = 2
 					play("warn")
 					p.add_msg(Lang.ref("msg.boss.weave", m.ref()), "#ffd060")
@@ -1037,7 +1054,7 @@ func boss_turn(m: Mon) -> void:
 					if _dist(m) > 1:
 						_mon_act(m)
 				if m.cd == 0 and dist <= 8:
-					_warn_around(3, "blade", 14 + dl)
+					_warn_around(3, "blade", int(Data.boss_csapas("weaver", "penge")))
 					m.cd = 3
 					play("warn")
 		_:
@@ -1140,10 +1157,25 @@ func advance_turn(idle := false) -> void:
 	_tick_status()
 	_tick_hazards()
 	_tick_vents()   # a hazárdok UTÁN: a rács jelzése így egy teljes körig látszik, mielőtt kitör
+	_tick_gepek()   # ugyanezért: a zóna gépei is a kitörések után jeleznek
 	_meet_boss()
+	# a közeli, látható szörnyek helye a kör előtt: aki elmozdul, az hangot adhat
+	var elotte := {}
+	for m in w.mons:
+		if m.alive and absi(m.x - p.x) <= Data.SZORNYHANG_TAV and absi(m.y - p.y) <= Data.SZORNYHANG_TAV:
+			elotte[m] = Vector2i(m.x, m.y)
+	var felfigyelt := 0
 	for m in w.mons:
 		if not m.alive or not p.alive:
 			continue
+		# az első alkalom, amikor a szörny meglátja a hőst: felkiáltójel és rövid hang
+		if not m.eszlelt and w.is_vis(m.x, m.y):
+			m.eszlelt = true
+			if not m.boss:
+				add_fx({"type": "dmgnum", "x": m.x, "y": m.y, "txt": "!", "col": "#ffd040", "dur": 750.0, "dy": -0.45, "big": true})
+				if felfigyelt == 0:
+					play("eszlel", _tav_hangero(m))
+				felfigyelt += 1
 		if m.stun > 0:
 			m.stun -= 1
 			continue
@@ -1157,7 +1189,7 @@ func advance_turn(idle := false) -> void:
 			if m.cd > 0:
 				m.cd -= 1
 			if m.cd == 0 and _dist(m) <= 6 and _dist(m) > 1:
-				_warn_around(2, str(Data.VENT_KIND.get(w.dungeon_level, "steam")), 6 + w.dungeon_level * 2)
+				_warn_around(2, str(Data.VENT_KIND.get(w.dungeon_level, "steam")), 6 + w.dungeon_level * 2 + Data.palya_csapas(w.szakasz()))
 				m.cd = 4
 				play("warn")
 			_mon_act(m)
@@ -1189,6 +1221,38 @@ func advance_turn(idle := false) -> void:
 			if not w.blocked(nx, ny) and w.mon_at(nx, ny) == null and not (nx == p.x and ny == p.y):
 				m.x = nx
 				m.y = ny
+	_szornyhangok(elotte)
+
+
+## a távolsággal halkuló hangerő (szomszédos mezőn 1, a hallótáv szélén 0.2)
+func _tav_hangero(m: Mon) -> float:
+	return clampf(1.0 - float(_dist(m) - 1) / float(Data.SZORNYHANG_TAV) * 0.9, 0.2, 1.0)
+
+
+## A most elmozdult, LÁTHATÓ szörnyek hangja: a legközelebbiek szólnak, fajtánként (gépi,
+## húsos, lebegő, kúszó) más hanggal, távolsággal halkulva — körönként legfeljebb
+## SZORNYHANG_MAX darab, és egy fajta csak egyszer, hogy sok szörny mellett se legyen hangzavar.
+## `elotte`: szörny -> a kör előtti helye. Visszaadja, hány hang szólt.
+func _szornyhangok(elotte: Dictionary) -> int:
+	if not sfx.is_valid() or elotte.is_empty() or not player.alive:
+		return 0
+	var w := world
+	var jeloltek: Array[Mon] = []
+	for m: Mon in elotte:
+		var h: Vector2i = elotte[m]
+		if m.alive and (m.x != h.x or m.y != h.y) and w.is_vis(m.x, m.y) and _dist(m) <= Data.SZORNYHANG_TAV:
+			jeloltek.append(m)
+	jeloltek.sort_custom(func(a: Mon, b: Mon) -> bool: return _dist(a) < _dist(b))
+	var szolt := {}
+	for m in jeloltek:
+		if szolt.size() >= Data.SZORNYHANG_MAX:
+			break
+		var fajta := str(Data.MON_HANG.get(m.key, "hus"))
+		if szolt.has(fajta) or _hang_rng.randf() > Data.SZORNYHANG_ESELY:
+			continue
+		szolt[fajta] = true
+		play(fajta, _tav_hangero(m) * 0.8)
+	return szolt.size()
 
 
 # ══════════ CSAPDÁK ÉS TITKOS AJTÓK ══════════
@@ -1351,7 +1415,184 @@ func _tick_vents() -> void:
 		if absi(v["x"] - p.x) > 9 or absi(v["y"] - p.y) > 9:
 			continue
 		if (w.turn + int(v["ph"])) % Data.VENT_PERIOD == Data.VENT_PERIOD - 2:
-			warn(v["x"], v["y"], kind, 5 + w.dungeon_level * 2)
+			warn(v["x"], v["y"], kind, 5 + w.dungeon_level * 2 + Data.palya_csapas(w.szakasz()))
+
+
+# ══════════ A ZÓNÁK SAJÁT PÁLYAELEMEI (gépek) ÉS A REJTVÉNYSZOBA ══════════
+## Egy pályaelem csapása egy szörnyet ér (a főellenséget nem). Nem ébreszti fel, de megölheti —
+## a jutalma ilyenkor is a hősé, hiszen ő csalta oda.
+func _gep_talalat(x: int, y: int, dmg: int, kind: String) -> void:
+	var m := world.mon_at(x, y)
+	if m == null or m.boss:
+		return
+	if kind == "spora" and m.key in Data.SPORA_IMMUNIS:
+		return
+	var d := maxi(1, dmg - int(floorf(mdef(m) / 3.0)))
+	m.hp -= d
+	var latszik := world.is_vis(x, y)
+	if latszik:
+		m.hit_ms = now_ms.call()
+		add_fx({"type": "dmgnum", "x": x, "y": y, "txt": "-%d" % d, "col": str(Data.HAZ_COL.get(kind, "#ffffff")), "dur": 700.0})
+	if m.hp <= 0:
+		kill_reward(m)
+		if latszik:
+			player.add_msg(Lang.ref("msg.gep_olt", m.ref()), Data.P["parchGold"])
+
+
+## A zóna gépeinek köre (csak a hős közelében számolunk; a zsilip, a szike és a korong állása
+## a körszámból adódik, így a távoli gépek „maguktól” a helyükön lesznek, amikor odaérünk).
+## Mind egy körrel előre jelez: a jelzést a szokásos veszélyzóna (warn) adja.
+func _tick_gepek() -> void:
+	var w := world
+	if w.gepek.is_empty():
+		return
+	var p := player
+	var em := clampi(w.emelet, 1, 4)
+	for g in w.gepek:
+		var gx: int = g["x"]
+		var gy: int = g["y"]
+		if absi(gx - p.x) > 12 or absi(gy - p.y) > 12:
+			continue
+		match str(g["tip"]):
+			"zsilip":
+				# az ütem utolsó két körében fúj: mindkettőt egy-egy körrel előbb jelzi
+				var c := w.gep_fazis(g)
+				var per: int = g["p"]
+				if c == per - 3 or c == per - 2:
+					for i in int(g["n"]):
+						warn(gx + int(g["dx"]) * i, gy + int(g["dy"]) * i, "steam", Data.gep_dmg("zsilip", w.dungeon_level, em), true)
+			"szike":
+				# ahová a következő körben lép, az a mező most villog
+				var q := w.szike_hely(g, w.turn + 1)
+				warn(q.x, q.y, "blade", Data.gep_dmg("szike", w.dungeon_level, em), true)
+			"gubo":
+				_gubo_kor(g, em)
+			"korong":
+				var c2 := w.gep_fazis(g)
+				var per2: int = g["p"]
+				if c2 == per2 - 2:
+					for d in World.GYURU:
+						warn(gx + d.x, gy + d.y, "gear", Data.gep_dmg("korong", w.dungeon_level, em), true)
+					if w.is_vis(gx, gy):
+						play("warn")
+				elif c2 == per2 - 1:
+					_korong_fordul(g)
+
+
+## Spóragubó: érett (0) → ha valaki mellé lép, megduzzad (1) → a következő körben kipukkad,
+## és spórafelhőt hagy maga után → alszik (2), amíg újra be nem érik.
+func _gubo_kor(g: Dictionary, em: int) -> void:
+	var w := world
+	var p := player
+	var gx: int = g["x"]
+	var gy: int = g["y"]
+	match int(g["all"]):
+		2:
+			if w.turn >= int(g["t"]):
+				g["all"] = 0
+		1:
+			g["all"] = 2
+			g["t"] = w.turn + int(Data.GUBO_UJRA[em - 1])
+			var dmg := Data.gep_dmg("gubo", w.dungeon_level, em)
+			var mezok: Array[Vector2i] = []
+			for ax in range(-1, 2):
+				for ay in range(-1, 2):
+					mezok.append(Vector2i(gx + ax, gy + ay))
+			if int(g["n"]) >= 2:
+				mezok.append_array([Vector2i(gx + 2, gy), Vector2i(gx - 2, gy), Vector2i(gx, gy + 2), Vector2i(gx, gy - 2)])
+			for q in mezok:
+				if w.blocked(q.x, q.y) or w.hazard_at(q.x, q.y, "spora") != null:
+					continue
+				w.hazards.append({"x": q.x, "y": q.y, "kind": "spora", "ttl": Data.FELHO_KOR, "dmg": dmg, "warn": false, "mind": true})
+			if w.is_vis(gx, gy):
+				add_fx({"type": "nova", "x": gx, "y": gy, "r": 1.8, "col": Data.HAZ_COL["spora"], "dur": 480.0})
+				add_fx({"type": "puff", "x": gx, "y": gy, "col": Data.HAZ_COL["spora"], "dur": 520.0, "big": true})
+				play("gubo")
+		_:
+			var kozel := p.alive and absi(p.x - gx) <= 1 and absi(p.y - gy) <= 1
+			var hos := kozel
+			if not kozel:
+				for m in w.mons:
+					if m.alive and absi(m.x - gx) <= 1 and absi(m.y - gy) <= 1 and not (m.key in Data.SPORA_IMMUNIS):
+						kozel = true
+						break
+			if kozel:
+				g["all"] = 1
+				if w.is_vis(gx, gy):
+					play("warn")
+					if hos:
+						p.add_msg(Lang.ref("msg.gubo"), Data.HAZ_COL["spora"])
+
+
+## A forgó fogaskerék-padló negyedfordulata: aki a gyűrűjén áll (hős vagy szörny), két mezővel
+## odébb kerül az óramutató járása szerint. (A fogak csípését a jelzett veszélyzóna adta.)
+func _korong_fordul(g: Dictionary) -> void:
+	var w := world
+	var p := player
+	var gx: int = g["x"]
+	var gy: int = g["y"]
+	var mozog: Array = []
+	for i in 8:
+		var honnan: Vector2i = World.GYURU[i]
+		var hova: Vector2i = World.GYURU[(i + 2) % 8]
+		if w.blocked(gx + hova.x, gy + hova.y):
+			continue
+		var m := w.mon_at(gx + honnan.x, gy + honnan.y)
+		if m != null and not m.boss:
+			mozog.append([m, gx + hova.x, gy + hova.y])
+		if p.alive and p.x == gx + honnan.x and p.y == gy + honnan.y:
+			mozog.append([null, gx + hova.x, gy + hova.y])
+	var hos := false
+	for e in mozog:
+		if e[0] == null:
+			p.x = e[1]
+			p.y = e[2]
+			hos = true
+		else:
+			var mm: Mon = e[0]
+			mm.x = e[1]
+			mm.y = e[2]
+	if hos:
+		w.update_fov()
+		shake = maxf(shake, 5.0)
+		p.add_msg(Lang.ref("msg.korong"), Data.HAZ_COL["gear"])
+	if w.is_vis(gx, gy):
+		play("gear")
+
+
+## Rálépés a rejtvényszoba egy nyomólapjára (csak a hős nyomja le). A láda fölött izzó jelek
+## sorrendjében kell haladni: a jó lap lenyomva marad; a rossz mindet visszaugrasztja, és a
+## zóna csapása — előre jelezve — kitör a hős körül. Ha mind megvan, lehull a láda lánca.
+func press_plate() -> bool:
+	var w := world
+	var p := player
+	var lap: Variant = w.lap_at(p.x, p.y)
+	if lap == null or lap["le"]:
+		return false
+	var lada: Variant = w.zart_lada()
+	if lada == null:
+		return false
+	var kesz := w.lapok_le()
+	var szin := str(Data.LAP_SZINEK[int(lap["jel"]) % Data.LAP_SZINEK.size()])
+	if int(lap["sor"]) == kesz:
+		lap["le"] = true
+		add_fx({"type": "nova", "x": p.x, "y": p.y, "r": 1.0, "col": szin, "dur": 420.0})
+		if kesz + 1 >= w.lapok.size():
+			lada["zart"] = false
+			add_fx({"type": "nova", "x": lada["x"], "y": lada["y"], "r": 2.2, "col": Data.ROOM_KINDS["rejtveny"]["col"], "dur": 800.0})
+			add_fx({"type": "puff", "x": lada["x"], "y": lada["y"], "col": Data.P["parchGold"], "dur": 520.0, "big": true})
+			p.add_msg(Lang.ref("msg.rejtveny.kesz"), Data.P["parchGold"])
+			play("levelup")
+		else:
+			p.add_msg(Lang.ref("msg.lap.jo", kesz + 1, w.lapok.size()), szin)
+			play("plate")
+		return true
+	for l in w.lapok:
+		l["le"] = false
+	p.add_msg(Lang.ref("msg.lap.rossz"), Data.P["vein"])
+	_warn_around(2, str(Data.VENT_KIND.get(w.dungeon_level, "steam")), 6 + w.dungeon_level * 2 + w.emelet + Data.palya_csapas(w.szakasz()))
+	play("warn")
+	return true
 
 
 ## Az ereklye-talapzat használata: a választott ereklye a hősé lesz.
@@ -1441,6 +1682,7 @@ func event_choice(e: Dictionary, i: int) -> bool:
 ## true, ha csapda sült el.
 func _land(nx: int, ny: int) -> bool:
 	var trapped := trigger_trap()
+	press_plate()
 	trigger_shrine()
 	take_note()
 	var ped: Variant = world.pedestal_at(nx, ny)
@@ -1483,6 +1725,11 @@ func do_move(dx: int, dy: int) -> bool:
 		return true
 	var ch: Variant = w.chest_at(nx, ny)
 	if ch != null:
+		if ch.get("zart", false):
+			# a rejtvényszoba ládája: amíg a nyomólapok nincsenek sorban lenyomva, nem nyílik
+			play("hit")
+			p.add_msg(Lang.ref("msg.lada.zart", w.lapok_le(), w.lapok.size()), "#b890ff")
+			return true
 		play("chest")
 		pending_chest = ch
 		return true
@@ -1496,7 +1743,7 @@ func do_move(dx: int, dy: int) -> bool:
 		p.y = ny
 		p.steps += 1
 		w.update_fov()
-		play("step")
+		play("step%d" % clampi(w.dungeon_level, 1, 4), Data.LEPES_HANGERO)   # zónánként más talajon koppan
 		var trapped := _land(nx, ny)
 		# "Gyors léptek" (íjász): minden 5. lépés ingyen — nem telik vele kör
 		if p.perk("gyorslab") > 0 and p.steps % 5 == 0 and not trapped:
@@ -1559,7 +1806,8 @@ func use_item(item: Item) -> bool:
 			for m in w.mons:
 				if not m.alive or not w.is_vis(m.x, m.y):
 					continue
-				var d := item.damage + Data.rnd(0, 15) + bonus
+				# a szörnyek életereje pályánként szorzódik: a tekercs ereje vele tart
+				var d := Data.jround((item.damage + Data.rnd(0, 15)) * Data.palya_hp(w.szakasz())) + bonus
 				hit_mon(m, d, "#ff9040")
 				add_fx({"type": "boom", "x": m.x, "y": m.y, "dur": 400.0})
 				if m.hp <= 0:
@@ -1579,7 +1827,7 @@ func use_item(item: Item) -> bool:
 				p.base_atk += item.atk_up
 				p.add_msg(Lang.ref("msg.atk_up", item.atk_up), "#e05050")
 		"def_up":
-			var up := item.def_up + (2 if p.cls == "Lovag" else 0)
+			var up := item.def_up + (Data.LOVAG_VED_TEKERCS if p.cls == "Lovag" else 0)
 			p.base_def += up
 			p.add_msg(Lang.ref("msg.def_up", up), "#5080e0")
 		_:

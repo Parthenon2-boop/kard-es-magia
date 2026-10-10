@@ -1229,3 +1229,229 @@ static func sentinel(c: Cv, cx: float, cy: float, sz: float, t: float, sd: float
 	c.ss(ARANY); c.lw(0.8 * s); c.rrect(-10.4 * s, -5.4 * s, 6.2 * s, 14.8 * s, 1.4 * s); c.stroke()
 	c.fs(ARANY); c.poly([-7.3 * s, -1.0 * s, -5.6 * s, 2.0 * s, -7.3 * s, 5.0 * s, -9.0 * s, 2.0 * s])
 	c.restore()
+
+
+# ══════════ A ZÓNÁK PÁLYAELEMEI ÉS A REJTVÉNYSZOBA ══════════
+## Gőzzsilip (1. zóna, Csatorna-Kazánok): rácsos kazánlemez a folyosó padlójában.
+## `u`: 0..1, mennyire telt meg a nyomás (1: a következő körben fúj); `fuj`: épp gőz zárja el;
+## `vizsz`: a folyosó vízszintes; `mero`: ezen a mezőn van a nyomásmérő óra.
+static func zsilip(c: Cv, px: float, py: float, s: float, u: float, fuj: bool, vizsz: bool, mero: bool, t: float) -> void:
+	c.fs("#0c0a08"); c.rrect(px + s * 0.07, py + s * 0.07, s * 0.86, s * 0.86, s * 0.07); c.fill()
+	# a rács alatt izzó kazán: a nyomással sárgából vörösbe megy
+	if u > 0.05:
+		c.fs(Color(1.0, 0.75 - 0.5 * u, 0.20, 0.10 + 0.45 * u * (0.75 + 0.25 * sin(t * 0.25))))
+		c.rrect(px + s * 0.12, py + s * 0.12, s * 0.76, s * 0.76, s * 0.05); c.fill()
+	c.ss(sot(REZ, 0.40)); c.lw(2.2)
+	for i in 5:
+		var k := 0.20 + i * 0.15
+		if vizsz:
+			c.line(px + s * k, py + s * 0.14, px + s * k, py + s * 0.86)
+		else:
+			c.line(px + s * 0.14, py + s * k, px + s * 0.86, py + s * k)
+	c.ss(REZ); c.lw(2.0); c.rrect(px + s * 0.07, py + s * 0.07, s * 0.86, s * 0.86, s * 0.07); c.stroke()
+	for q in [Vector2(0.14, 0.14), Vector2(0.86, 0.14), Vector2(0.14, 0.86), Vector2(0.86, 0.86)]:
+		c.fs(vil(REZ, 0.3)); c.circ(px + s * q.x, py + s * q.y, s * 0.035)
+	if mero:
+		# nyomásmérő óra: a mutató balról (üres) jobbra (vörös mező) megy
+		var mx := px + s * 0.5
+		var my := py + s * 0.5
+		c.fs("#1a140c"); c.circ(mx, my, s * 0.24)
+		c.fs("#e8dcc0"); c.circ(mx, my, s * 0.20)
+		c.ss("#c02818"); c.lw(s * 0.05); c.bp(); c.arc(mx, my, s * 0.15, -0.9, 0.2); c.stroke()
+		var a := -PI - 0.2 + clampf(u, 0.0, 1.0) * (PI + 0.2)
+		if u >= 1.0:
+			a += sin(t * 0.6) * 0.12
+		c.ss("#201810"); c.lw(s * 0.04); c.line(mx, my, mx + cos(a) * s * 0.17, my + sin(a) * s * 0.17)
+		c.fs(REZ); c.circ(mx, my, s * 0.04)
+	if fuj:
+		# gőzoszlopok: a szakasz most járhatatlanul forró
+		for i in 5:
+			var b := fmod(t * 0.03 + i * 0.21, 1.0)
+			c.fs(rgba(245, 240, 225, 0.42 * (1.0 - b)))
+			c.circ(px + s * (0.22 + 0.14 * i) + sin(b * 6.0 + i) * s * 0.06, py + s * (0.80 - b * 0.90), s * (0.10 + b * 0.20))
+
+
+## Szike-sín (2. zóna, Bronz Klinika): sárgaréz sínpár a padlón. `eleje` / `vege`: ütköző a sín végén.
+static func szike_sin(c: Cv, px: float, py: float, s: float, vizsz: bool, eleje: bool, vege: bool) -> void:
+	c.ss(sot(ARANY, 0.45)); c.lw(2.4)
+	if vizsz:
+		c.line(px, py + s * 0.40, px + s, py + s * 0.40)
+		c.line(px, py + s * 0.60, px + s, py + s * 0.60)
+	else:
+		c.line(px + s * 0.40, py, px + s * 0.40, py + s)
+		c.line(px + s * 0.60, py, px + s * 0.60, py + s)
+	c.ss(sot(ARANY, 0.65)); c.lw(1.4)
+	for i in 3:
+		var k := 0.17 + i * 0.33
+		if vizsz:
+			c.line(px + s * k, py + s * 0.35, px + s * k, py + s * 0.65)
+		else:
+			c.line(px + s * 0.35, py + s * k, px + s * 0.65, py + s * k)
+	c.fs(ARANY)
+	if eleje:
+		if vizsz: c.fill_rect(px + s * 0.02, py + s * 0.32, s * 0.07, s * 0.36)
+		else: c.fill_rect(px + s * 0.32, py + s * 0.02, s * 0.36, s * 0.07)
+	if vege:
+		if vizsz: c.fill_rect(px + s * 0.91, py + s * 0.32, s * 0.07, s * 0.36)
+		else: c.fill_rect(px + s * 0.32, py + s * 0.91, s * 0.36, s * 0.07)
+
+
+## A sínen járó szike: rézkocsi, rajta pörgő körpenge.
+static func szike(c: Cv, px: float, py: float, s: float, t: float) -> void:
+	var cx := px + s * 0.5
+	var cy := py + s * 0.5
+	c.fs(rgba(0, 0, 0, 0.35)); c.ell(cx, cy + s * 0.20, s * 0.34, s * 0.12)
+	c.fs(sot(ARANY, 0.35)); c.rrect(cx - s * 0.20, cy - s * 0.06, s * 0.40, s * 0.24, s * 0.05); c.fill()
+	c.fs(ARANY); c.rrect(cx - s * 0.20, cy - s * 0.06, s * 0.40, s * 0.07, s * 0.03); c.fill()
+	# körpenge: fogazott acélkorong, gyorsan pörög
+	c.save(); c.translate(cx, cy - s * 0.10); c.rotate(t * 0.35)
+	c.fs("#dfe6ee")
+	for i in 10:
+		var a := i / 10.0 * TAU
+		c.poly([cos(a) * s * 0.20, sin(a) * s * 0.20, cos(a + 0.22) * s * 0.33, sin(a + 0.22) * s * 0.33, cos(a + 0.50) * s * 0.20, sin(a + 0.50) * s * 0.20])
+	c.circ(0, 0, s * 0.23)
+	c.fs("#9aa6b4"); c.circ(0, 0, s * 0.15)
+	c.fs("#3a2c1a"); c.circ(0, 0, s * 0.05)
+	c.ss(rgba(255, 255, 255, 0.8)); c.lw(1.5); c.bp(); c.arc(0, 0, s * 0.27, 0.2, 1.3); c.stroke()
+	c.restore()
+
+
+## Spóragubó (3. zóna, Tüdő-Kert). `all`: 0 érett, 1 megduzzadt (a következő körben pukkad),
+## 2 kipukkadt (üres burok, amíg újra be nem érik).
+static func gubo(c: Cv, px: float, py: float, s: float, all: int, t: float) -> void:
+	var cx := px + s * 0.5
+	var by := py + s * 0.84
+	# gyökerek
+	c.ss(sot(HUS, 0.45)); c.lw(s * 0.05)
+	for i in 4:
+		var a := -0.9 + i * 0.6
+		c.bp(); c.mt(cx, by - s * 0.06); c.qt(cx + sin(a) * s * 0.22, by, cx + sin(a) * s * 0.40, by + s * 0.05); c.stroke()
+	if all == 2:
+		# felszakadt, lelappadt burok
+		c.fs(sot(HUS, 0.55)); c.ell(cx, by - s * 0.08, s * 0.26, s * 0.10)
+		c.fs(sot(HUS, 0.30)); c.poly([cx - s * 0.24, by - s * 0.10, cx - s * 0.16, by - s * 0.32, cx - s * 0.04, by - s * 0.14])
+		c.poly([cx + s * 0.24, by - s * 0.10, cx + s * 0.14, by - s * 0.28, cx + s * 0.02, by - s * 0.14])
+		c.fs("#1a0c10"); c.ell(cx, by - s * 0.10, s * 0.12, s * 0.04)
+		return
+	var lel := 0.5 + 0.5 * sin(t * (0.45 if all == 1 else 0.06))
+	var m := 1.0 + (0.22 + 0.10 * lel if all == 1 else 0.04 * lel)
+	if all == 1 and Sprites.glow_tex != null:
+		c.tex(Sprites.glow_tex, Rect2(px - s * 0.35, py - s * 0.35, s * 1.7, s * 1.7), rgba(210, 235, 90, 0.35 + 0.30 * lel))
+	c.fs(sot(HUS, 0.40)); c.ell(cx, by - s * 0.30 * m, s * 0.27 * m, s * 0.34 * m)
+	c.fs(HUS); c.ell(cx - s * 0.02, by - s * 0.32 * m, s * 0.23 * m, s * 0.30 * m)
+	c.fs(vil(HUS, 0.25)); c.ell(cx - s * 0.08, by - s * 0.40 * m, s * 0.09 * m, s * 0.14 * m)
+	# spórahólyagok: duzzadáskor sárgán világítanak
+	var hc := rgba(225, 240, 100, 0.95) if all == 1 else rgba(170, 200, 80, 0.85)
+	for q in [Vector2(-0.10, -0.22), Vector2(0.10, -0.30), Vector2(0.02, -0.46), Vector2(-0.14, -0.40), Vector2(0.14, -0.14)]:
+		c.fs(hc); c.circ(cx + s * q.x * m, by + s * q.y * m, s * (0.045 + (0.02 * lel if all == 1 else 0.0)))
+	c.fs("#3a1420"); c.ell(cx, by - s * 0.60 * m, s * 0.06, s * 0.03)
+
+
+## Spórafelhő (a kipukkadt gubó után marad): gomolygó, sárgászöld pára.
+static func sporafelho(c: Cv, px: float, py: float, s: float, t: float, erosseg: float) -> void:
+	for i in 5:
+		var a := t * 0.02 + i * 1.26 + px * 0.01
+		var r := s * (0.20 + 0.08 * sin(t * 0.05 + i * 2.0))
+		c.fs(rgba(200, 225, 95, 0.20 * erosseg))
+		c.circ(px + s * 0.5 + cos(a) * s * 0.20, py + s * 0.5 + sin(a * 1.3) * s * 0.18, r)
+	for i in 6:
+		var b := fmod(t * 0.012 + i * 0.17, 1.0)
+		c.fs(rgba(235, 250, 140, 0.75 * (1.0 - b) * erosseg))
+		c.circ(px + s * (0.15 + 0.14 * i) + sin(b * 5.0 + i) * s * 0.05, py + s * (0.85 - b * 0.7), s * 0.022)
+
+
+## Forgó fogaskerék-padló (4. zóna, Mag-Kamra): 3×3 mezős acélkorong aranyfogakkal.
+## (kx, ky): a korong KÖZEPE képernyőn; `szog`: az elfordulása; `u`: 0..1 izzás (fordulás előtt).
+static func korong(c: Cv, kx: float, ky: float, s: float, szog: float, u: float) -> void:
+	var R := s * 1.46
+	c.fs(rgba(0, 0, 0, 0.45)); c.circ(kx, ky + s * 0.05, R * 1.02)
+	c.save(); c.translate(kx, ky); c.rotate(szog)
+	# fogak
+	c.fs(sot(ARANY, 0.35 - 0.2 * u))
+	for i in 16:
+		var a := i / 16.0 * TAU
+		c.poly([cos(a - 0.10) * R * 0.90, sin(a - 0.10) * R * 0.90, cos(a - 0.06) * R, sin(a - 0.06) * R,
+			cos(a + 0.06) * R, sin(a + 0.06) * R, cos(a + 0.10) * R * 0.90, sin(a + 0.10) * R * 0.90])
+	c.fs("#2a2630"); c.circ(0, 0, R * 0.92)
+	c.fs("#3a3644"); c.circ(0, 0, R * 0.84)
+	# arany berakás: gyűrű és négy küllő (ezen látszik az elfordulás)
+	c.ss(Color(1.0, 0.78, 0.32, 0.55 + 0.45 * u)); c.lw(s * 0.07)
+	c.bp(); c.arc(0, 0, R * 0.62, 0, TAU); c.stroke()
+	for i in 4:
+		var a2 := i / 4.0 * TAU
+		c.line(cos(a2) * R * 0.22, sin(a2) * R * 0.22, cos(a2) * R * 0.84, sin(a2) * R * 0.84)
+	c.ss(Color(0.12, 0.10, 0.08, 0.8)); c.lw(1.5)
+	for i in 8:
+		var a3 := (i + 0.5) / 8.0 * TAU
+		c.line(cos(a3) * R * 0.66, sin(a3) * R * 0.66, cos(a3) * R * 0.84, sin(a3) * R * 0.84)
+	# egy jelölt fog: a forgásirány leolvasható róla
+	c.fs("#ff7040"); c.poly([R * 0.70, -s * 0.10, R * 0.86, 0.0, R * 0.70, s * 0.10])
+	c.fs("#1a1612"); c.circ(0, 0, R * 0.22)
+	c.fs(ARANY); c.circ(0, 0, R * 0.14)
+	c.fs("#1a1612"); c.circ(0, 0, R * 0.06)
+	c.restore()
+	if u > 0.0 and Sprites.glow_tex != null:
+		c.tex(Sprites.glow_tex, Rect2(kx - R * 1.3, ky - R * 1.3, R * 2.6, R * 2.6), Color(1.0, 0.72, 0.25, 0.45 * u))
+
+
+## Egy nyomólap-jel (0 kör, 1 háromszög, 2 négyzet, 3 rombusz, 4 kereszt) a megadott középponttal.
+static func lap_jel(c: Cv, cx: float, cy: float, r: float, jel: int) -> void:
+	match jel % 5:
+		0: c.circ(cx, cy, r * 0.85)
+		1: c.poly([cx, cy - r, cx + r * 0.95, cy + r * 0.75, cx - r * 0.95, cy + r * 0.75])
+		2: c.fill_rect(cx - r * 0.78, cy - r * 0.78, r * 1.56, r * 1.56)
+		3: c.poly([cx, cy - r, cx + r * 0.80, cy, cx, cy + r, cx - r * 0.80, cy])
+		_:
+			c.fill_rect(cx - r * 0.28, cy - r, r * 0.56, r * 2.0)
+			c.fill_rect(cx - r, cy - r * 0.28, r * 2.0, r * 0.56)
+
+
+## Nyomólap (rejtvényszoba): kőlap a jelével; lenyomva besüllyed, és a jele világít.
+static func nyomolap(c: Cv, px: float, py: float, s: float, jel: int, le: bool, t: float) -> void:
+	var col := Color(str(Data.LAP_SZINEK[jel % Data.LAP_SZINEK.size()]))
+	var b := 0.14 if le else 0.09
+	c.fs("#0e0c0a"); c.rrect(px + s * 0.07, py + s * 0.07, s * 0.86, s * 0.86, s * 0.08); c.fill()
+	c.fs("#4a4650" if not le else "#2e2c34"); c.rrect(px + s * b, py + s * b, s * (1.0 - 2 * b), s * (1.0 - 2 * b), s * 0.07); c.fill()
+	if not le:
+		c.fs("#6a6672"); c.rrect(px + s * b, py + s * b, s * (1.0 - 2 * b), s * 0.07, s * 0.04); c.fill()
+	if le and Sprites.glow_tex != null:
+		c.tex(Sprites.glow_tex, Rect2(px - s * 0.1, py - s * 0.1, s * 1.2, s * 1.2), Color(col.r, col.g, col.b, 0.45 + 0.15 * sin(t * 0.1)))
+	c.fs(Color(col.r, col.g, col.b, 1.0) if le else Color(col.r * 0.72, col.g * 0.72, col.b * 0.72, 1.0))
+	lap_jel(c, px + s * 0.5, py + s * 0.5, s * 0.20, jel)
+	c.ss(Color(col.r, col.g, col.b, 0.9 if le else 0.45)); c.lw(1.5)
+	c.rrect(px + s * b, py + s * b, s * (1.0 - 2 * b), s * (1.0 - 2 * b), s * 0.07); c.stroke()
+
+
+## A rejtvényszoba ládájának lánca és lakatja (a szokásos láda rajzára kerül).
+static func lada_lanc(c: Cv, px: float, py: float, s: float) -> void:
+	c.ss("#1a1c22"); c.lw(s * 0.085)
+	c.line(px + s * 0.10, py + s * 0.24, px + s * 0.90, py + s * 0.80)
+	c.line(px + s * 0.90, py + s * 0.24, px + s * 0.10, py + s * 0.80)
+	c.ss("#8a909c"); c.lw(s * 0.045)
+	c.line(px + s * 0.10, py + s * 0.24, px + s * 0.90, py + s * 0.80)
+	c.line(px + s * 0.90, py + s * 0.24, px + s * 0.10, py + s * 0.80)
+	c.ss("#8a909c"); c.lw(s * 0.04); c.bp(); c.arc(px + s * 0.5, py + s * 0.47, s * 0.08, PI, TAU); c.stroke()
+	c.fs("#5a606c"); c.rrect(px + s * 0.39, py + s * 0.46, s * 0.22, s * 0.18, s * 0.03); c.fill()
+	c.fs("#14161a"); c.circ(px + s * 0.5, py + s * 0.54, s * 0.03)
+
+
+## A megoldás kulcsa: a láda fölött sorban izzó jelek (`jelek`: a lapok jelei a helyes sorrendben;
+## az első `kesz` már le van nyomva — azok telten világítanak, a soron következő lüktet).
+static func lada_jelek(c: Cv, px: float, py: float, s: float, jelek: Array, kesz: int, t: float) -> void:
+	var n := jelek.size()
+	if n == 0:
+		return
+	var w := s * 0.30
+	var x0 := px + s * 0.5 - n * w * 0.5
+	var y := py - s * 0.16
+	c.fs(rgba(10, 8, 12, 0.82)); c.rrect(x0 - s * 0.06, y - s * 0.18, n * w + s * 0.12, s * 0.36, s * 0.10); c.fill()
+	c.ss(Color(str(Data.ROOM_KINDS["rejtveny"]["col"]))); c.lw(1.3)
+	c.rrect(x0 - s * 0.06, y - s * 0.18, n * w + s * 0.12, s * 0.36, s * 0.10); c.stroke()
+	for i in n:
+		var col := Color(str(Data.LAP_SZINEK[int(jelek[i]) % Data.LAP_SZINEK.size()]))
+		var a := 1.0 if i < kesz else (0.60 + 0.35 * sin(t * 0.18) if i == kesz else 0.45)
+		c.fs(Color(col.r, col.g, col.b, a))
+		lap_jel(c, x0 + w * (i + 0.5), y, s * (0.115 if i == kesz else 0.095), int(jelek[i]))
+		if i < kesz:
+			c.ss(Color(1, 1, 1, 0.9)); c.lw(1.4)
+			c.line(x0 + w * (i + 0.5) - s * 0.08, y + s * 0.13, x0 + w * (i + 0.5) + s * 0.08, y + s * 0.13)

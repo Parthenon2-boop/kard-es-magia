@@ -204,6 +204,113 @@ static func _on_screen(sx: float, sy: float, W: float, gh: float, pad := 1.0) ->
 	return not (sx < -T * pad or sx > W + T * (pad - 1.0) or sy < -T * pad or sy > gh + T * (pad - 1.0))
 
 
+## a nyomólapok jelei a helyes sorrendben (ezt mutatja a leláncolt láda fölötti jelsor)
+static func _lap_sorrend(w: World) -> Array:
+	var out: Array = []
+	out.resize(w.lapok.size())
+	out.fill(0)
+	for l in w.lapok:
+		var k := int(l["sor"])
+		if k >= 0 and k < out.size():
+			out[k] = int(l["jel"])
+	return out
+
+
+## a szikék és a korongok kirajzolt (sikló / forduló) állása: kulcs -> érték
+static var _gep_anim := {}
+
+
+## A zóna saját pályaelemei és a rejtvényszoba nyomólapjai. Minden elem a saját mezője fényével
+## tűnik fel; a gépek állása a körszámból adódik (World.gep_fazis / szike_hely).
+static func _gepek(m: Node, c: Cv) -> void:
+	var w: World = m.game.world
+	var W: float = m.W
+	var gh: float = m.H - Data.HUD_H
+	var cam: Vector2 = m.cam
+	var tick: float = m.tick
+	var k: float = minf(1.0, float(m.dt) / 90.0)
+	for l in w.lapok:
+		var la := seen_a(w, l["x"], l["y"])
+		if la <= 0.01:
+			continue
+		var lx: float = (l["x"] - cam.x) * T
+		var ly: float = (l["y"] - cam.y) * T
+		if not _on_screen(lx, ly, W, gh):
+			continue
+		c.ga(la)
+		Sprites2.nyomolap(c, lx, ly, T, int(l["jel"]), bool(l["le"]), tick)
+		c.ga(1.0)
+	for g in w.gepek:
+		var gx: int = g["x"]
+		var gy: int = g["y"]
+		var dx: int = g["dx"]
+		var dy: int = g["dy"]
+		var n: int = g["n"]
+		if not _on_screen((gx - cam.x) * T, (gy - cam.y) * T, W, gh, 9.0):
+			continue
+		match str(g["tip"]):
+			"zsilip":
+				var per: int = g["p"]
+				var fz := w.gep_fazis(g)
+				var fuj := fz >= per - 2
+				var u := 1.0 if fuj else clampf(float(fz) / float(maxi(1, per - 3)), 0.0, 1.0)
+				for i in n:
+					var tx := gx + dx * i
+					var ty := gy + dy * i
+					var a := seen_a(w, tx, ty)
+					if a <= 0.01:
+						continue
+					c.ga(a)
+					Sprites2.zsilip(c, (tx - cam.x) * T, (ty - cam.y) * T, T, u, fuj, dx != 0, i == int(n / 2), tick)
+					c.ga(1.0)
+			"szike":
+				for i in n:
+					var tx := gx + dx * i
+					var ty := gy + dy * i
+					var a := seen_a(w, tx, ty)
+					if a <= 0.01:
+						continue
+					c.ga(a)
+					Sprites2.szike_sin(c, (tx - cam.x) * T, (ty - cam.y) * T, T, dx != 0, i == 0, i == n - 1)
+					c.ga(1.0)
+				# a penge lágyan siklik a mostani mezőjére
+				var cel := w.szike_hely(g, w.turn)
+				var kulcs := "s%d,%d,%d" % [gx, gy, int(g["ph"])]
+				var most: Vector2 = _gep_anim.get(kulcs, Vector2(cel))
+				if most.distance_to(Vector2(cel)) > 2.5:
+					most = Vector2(cel)
+				most += (Vector2(cel) - most) * k
+				_gep_anim[kulcs] = most
+				var pa := seen_a(w, cel.x, cel.y)
+				if pa > 0.01:
+					c.ga(pa)
+					Sprites2.szike(c, (most.x - cam.x) * T, (most.y - cam.y) * T, T, tick)
+					c.ga(1.0)
+			"gubo":
+				var a := seen_a(w, gx, gy)
+				if a > 0.01:
+					c.ga(a)
+					Sprites2.gubo(c, (gx - cam.x) * T, (gy - cam.y) * T, T, int(g["all"]), tick)
+					c.ga(1.0)
+			"korong":
+				var a := seen_a(w, gx, gy)
+				if a <= 0.01:
+					continue
+				var per2: int = maxi(1, int(g["p"]))
+				# ahányszor eddig fordult, annyi negyedfordulat; a rajz lágyan utoléri
+				var cel_szog := floorf(float(w.turn + int(g["ph"]) + 1) / float(per2)) * PI * 0.5
+				var kulcs2 := "k%d,%d" % [gx, gy]
+				var szog: float = _gep_anim.get(kulcs2, cel_szog)
+				if absf(cel_szog - szog) > PI:
+					szog = cel_szog
+				szog += (cel_szog - szog) * minf(1.0, float(m.dt) / 160.0)
+				_gep_anim[kulcs2] = szog
+				var izzas := (0.6 + 0.4 * sin(tick * 0.3)) if w.gep_fazis(g) == per2 - 2 else 0.0
+				c.ga(a)
+				Sprites2.korong(c, (gx + 0.5 - cam.x) * T, (gy + 0.5 - cam.y) * T, T, szog, izzas)
+				c.ga(1.0)
+
+
 # ══════════ 3. LÁNGOK, LÁDÁK, VESZÉLYZÓNÁK, SZÖRNYEK, HŐS ══════════
 static func world_mid(m: Node, c: Cv) -> void:
 	var w: World = m.game.world
@@ -273,6 +380,8 @@ static func world_mid(m: Node, c: Cv) -> void:
 		c.ga(va)
 		Sprites2.vent(c, vsx, vsy, T, vkind, 0.5 + 0.5 * sin(tick * 0.2) if fazis == Data.VENT_PERIOD - 3 else 0.0)
 		c.ga(1.0)
+	# a zóna saját pályaelemei (gőzzsilip, szike-sín, spóragubó, forgó korong) és a nyomólapok
+	_gepek(m, c)
 	# ereklye-talapzatok és döntési események
 	for pd in w.pedestals:
 		if pd["taken"]:
@@ -309,6 +418,11 @@ static func world_mid(m: Node, c: Cv) -> void:
 			var e := T * (0.18 + 0.06 * pu)
 			c.line(x + T / 2 - e, y + T / 2 - e, x + T / 2 + e, y + T / 2 + e)
 			c.line(x + T / 2 + e, y + T / 2 - e, x + T / 2 - e, y + T / 2 + e)
+		elif h["kind"] == "spora":
+			# spórafelhő: gomolygó pára (az utolsó körében halványul)
+			c.ga(ha)
+			Sprites2.sporafelho(c, x, y, T, tick, minf(1.0, float(h["ttl"]) / 2.0))
+			c.ga(1.0)
 		else:
 			var bub := 0.5 + 0.5 * sin(tick * 0.1 + h["x"] * 1.7 + h["y"])
 			c.ga(ha * minf(1.0, float(h["ttl"]) / 2.0))
@@ -403,6 +517,10 @@ static func world_mid(m: Node, c: Cv) -> void:
 		c.rrect(sx + T * 0.12, sy + T * 0.20, T * 0.76, T * 0.62, 3); c.stroke()
 		c.fs("#ffe9a0"); c.circ(sx + T / 2, sy + T * 0.47, T * 0.075)
 		c.fs("#3a2008"); c.circ(sx + T / 2, sy + T * 0.47, T * 0.03)
+		if ch.get("zart", false):
+			# a rejtvényszoba ládája: lánc és lakat, fölötte a megoldás jelei sorban
+			Sprites2.lada_lanc(c, sx, sy, T)
+			Sprites2.lada_jelek(c, sx, sy, T, _lap_sorrend(w), w.lapok_le(), tick)
 		c.ga(1.0)
 	# szörnyek (rajzolt figurák)
 	for mo in w.mons:

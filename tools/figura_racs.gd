@@ -8,7 +8,7 @@ extends SceneTree
 ## is visszaveszi), megkeresi az összefüggő foltokat (a figurákat), sorba rendezi őket, körbevágja,
 ## 360 képpont magasra méretezi, és az art/figurak mappába menti.
 
-const MAGAS := 360
+var MAGAS := 360      # a kész figura magassága; a 6. kapcsolóval (szám) felülírható
 const T0 := 0.22      # eddig a színtávolságig teljesen háttér
 const T1 := 0.42      # ettől teljesen figura
 
@@ -31,6 +31,8 @@ func _init() -> void:
 	var nevek := str(a[2]).split(",")
 	var cel := ProjectSettings.globalize_path("res://art/figurak") if a.size() < 4 or str(a[3]) == "-" else str(a[3]).replace("\\", "/")
 	var fust := a.size() >= 5 and str(a[4]) == "fust"
+	if a.size() >= 6 and str(a[5]).is_valid_int():
+		MAGAS = int(a[5])
 	var racs := false
 	DirAccess.make_dir_recursive_absolute(cel)
 	_kulcs(img)

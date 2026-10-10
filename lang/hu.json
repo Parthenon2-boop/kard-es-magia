@@ -689,5 +689,15 @@
 	"hud.emelet": "{0}/{1}. emelet",
 	"msg.emelet": "▼ Lejjebb ereszkedsz: {0}/{1}. emelet.",
 	"banner.emelet": "Mélyebb emelet",
-	"banner.emelet.ur": "Az utolsó emelet — a zóna ura itt vár"
+	"banner.emelet.ur": "Az utolsó emelet — a zóna ura itt vár",
+	"room.rejtveny": "Rejtvényszoba",
+	"msg.haz.spora": "☣ Spórafelhő! -{0} — megmérgez",
+	"msg.haz.gear": "⚙ A korong fogai megcsíptek! -{0}",
+	"msg.gubo": "⚘ A spóragubó megduzzad — lépj el mellőle!",
+	"msg.korong": "⚙ A fogaskerék-padló elfordult veled.",
+	"msg.gep_olt": "⚙ A pálya végzett vele: {0}",
+	"msg.lap.jo": "◈ A nyomólap a helyére kattan ({0}/{1}).",
+	"msg.lap.rossz": "◈ Rossz lap! A jelek kialszanak — kezdd elölről, és térj ki!",
+	"msg.rejtveny.kesz": "◈ A láncok lehullanak: a páncélláda nyitva áll!",
+	"msg.lada.zart": "🔒 Leláncolt páncélláda ({0}/{1}). Lépj a nyomólapokra a fölötte izzó jelek sorrendjében."
 }

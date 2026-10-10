@@ -689,5 +689,15 @@
 	"hud.emelet": "Ebene {0}/{1}",
 	"msg.emelet": "▼ Du steigst hinab: Ebene {0}/{1}.",
 	"banner.emelet": "Tiefere Ebene",
-	"banner.emelet.ur": "Die letzte Ebene — hier wartet der Herr der Zone"
+	"banner.emelet.ur": "Die letzte Ebene — hier wartet der Herr der Zone",
+	"room.rejtveny": "Rätselraum",
+	"msg.haz.spora": "☣ Sporenwolke! -{0} — du bist vergiftet",
+	"msg.haz.gear": "⚙ Die Zähne der Scheibe beißen zu! -{0}",
+	"msg.gubo": "⚘ Die Sporenkapsel schwillt an — geh weg von ihr!",
+	"msg.korong": "⚙ Der Zahnradboden hat sich mit dir gedreht.",
+	"msg.gep_olt": "⚙ Das Gewölbe hat es erledigt: {0}",
+	"msg.lap.jo": "◈ Die Druckplatte rastet ein ({0}/{1}).",
+	"msg.lap.rossz": "◈ Falsche Platte! Die Zeichen erlöschen — fang von vorn an und weich aus!",
+	"msg.rejtveny.kesz": "◈ Die Ketten fallen ab: Die Panzertruhe ist offen!",
+	"msg.lada.zart": "🔒 Angekettete Panzertruhe ({0}/{1}). Tritt in der Reihenfolge der darüber leuchtenden Zeichen auf die Druckplatten."
 }

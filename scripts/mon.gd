@@ -31,6 +31,7 @@ var met := false     # főellenség: a hős már találkozott vele (a párbeszé
 var cd := 0          # főellenség: hány kör múlva jön a következő különleges támadás
 var hit_ms := 0.0    # mikor kapott utoljára ütést (a kirajzolás villanásához)
 var mini := false    # a zóna mini-bossa: erős, saját csapással, ereklyét hagy maga után
+var eszlelt := false # már észrevette a hőst (az első alkalommal felkiált: hang + felkiáltójel)
 # ── állapotok (az ereklyék és a Sebész okozzák) ──
 var burn := 0        # ég: ennyi körig sebződik
 var corr := 0        # marás: halmozódik, rétegenként -2 védelem
@@ -57,7 +58,12 @@ static func make(k: String, px: int, py: int, diff: String) -> Mon:
 	m.facing = Data.pick([-1, 1])
 	m.max_hp = Data.jround(t["hp"] * d["monHp"])
 	m.hp = m.max_hp
-	m.atk = Data.jround(t["atk"] * d["monAtk"])
+	var atk_sz: float = d["monAtk"]
+	if t.get("boss", false):
+		# a zónák urainak támadása a hős (kivonásos) védelméhez van mérve: a teljes szorzó a könnyű
+		# fokozaton veszélytelenné, a nehezen legyőzhetetlenné tenné őket, ezért csak mérsékelten hat
+		atk_sz = 1.0 + (atk_sz - 1.0) * Data.NEHEZSEG_PALYA
+	m.atk = Data.jround(t["atk"] * atk_sz)
 	m.def = t["def"]
 	m.mres = t.get("mres", 0)
 	m.xp = t["xp"]
@@ -94,7 +100,7 @@ static func make_guard(k: String, px: int, py: int, diff: String) -> Mon:
 static func make_mini(k: String, px: int, py: int, diff: String) -> Mon:
 	var m := make(k, px, py, diff)
 	m.mini = true
-	m.max_hp = Data.jround(m.max_hp * Data.MINI_HP) + 20
+	m.max_hp = Data.jround(m.max_hp * Data.MINI_HP) + Data.MINI_HP_PLUSZ
 	m.hp = m.max_hp
 	m.atk = Data.jround(m.atk * Data.MINI_ATK) + 1
 	m.def += 2

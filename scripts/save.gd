@@ -201,10 +201,10 @@ static func _write(g: Game, id: String, auto: bool) -> bool:
 			"max_hp": m.max_hp, "hp": m.hp, "atk": m.atk, "def": m.def, "mres": m.mres, "xp": m.xp,
 			"sp": m.sp, "boss": m.boss, "alive": m.alive, "guard": m.guard, "awake": m.awake, "stun": m.stun,
 			"elite": m.elite, "mech": m.mech, "phase": m.phase, "met": m.met, "cd": m.cd,
-			"mini": m.mini, "burn": m.burn, "corr": m.corr, "bleed": m.bleed})
+			"mini": m.mini, "burn": m.burn, "corr": m.corr, "bleed": m.bleed, "eszlelt": m.eszlelt})
 	var chests: Array = []
 	for c in w.chests:
-		chests.append({"x": c["x"], "y": c["y"], "opened": c["opened"], "items": _items_to(c["items"])})
+		chests.append({"x": c["x"], "y": c["y"], "opened": c["opened"], "zart": c.get("zart", false), "items": _items_to(c["items"])})
 	var shops: Array = []
 	for s in w.shops:
 		var stock: Array = []
@@ -236,7 +236,7 @@ static func _write(g: Game, id: String, auto: bool) -> bool:
 			"traps": w.traps.duplicate(true), "secrets": w.secrets.duplicate(true),
 			"shrines": w.shrines.duplicate(true), "notes": w.notes.duplicate(true),
 			"hazards": w.hazards.duplicate(true), "vents": w.vents.duplicate(true), "events": w.events.duplicate(true),
-			"pedestals": w.pedestals.duplicate(true), "decor": w.decor.duplicate(true), "torches": w.torches.duplicate(true),
+			"pedestals": w.pedestals.duplicate(true), "gepek": w.gepek.duplicate(true), "lapok": w.lapok.duplicate(true), "decor": w.decor.duplicate(true), "torches": w.torches.duplicate(true),
 		},
 	}
 	DirAccess.make_dir_recursive_absolute(DIR)
@@ -407,6 +407,8 @@ static func load_run(id := "") -> Game:
 			m.burn = maxi(0, int(md.get("burn", 0)))
 			m.corr = clampi(int(md.get("corr", 0)), 0, Relics.CORR_MAX)
 			m.bleed = clampi(int(md.get("bleed", 0)), 0, Data.BLEED_MAX)
+			# régi mentésben nincs: aki már ébren volt, az nem kiált fel újra
+			m.eszlelt = bool(md.get("eszlelt", m.awake or m.met))
 			w.mons.append(m)
 	w.chests = []
 	if mp.get("chests") is Array:
@@ -422,7 +424,9 @@ static func load_run(id := "") -> Game:
 						items.append(ii)
 			while items.size() < 2:
 				items.append(Item.make(Item.find_base("healing_potion"), "common", 1))
-			w.chests.append({"x": int(cd.get("x", 0)), "y": int(cd.get("y", 0)), "opened": bool(cd.get("opened", false)), "items": items})
+			# "zart": a rejtvényszoba leláncolt ládája (a régi mentésekben nincs ilyen)
+			w.chests.append({"x": int(cd.get("x", 0)), "y": int(cd.get("y", 0)), "opened": bool(cd.get("opened", false)),
+				"zart": bool(cd.get("zart", false)), "items": items})
 	w.shops = []
 	if mp.get("shops") is Array:
 		for v in (mp["shops"] as Array):
@@ -442,10 +446,19 @@ static func load_run(id := "") -> Game:
 	w.secrets = _dict_list(mp.get("secrets"), {"x": 0, "y": 0, "kind": "atjaro", "found": false})
 	w.shrines = _dict_list(mp.get("shrines"), {"x": 0, "y": 0, "kind": "gyogyulas", "used": false})
 	w.notes = _dict_list(mp.get("notes"), {"x": 0, "y": 0, "id": "n041", "taken": false})
-	w.hazards = _dict_list(mp.get("hazards"), {"x": 0, "y": 0, "kind": "acid", "ttl": 1, "dmg": 1, "warn": false})
+	w.hazards = _dict_list(mp.get("hazards"), {"x": 0, "y": 0, "kind": "acid", "ttl": 1, "dmg": 1, "warn": false, "mind": false})
 	w.vents = _dict_list(mp.get("vents"), {"x": 0, "y": 0, "ph": 0})
 	w.events = _dict_list(mp.get("events"), {"x": 0, "y": 0, "kind": "fogoly", "used": false})
 	w.pedestals = _dict_list(mp.get("pedestals"), {"x": 0, "y": 0, "taken": false})
+	# a zónák pályaelemei és a rejtvényszoba lapjai: a régi mentésekben nincsenek (üres lista lesz)
+	w.gepek = []
+	for ge in _dict_list(mp.get("gepek"), {"tip": "", "x": 0, "y": 0, "dx": 0, "dy": 0, "n": 0, "ph": 0, "p": 0, "t": 0, "all": 0}):
+		if Data.GEP_DMG.has(ge["tip"]) and ge["x"] > 0 and ge["y"] > 0 and ge["x"] < Data.MAP_W - 1 and ge["y"] < Data.MAP_H - 1:
+			w.gepek.append(ge)
+	w.lapok = []
+	for la in _dict_list(mp.get("lapok"), {"x": 0, "y": 0, "jel": 0, "sor": 0, "le": false}):
+		if la["x"] > 0 and la["y"] > 0 and la["x"] < Data.MAP_W - 1 and la["y"] < Data.MAP_H - 1:
+			w.lapok.append(la)
 	w.decor = _dict_list(mp.get("decor"), {"x": 0, "y": 0, "type": "bones", "seed": 0.0})
 	w.torches = _dict_list(mp.get("torches"), {"x": 0, "y": 0, "ph": 0.0})
 	w.dungeon_level = clampi(int(jt.get("melyseg", 1)), 1, Data.MAX_LEVEL)

@@ -48,6 +48,62 @@ Vane, az Elfeledett Sebész ereszkedik le a lebegő henger-város, Gorgona tetej
 Képernyőkép-jelenetek ehhez: `harc`, `relic`, `event`, `daily`; élő próbák: `tests/felho_elo.gd`,
 `tests/napi_elo.gd`.
 
+### 4.6: tizenöt pálya — pályaelemek, rejtvényszoba, hangok, mért nehézség
+
+- **Zónánként saját pályaelem** (`World.gepek`, `Data.GEP_ZONA`). Mind **előre jelez** (a villogó mező
+  egy kör múlva sújt le), a **szörnyekre ugyanúgy hat**, mint a hősre (a jutalmuk ilyenkor is a hősé),
+  és mélyebb emeleten több van belőle, szaporább és nagyobbat sebez:
+  - *Csatorna-Kazánok — gőzzsilip:* a folyosó 2–3 mezős rácsos szakasza, amelyet szabályos ütemben
+    két körre gőz zár el. A rácson a nyomásmérő óra mutatja, mennyi idő van hátra.
+  - *Bronz Klinika — sínen ingázó szike:* körpenge jár oda-vissza egy sínen, körönként egy mezőt;
+    ahová a következő körben lép, az a mező előre villog. A 3. emelettől két penge jár egy sínen.
+  - *Tüdő-Kert — spóragubó:* ha valaki mellé lép, megduzzad, a következő körben spórafelhővé pukkad
+    (3×3, mélyebben nagyobb): a felhő három körig mar és mérgez, a spóralényeket nem bántja. Idővel
+    újra beérik — a szörnyeket bele lehet csalni.
+  - *Mag-Kamra — forgó fogaskerék-padló:* 3×3-as korong; felizzik, a fogai megcsípik, és
+    negyedfordulattal odébb viszi azt, aki a gyűrűjén áll. A közepe biztonságos.
+- **Rejtvényszoba** (nem minden emeleten: `Data.REJTVENY_ESELY`): leláncolt páncélláda, körülötte
+  3–5 jeles nyomólap. A láda fölött izzó jelek **sorrendjében** kell a lapokra lépni: a jó lap lenyomva
+  marad, a rossz mindet visszaugrasztja, és a zóna csapása — előre jelezve — kitör a hős körül. Ha
+  mind megvan, lehull a lánc; a ládában legalább ritka tárgy van. A lapokat csak a hős nyomja le; a
+  térképen lila pont jelöli a termet.
+- **Hangok** (`scripts/audio.gd`, továbbra is fájlok nélkül, kódból): a hős lépése zónánként más
+  talajon koppan (kazánlemez, márvány, puha szerves padló, fémrács); a szörnyek fajtánként szólnak
+  (`Data.MON_HANG`: gépi kattogás, húsos cuppanás-hörgés, lebegő zümmögés, kúszó surrogás) — csak a
+  látható, közeli, éppen mozduló szörny, távolsággal halkulva, körönként legfeljebb kettő. Amikor egy
+  szörny először meglátja a hőst, felkiáltójel és rövid hang jelzi; a főellenség fázisváltásának,
+  a nyomólapnak, a forgó korongnak és a pukkanó gubónak saját hangja van. A hangerőt és a némítást
+  a meglévő beállítás kezeli (`M`).
+- A mentés mindezt őrzi (`gepek`, `lapok`, a láda `zart` jele, a szörnyek `eszlelt` jele); a régi
+  mentések gépek és rejtvény nélkül töltenek be.
+- **Mért nehézség** (`tests/egyensuly.gd`): egy robotjátékos kasztonként 30-szor játssza végig a
+  kalandot a Műtőterem fejlesztései nélkül, „normál” fokozaton. A 15 pályára bővített, de még a
+  4 pályás számokkal futó játékot 89/90 alkalommal végigjátszotta: a zónák uraival 3–6 kör alatt,
+  sértetlenül végzett (az 1. zóna végére a hős támadása 160 fölé, a védelme 110 fölé nőtt, a zóna
+  ura pedig 13-at ütött). Ezért:
+  - a közönséges szörnyek (őrök, Fertőzöttek, mini-bossok, megidézettek) ereje a **pálya sorszáma**
+    szerint nő (`Data.PALYA_HP` szorzó, `PALYA_ATK` hozzáadott támadás, `PALYA_CSAPAS` a jelzett
+    csapásokhoz — a régi, zónánként újrakezdődő `EMELET_HP / EMELET_ATK` helyett);
+  - a zónák urai és csapásaik saját táblából dolgoznak (`Data.MONS`, `Data.BOSS_CSAPAS`), a
+    mini-bossok: `MINI_HP`, `MINI_HP_PLUSZ`, `MINI_PALYA_ATK`;
+  - a zsákmány a hosszabb kalandhoz igazodik: ritkább a láda a hétköznapi szobákban (`LADA_ESELY`
+    0,42 → 0,12), kisebbek a fegyverek, páncélok és pajzsok alapértékei, gyengébb a két maradandó
+    tekercs (Erő 5 → 2, Véd 3 → 1, a lovag többlete 2 → 1);
+  - a védelmet megkerülő szörnyképességek (az Orgyilkos és az Őrautomata többletütése, a Boszorkány
+    tűzgömbje, a Démon robbanása), valamint az égés, a vérzés, a Robbanó epe, a Savas Epehólyag és
+    a Tűzgömb tekercs a pályával együtt erősödik (különben mélyen semmit sem érnének).
+
+  Eredmény (30 futás kasztonként, előtte → utána; a cél 40–50% volt): a robot a kalandot 89/90 helyett
+  40/90 alkalommal játszotta végig (44,4%: Lovag 19, Mágus 12, Íjász 9). A zónák urai elleni harc
+  2–13 kör helyett 18–33 körig tart (medián), és egyik sem formalitás: a Rozsdaférget mindenki
+  legyőzi, aki eljut hozzá (1–9 gyógyital árán), Karel Doktort 76%, a Szimbióta Anyát 87%, az Első
+  Kárpitot 89%. Az első zónán belül a szörnyek ereje fokozatosan nő (életerő ×1 → ×4 → ×7 → ×10,
+  támadás +0 → +18 → +34 → +48); az 1. pálya változatlan.
+  A tapasztalatgörbe nem változott. A robot nem hátrál és nem cselez; egy figyelmes játékos többre megy.
+  A pályákat érdemes bejárni: aki átrohan az emeleten, a következőn alulmarad.
+
+Képernyőkép-jelenet ehhez: `elemek` (`--depth=1..4`: a zóna pályaeleme és egy rejtvényszoba).
+
 Képernyőkép-jelenetek ehhez: `intro`, `ending` (`--depth=N` a képsor sorszáma), `hub`, `journal`,
 `boss`, `boss2`, `dialog`, `note`.
 
@@ -176,6 +232,8 @@ Minden mélységen négy terem kap külön szerepet:
 - **Kereskedő** — a szörnyekből hulló **aranyért** vásárolsz (bájital, egy véletlen tárgy vagy
   teljes gyógyítás, 10–60 arany). Az arany *nem* a boltban vett érme, hanem a játékon belüli pénz.
 - **Csapdaterem** — sok rejtett csapda és egy garantált láda.
+- **Rejtvényszoba** (nem minden mélységen) — leláncolt páncélláda, amelyet a nyomólapok helyes
+  sorrendje nyit ki (lásd fent, 4.6).
 
 **Csapdák** (rejtettek, rálépve sülnek el, vagy szomszédos mezőről lehet észrevenni —
 az íjász sokkal gyakrabban): *tüske* (a max. életerő 8–15%-a), *méreg* (sebzés + mérgezés),
@@ -206,13 +264,14 @@ felderített terület — így a kirajzolása egyetlen textúra-hívás.
 
 ## Tárgyak
 
-- Fegyver, páncél és **pajzs** külön helyen; a védelem = alap + páncél + pajzs.
+- Fegyver, páncél és **pajzs** külön helyen; a védelem = alap + páncél + pajzs. (Az alapértékek a
+  15 pályás kalandhoz vannak mérve — lásd fent, 4.6 —, a ritkaság szorzói változatlanok.)
 - Bájitalok és tekercsek ereje ritkaság szerint nő (×1 / 1,3 / 1,7 / 2,2).
 - *Életerő töltő*: nagyobb max. életerő **és** teljes gyógyulás.
 - Nagyon ritka / legendás fegyver: 10% / 20% **életlopás**; nagyon ritka / legendás páncél és
   pajzs: +1 / +2 HP **regeneráció** körönként (összeadódik).
 - Tűzgömb tekercs: a mágusnál + varázserő; Erő tekercs a mágusnál 2× varázserő;
-  Véd tekercs a lovagnál +2.
+  Véd tekercs a lovagnál +1.
 - **Arany**: minden legyőzött szörny ejt néhányat (a főellenség 45–80-at, a kincstár őre
   háromszor annyit), és csak a **kereskedőnél** költhető el. Az aranyad a HUD-on és a táskában
   is látszik.
@@ -233,8 +292,9 @@ felderített terület — így a kirajzolása egyetlen textúra-hívás.
 | `scripts/skins.gd` | a kinézet-alkatrészek (fej/test/láb/fegyver) katalógusa, mentése és rajza |
 | `scripts/fiok.gd` | fiók (`fiok.json`), érme-egyenleg, birtokolt darabok, vásárlás (aszinkron HTTP) |
 | `scripts/render.gd`, `screens.gd` | pálya + fények + HUD, illetve a menük és ablakok |
-| `scripts/audio.gd` | szintetizált hangeffektek és háttérzene (hangfájlok nélkül) |
-| `tests/run_tests.gd` | fej nélküli tesztek (pályák, harc, tárgyak, termek/csapdák, képességek, mentés, kozmetika, nyelvek) |
+| `scripts/audio.gd` | szintetizált hangeffektek és háttérzene (hangfájlok nélkül): lépések zónánként, szörnyhangok fajtánként |
+| `tests/run_tests.gd` | fej nélküli tesztek (pályák, harc, tárgyak, termek/csapdák, képességek, mentés, kozmetika, nyelvek, pályaelemek, hangok, a nehézség táblái) |
+| `tests/egyensuly.gd` | egyensúly-mérés: robotjátékos játssza végig sokszor a kalandot (nem része a teszteknek) |
 
 A pályák mindig bejárhatók: generálás után a játék ellenőrzi, hogy a kezdőpontról minden
 mező, a lépcső és minden láda elérhető-e; ha nem, folyosót vág, a láda pedig sosem zárhat el
@@ -250,7 +310,9 @@ godot --headless --path . --import
 godot --headless --path . -s res://tests/parse_check.gd
 godot --headless --path . -s res://tests/run_tests.gd
 godot --headless --path . -s res://tests/bench.gd
+godot --headless --path . -s res://tests/egyensuly.gd -- --n=30 --cls=lovag,magus,ijasz --reszlet
 godot --path . -- --shot=_shots/menu.png --scene=menu
+godot --path . -- --shot=_shots/elemek.png --scene=elemek --depth=3
 godot --path . -- --shot=_shots/terkep.png --scene=map --size=1024x768
 ```
 
@@ -280,6 +342,6 @@ egy teljes öltözet tartozik. A forráslapok a `tools/figuralapok` mappában va
 
 ## Pályák és mozgás
 
-A kaland `Data.MAX_LEVEL` zónából áll, zónánként `Data.EMELETEK` emelettel (most 4 × 2 = 8 pálya); a zóna ura mindig
-az utolsó emeleten vár, a felsőbb emelet lejáratát egy őr vigyázza. A festett figurák lépnek (`Figura._rajz`):
+A kaland `Data.MAX_LEVEL` zónából áll, zónánként `Data.EMELET_DB` emelettel (most 4 + 4 + 4 + 3 = 15 pálya); a zóna ura
+mindig az utolsó emeleten vár, a felsőbb emelet lejáratát egy őr vigyázza. A festett figurák lépnek (`Figura._rajz`):
 a lépés üteme a figura helyéből (`rx + ry`) adódik, ezért pontosan a mozgás sebességéhez igazodik.

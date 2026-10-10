@@ -17,6 +17,8 @@ var hazards: Array = []      # {x, y, kind, ttl, dmg, warn} — előre jelzett c
 var vents: Array = []        # {x, y, ph} — padlórácsok: időnként kitör belőlük a zóna csapása
 var events: Array = []       # {x, y, kind, used} — döntési események
 var pedestals: Array = []    # {x, y, taken} — ereklye-talapzatok (főellenség / mini-boss után)
+var gepek: Array = []        # {tip, x, y, dx, dy, n, ph, p, t, all} — a zóna saját pályaelemei (lásd Data.GEP_ZONA)
+var lapok: Array = []        # {x, y, jel, sor, le} — a rejtvényszoba nyomólapjai
 var decor: Array = []
 var torches: Array = []
 var vis := PackedByteArray()       # most látható mezők
@@ -41,15 +43,13 @@ static func create(p: Player, dl: int, df: String, em: int = 0) -> World:
 	w.tiles = g["tiles"]
 	w.rooms = g["rooms"]
 	w.room_kind = Dungeon.mark_rooms(w.rooms)
+	w.dungeon_level = dl
+	w.emelet = em
+	w.diff = df
 	w.mons = Dungeon.spawn_mons(w.rooms, dl, df, w.room_kind, em >= utolso)
-	# mélyebb emeleten a szörnyek erősebbek (a zóna ura és a mini-boss nem változik)
-	if em > 1:
-		for mo in w.mons:
-			if mo.boss or mo.mini:
-				continue
-			mo.max_hp = int(round(mo.max_hp * (1.0 + Data.EMELET_HP * (em - 1))))
-			mo.hp = mo.max_hp
-			mo.atk = int(round(mo.atk * (1.0 + Data.EMELET_ATK * (em - 1))))
+	# a szörnyek a pálya sorszáma szerint erősödnek (a zóna ura nem: az övé a MONS táblában áll)
+	for mo in w.mons:
+		w.erosit(mo)
 	w.chests = Dungeon.spawn_chests(w.rooms, dl, w.room_kind)
 	Dungeon.ensure_open(w.tiles, w.rooms, w.chests)
 	# a titkos ajtók CSAK nyitnak (falat bontanak), ezért a bejárhatóság-biztosíték után jöhetnek
@@ -65,11 +65,10 @@ static func create(p: Player, dl: int, df: String, em: int = 0) -> World:
 	w.notes = Dungeon.spawn_notes(w.tiles, w.rooms, w.room_kind, dl, used)
 	w.events = Dungeon.spawn_events(w.tiles, w.rooms, w.room_kind, used)
 	w.vents = Dungeon.spawn_vents(w.tiles, w.rooms, w.room_kind, used)
+	w.lapok = Dungeon.spawn_rejtveny(w.tiles, w.rooms, w.room_kind, dl, em, w.chests, used)
+	w.gepek = Dungeon.spawn_gepek(w.tiles, w.rooms, w.room_kind, dl, em, used)
 	w.decor = Dungeon.spawn_decor(w.tiles, w.rooms, dl)
 	w.torches = Dungeon.seed_torches(w.rooms)
-	w.dungeon_level = dl
-	w.emelet = em
-	w.diff = df
 	w.player = p
 	w.explored.resize(Data.MAP_W * Data.MAP_H)
 	w.fade.resize(Data.MAP_W * Data.MAP_H)
@@ -87,7 +86,7 @@ func build_kind_map() -> void:
 	kind_map = PackedByteArray()
 	kind_map.resize(Data.MAP_W * Data.MAP_H)
 	for i in room_kind.size():
-		var k: int = Data.ROOM_KIND_ORDER.find(room_kind[i])
+		var k: int = Data.ROOM_KIND_ALL.find(room_kind[i])
 		if k < 0:
 			continue
 		var r := rooms[i]
@@ -99,11 +98,19 @@ func build_kind_map() -> void:
 func update_fov() -> void:
 	vis = Dungeon.compute_fov(tiles, player.x, player.y)
 	fov_version += 1
-	for i in vis.size():
-		if vis[i] and not explored[i]:
-			explored[i] = 1
-			explored_seq += 1
-			new_explored.append(i)
+	# a látótér legfeljebb FOV_R mezőre ér: elég a hős körüli négyzetet átnézni (ugyanabban a
+	# sorrendben, mint régen az egész pályát), nem mind a 4800 mezőt minden lépésnél
+	var r := Data.FOV_R + 1
+	var y0 := maxi(0, player.y - r)
+	var y1 := mini(Data.MAP_H - 1, player.y + r)
+	for x in range(maxi(0, player.x - r), mini(Data.MAP_W - 1, player.x + r) + 1):
+		var alap := x * Data.MAP_H
+		for y in range(y0, y1 + 1):
+			var i := alap + y
+			if vis[i] and not explored[i]:
+				explored[i] = 1
+				explored_seq += 1
+				new_explored.append(i)
 
 
 func tile(x: int, y: int) -> int:
@@ -198,6 +205,119 @@ func hazard_at(x: int, y: int, kind := "") -> Variant:
 		if h["x"] == x and h["y"] == y and (kind == "" or h["kind"] == kind):
 			return h
 	return null
+
+
+# ══════════ A PÁLYA NEHÉZSÉGE ══════════
+## A pálya sorszáma a kaland elejétől (1..15).
+func szakasz() -> int:
+	return Data.palya_sorszam(dungeon_level, emelet)
+
+
+## Egy szörny (közönséges, őr, Fertőzött, mini-boss, megidézett) erősítése a pálya sorszáma
+## szerint: az életereje szorzódik, a támadásához hozzáadódik (lásd Data.PALYA_HP / PALYA_ATK).
+## A zóna urát nem érinti. Egy szörnyre csak egyszer szabad meghívni.
+func erosit(mo: Mon) -> Mon:
+	if mo.boss:
+		return mo
+	var s := szakasz()
+	mo.max_hp = maxi(1, int(round(mo.max_hp * Data.palya_hp(s))))
+	mo.hp = mo.max_hp
+	var b := Data.palya_atk(s) * (1.0 + (float(Data.DIFF[diff]["monAtk"]) - 1.0) * Data.NEHEZSEG_PALYA)
+	if mo.mini:
+		b *= Data.MINI_PALYA_ATK
+	mo.atk += int(round(b))
+	return mo
+
+
+# ══════════ REJTVÉNYSZOBA ÉS GÉPEK ══════════
+func lap_at(x: int, y: int) -> Variant:
+	for l in lapok:
+		if l["x"] == x and l["y"] == y:
+			return l
+	return null
+
+
+## a rejtvényszoba még leláncolt ládája (null, ha nincs, vagy már megoldották)
+func zart_lada() -> Variant:
+	for c in chests:
+		if c.get("zart", false) and not c["opened"]:
+			return c
+	return null
+
+
+## hány nyomólap van már (helyes sorrendben) lenyomva
+func lapok_le() -> int:
+	var n := 0
+	for l in lapok:
+		if l["le"]:
+			n += 1
+	return n
+
+
+## A sínen ingázó szike helye a megadott körben (oda-vissza jár a sín `n` mezőjén).
+func szike_hely(g: Dictionary, kor: int) -> Vector2i:
+	var n := maxi(2, int(g["n"]))
+	var k := posmod(kor + int(g["ph"]), 2 * (n - 1))
+	if k >= n:
+		k = 2 * (n - 1) - k
+	return Vector2i(int(g["x"]) + int(g["dx"]) * k, int(g["y"]) + int(g["dy"]) * k)
+
+
+## Egy ütemre járó gép (zsilip, korong) fázisa: 0 .. p-1.
+func gep_fazis(g: Dictionary, kor: int = -1) -> int:
+	return posmod((turn if kor < 0 else kor) + int(g["ph"]), maxi(1, int(g["p"])))
+
+
+## A forgó korong gyűrűje az óramutató járása szerint (a bal felső saroktól).
+const GYURU: Array[Vector2i] = [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(1, 0),
+	Vector2i(1, 1), Vector2i(0, 1), Vector2i(-1, 1), Vector2i(-1, 0)]
+
+
+## Mezők, amelyekre most nem tanácsos lépni, mert a gép a közeljövőben lesújt rájuk.
+## index -> true, ha kivárható (ütemre járó gép: pár kör múlva szabad az út), false, ha nem.
+## A már jelzett csapások a `hazards` listában vannak; ez az, amit egy figyelmes játékos a gép
+## állásából (nyomásmérő, a gubó duzzadása, a korong izzása) előre lát. A robotjátékos használja.
+func veszely_mezok() -> Dictionary:
+	var out := {}
+	# a rejtvényszobában csak a soron következő lapra érdemes lépni
+	if not lapok.is_empty() and zart_lada() != null:
+		var kell := lapok_le()
+		for l in lapok:
+			if not l["le"] and int(l["sor"]) != kell:
+				out[int(l["x"]) * Data.MAP_H + int(l["y"])] = false
+	for g in gepek:
+		var gx: int = g["x"]
+		var gy: int = g["y"]
+		match str(g["tip"]):
+			"zsilip":
+				# akkor biztonságos belépni, ha a gőz kifújásáig át lehet érni rajta
+				var c := gep_fazis(g)
+				var p: int = g["p"]
+				if not (c == p - 1 or c + int(g["n"]) < p - 2):
+					for i in int(g["n"]):
+						out[(gx + int(g["dx"]) * i) * Data.MAP_H + gy + int(g["dy"]) * i] = true
+			"gubo":
+				if int(g["all"]) != 2:
+					for ax in range(-1, 2):
+						for ay in range(-1, 2):
+							out[(gx + ax) * Data.MAP_H + gy + ay] = false
+			"korong":
+				if gep_fazis(g) >= int(g["p"]) - 3:
+					for d in GYURU:
+						out[(gx + d.x) * Data.MAP_H + gy + d.y] = true
+	return out
+
+
+## Amit a robotjátékos a rejtvényszobában keres: a soron következő nyomólap (ha már látta).
+func robot_celok() -> Array:
+	var out: Array = []
+	if zart_lada() == null:
+		return out
+	var kell := lapok_le()
+	for l in lapok:
+		if not l["le"] and int(l["sor"]) == kell and is_exp(l["x"], l["y"]):
+			out.append(int(l["x"]) * Data.MAP_H + int(l["y"]))
+	return out
 
 
 ## a főellenség (ha él) — a felső életcsíkhoz

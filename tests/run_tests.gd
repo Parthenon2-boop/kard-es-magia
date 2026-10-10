@@ -46,6 +46,12 @@ func _init() -> void:
 	test_story()
 	print("══════ 11. EREKLYÉK, ESEMÉNYEK, MINI-BOSSOK, A SEBÉSZ, NAPI KIHÍVÁS ══════")
 	test_uj()
+	print("══════ 12. ZÓNÁNKÉNTI PÁLYAELEMEK ÉS REJTVÉNYSZOBA ══════")
+	test_palyaelemek()
+	print("══════ 13. HANGOK: lépések, szörnyhangok, felfigyelés, fázisváltás ══════")
+	test_hangok()
+	print("══════ 14. A 15 PÁLYA NEHÉZSÉGE ══════")
+	test_nehezseg()
 	Lang.set_lang("hu")
 	print("══════ ÖSSZESEN: %d ellenőrzés, %d hiba ══════" % [checks, fails])
 	quit(1 if fails > 0 else 0)
@@ -104,7 +110,8 @@ func test_levels() -> void:
 		for kd in w.room_kind:
 			if kd != "":
 				kind_cnt[kd] = int(kind_cnt.get(kd, 0)) + 1
-				have[kd] = true
+				if kd in Data.ROOM_KIND_ORDER:   # a rejtvényszoba nem minden emeleten van (lásd 12. rész)
+					have[kd] = true
 		if have.size() == Data.ROOM_KIND_ORDER.size():
 			lvls_with_all += 1
 		# a kincstárban két láda és egy őr van
@@ -264,8 +271,10 @@ func test_items() -> void:
 	ok(mk("Gyógyital", "rare").heal == 33, "gyógyital ritka = 33 (%d)" % mk("Gyógyital", "rare").heal)
 	ok(mk("Gyógyital", "epic").heal == 43, "gyógyital nagyon ritka = 43 (%d)" % mk("Gyógyital", "epic").heal)
 	ok(mk("Gyógyital", "legendary").heal == 55, "gyógyital legendás = 55 (%d)" % mk("Gyógyital", "legendary").heal)
-	ok(mk("Erő tekercs", "common").atk_up == 5 and mk("Erő tekercs", "legendary").atk_up == 11, "erő tekercs szorzó")
-	ok(mk("Véd tekercs", "common").def_up == 3 and mk("Véd tekercs", "epic").def_up == 5, "véd tekercs szorzó")
+	# (az Erő tekercs alapja a 15 pályás kalandhoz 5-ről 2-re csökkent)
+	ok(mk("Erő tekercs", "common").atk_up == 2 and mk("Erő tekercs", "legendary").atk_up == 4, "erő tekercs szorzó")
+	# (a Véd tekercs alapja a 15 pályás kalandhoz 3-ról 1-re csökkent: sokkal több akad belőle)
+	ok(mk("Véd tekercs", "common").def_up == 1 and mk("Véd tekercs", "epic").def_up == 2, "véd tekercs szorzó")
 	print("  Gyógyital: %d / %d / %d / %d   Erő tekercs: %d / %d / %d / %d   Véd tekercs: %d / %d / %d / %d" % [
 		mk("Gyógyital", "common").heal, mk("Gyógyital", "rare").heal, mk("Gyógyital", "epic").heal, mk("Gyógyital", "legendary").heal,
 		mk("Erő tekercs", "common").atk_up, mk("Erő tekercs", "rare").atk_up, mk("Erő tekercs", "epic").atk_up, mk("Erő tekercs", "legendary").atk_up,
@@ -344,7 +353,7 @@ func test_items() -> void:
 			ok(pc.base_mag == bm + atk_s.atk_up * 2 and pc.base_atk == ba, "mágus: erő tekercs 2× varázserő")
 		else:
 			ok(pc.base_atk == ba + atk_s.atk_up, "%s: erő tekercs ATK" % cls)
-		var want := def_s.def_up + (2 if cls == "Lovag" else 0)
+		var want := def_s.def_up + (Data.LOVAG_VED_TEKERCS if cls == "Lovag" else 0)
 		ok(pc.base_def == bd + want, "%s: véd tekercs +%d" % [cls, want])
 		print("  %-6s Erő tekercs (%d): ATK %d->%d, varázserő %d->%d · Véd tekercs (%d): DEF %d->%d" % [cls, atk_s.atk_up, ba, pc.base_atk, bm, pc.base_mag, def_s.def_up, bd, pc.base_def])
 
@@ -2144,3 +2153,823 @@ func test_uj() -> void:
 		g.advance_turn(true)
 	ok(p.hp == 500 and vi2.x == p.x + 6, "a Húsvirág a köpőtávján kívül ártalmatlan")
 	print("  %d ereklye, %d esemény, %d jelvény; a Sebész és a napi kihívás rendben" % [Relics.ORDER.size(), Data.EVENTS.size(), Meta.JELVENYEK.size()])
+
+
+# ══════════ 12. ZÓNÁNKÉNTI PÁLYAELEMEK ÉS REJTVÉNYSZOBA ══════════
+## egy gép mezői (a zsilip és a sín `n` mezője, a gubó egy mezője, a korong 3×3-a)
+func gep_mezok(g: Dictionary) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	match str(g["tip"]):
+		"zsilip", "szike":
+			for i in int(g["n"]):
+				out.append(Vector2i(int(g["x"]) + int(g["dx"]) * i, int(g["y"]) + int(g["dy"]) * i))
+		"korong":
+			for ax in range(-1, 2):
+				for ay in range(-1, 2):
+					out.append(Vector2i(int(g["x"]) + ax, int(g["y"]) + ay))
+		_:
+			out.append(Vector2i(int(g["x"]), int(g["y"])))
+	return out
+
+
+func gep(tip: String, x: int, y: int) -> Dictionary:
+	return {"tip": tip, "x": x, "y": y, "dx": 0, "dy": 0, "n": 0, "ph": 0, "p": 0, "t": 0, "all": 0}
+
+
+## mozdulatlan (elkábított) próbaszörny sok életerővel
+func babu(g: Game, key: String, x: int, y: int) -> Mon:
+	var m := Mon.make(key, x, y, "normal")
+	m.max_hp = 1000
+	m.hp = 1000
+	m.stun = 100000
+	g.world.mons.append(m)
+	return m
+
+
+func jelzesek(w: World, kind: String) -> int:
+	var n := 0
+	for h in w.hazards:
+		if h["warn"] and h["kind"] == kind:
+			n += 1
+	return n
+
+
+func test_palyaelemek() -> void:
+	# ── 12.1 generálás: minden zónának megvan a saját eleme, jó helyen áll, mélyebben több van
+	var rejt_van := 0
+	var rejt_nincs := 0
+	var palyak := 0
+	for zona in range(1, Data.MAX_LEVEL + 1):
+		var tip: String = Data.GEP_ZONA[zona]
+		var db := {}
+		var rossz_tip := 0
+		var rossz_hely := 0
+		var zart_ut := 0
+		var rossz_rejtveny := 0
+		for em in range(1, Data.emeletek(zona) + 1):
+			db[em] = 0
+			for i in 8:
+				palyak += 1
+				var hos := Player.create("Lovag")
+				var w := World.create(hos, zona, "normal", em)
+				db[em] += w.gepek.size()
+				if Dungeon.verify_open(w.tiles, w.rooms, w.chests) != "":
+					zart_ut += 1
+				var kezdo := w.rooms[0]
+				var veg := w.rooms[w.rooms.size() - 1]
+				var foglalt := {}
+				for ge in w.gepek:
+					if ge["tip"] != tip:
+						rossz_tip += 1
+					for q in gep_mezok(ge):
+						var k := Dungeon.idx(q.x, q.y)
+						if w.tiles[k] != Data.FLOOR or kezdo.has_point(q) or veg.has_point(q) or w.chest_at(q.x, q.y) != null:
+							rossz_hely += 1
+						# két gép nem fedi egymást (a 3. emelettől ugyanazon a sínen két szike jár: az nem hiba)
+						if foglalt.has(k) and not (tip == "szike" and foglalt[k] == Vector2i(int(ge["x"]), int(ge["y"]))):
+							rossz_hely += 1
+						foglalt[k] = Vector2i(int(ge["x"]), int(ge["y"]))
+					if tip == "zsilip":
+						# folyosón van: egyik szobában sincs, és a két oldalán fal áll
+						for q in gep_mezok(ge):
+							for r in w.rooms:
+								if r.has_point(q):
+									rossz_hely += 1
+							if w.tile(q.x + int(ge["dy"]), q.y + int(ge["dx"])) == Data.FLOOR or w.tile(q.x - int(ge["dy"]), q.y - int(ge["dx"])) == Data.FLOOR:
+								rossz_hely += 1
+						if int(ge["p"]) != int(Data.ZSILIP_PERIOD[em - 1]):
+							rossz_hely += 1
+				# rejtvényszoba: vagy nincs, vagy egy leláncolt láda + a lapjai (a sorrend teljes)
+				var zart := 0
+				var lada: Dictionary = {}
+				for c in w.chests:
+					if c.get("zart", false):
+						zart += 1
+						lada = c
+				if w.lapok.is_empty():
+					rejt_nincs += 1
+					if zart != 0:
+						rossz_rejtveny += 1
+				else:
+					rejt_van += 1
+					var kell := 3 + (1 if em >= 3 else 0) + (1 if zona >= 3 else 0)
+					if zart != 1 or w.lapok.size() < 3 or w.lapok.size() > kell:
+						rossz_rejtveny += 1
+					var sorok := {}
+					var helyek := {}
+					for l in w.lapok:
+						sorok[int(l["sor"])] = true
+						helyek[Dungeon.idx(l["x"], l["y"])] = true
+						if w.tiles[Dungeon.idx(l["x"], l["y"])] != Data.FLOOR or l["le"] or w.chest_at(l["x"], l["y"]) != null:
+							rossz_rejtveny += 1
+					for k in w.lapok.size():
+						if not sorok.has(k):
+							rossz_rejtveny += 1
+					if helyek.size() != w.lapok.size():
+						rossz_rejtveny += 1
+					if zart == 1:
+						# a láda körül mind a nyolc mező padló: semmit nem zárhat el
+						for ax in range(-1, 2):
+							for ay in range(-1, 2):
+								if (ax != 0 or ay != 0) and w.tile(int(lada["x"]) + ax, int(lada["y"]) + ay) != Data.FLOOR:
+									rossz_rejtveny += 1
+						var szoba := -1
+						for j in w.rooms.size():
+							if w.rooms[j].has_point(Vector2i(int(lada["x"]), int(lada["y"]))):
+								szoba = j
+						if szoba < 0 or w.room_kind[szoba] != "rejtveny":
+							rossz_rejtveny += 1
+		var utolso := Data.emeletek(zona)
+		ok(rossz_tip == 0, "%d. zóna: csak a saját pályaeleme (%s) van benne" % [zona, tip])
+		ok(rossz_hely == 0, "%d. zóna: minden elem szabad padlón, a kezdő- és a lejárati termen kívül áll (%d hiba)" % [zona, rossz_hely])
+		ok(zart_ut == 0, "%d. zóna: az elemekkel és a rejtvényládával is minden bejárható" % zona)
+		ok(rossz_rejtveny == 0, "%d. zóna: a rejtvényszobák épek (%d hiba)" % [zona, rossz_rejtveny])
+		ok(db[1] > 0 and db[utolso] > db[1], "%d. zóna: mélyebb emeleten több az elem (%s)" % [zona, str(db)])
+		ok(Data.gep_dmg(tip, zona, utolso) > Data.gep_dmg(tip, zona, 1), "%d. zóna: mélyebben nagyobbat sebez" % zona)
+		print("  %d. zóna (%s): elemek emeletenként (8 pályán) %s" % [zona, tip, str(db)])
+	ok(rejt_van > 0 and rejt_nincs > 0, "rejtvényszoba van, de nem minden emeleten (%d / %d pályán)" % [rejt_van, palyak])
+	ok(Data.ZSILIP_PERIOD[3] < Data.ZSILIP_PERIOD[0] and Data.KORONG_PERIOD[3] < Data.KORONG_PERIOD[0] and Data.GUBO_UJRA[3] < Data.GUBO_UJRA[0], "mélyebben szaporább az ütem")
+	print("  rejtvényszoba: %d / %d pályán" % [rejt_van, palyak])
+
+	# ── 12.2 gőzzsilip: a nyomásmérő után jelez, két körig fúj, a szörnyet is megégeti
+	var g := arena("Lovag")
+	var p := g.player
+	var w := g.world
+	p.max_hp = 500
+	p.hp = 500
+	w.mons.clear()
+	var zs := gep("zsilip", p.x + 3, p.y)
+	zs["dx"] = 1
+	zs["n"] = 3
+	zs["p"] = 8
+	w.gepek.append(zs)
+	var bm := babu(g, "goblin", p.x + 4, p.y)
+	var minta := {}
+	for i in 16:
+		g.advance_turn(true)
+		minta[w.gep_fazis(zs)] = jelzesek(w, "steam")
+		if w.gep_fazis(zs) == 0:
+			ok(not w.veszely_mezok().has(Dungeon.idx(zs["x"], zs["y"])), "zsilip: az ütem elején át lehet kelni rajta")
+		if w.gep_fazis(zs) == 4:
+			ok(w.veszely_mezok().has(Dungeon.idx(zs["x"], zs["y"])), "zsilip: a nyomás tetején már nem tanácsos belépni")
+	ok(minta[0] == 0 and minta[4] == 0 and minta[7] == 0, "zsilip: a csendes körökben nincs jelzés (%s)" % str(minta))
+	ok(minta[5] == 3 and minta[6] == 3, "zsilip: a kitörés előtt mindhárom mezője jelez, két egymás utáni körben")
+	var zd := Data.gep_dmg("zsilip", 1, 1)
+	ok(bm.hp == 1000 - 4 * zd, "zsilip: a benne álló szörnyet ütemenként kétszer megégeti (%d)" % bm.hp)
+	ok(not bm.awake, "zsilip: a pálya csapása nem ébreszti fel a szörnyet")
+	ok(p.hp == 500, "zsilip: aki kívül áll, nem sérül")
+	p.x = int(zs["x"])
+	for i in 8:
+		g.advance_turn(true)
+	ok(p.hp == 500 - 2 * (zd - int(p.def / 3.0)), "zsilip: a benne álló hőst is megégeti, a védelme harmadát levonva (%d)" % p.hp)
+	bm.hp = 3
+	for i in 8:
+		g.advance_turn(true)
+	ok(not bm.alive and p.kills == 1, "zsilip: a gőz meg is ölheti a szörnyet (a jutalom a hősé)")
+
+	# ── 12.3 sínen ingázó szike: körönként egy mezőt lép, a következő mezője előre villog
+	g = arena("Lovag")
+	p = g.player
+	w = g.world
+	w.dungeon_level = 2
+	p.max_hp = 500
+	p.hp = 500
+	w.mons.clear()
+	var sz := gep("szike", p.x + 2, p.y + 2)
+	sz["dx"] = 1
+	sz["n"] = 4
+	w.gepek.append(sz)
+	var ut: Array = []
+	for k in 7:
+		ut.append(w.szike_hely(sz, k).x - int(sz["x"]))
+	ok(ut == [0, 1, 2, 3, 2, 1, 0], "szike: oda-vissza jár a sínen (%s)" % str(ut))
+	var bs := babu(g, "goblin", int(sz["x"]) + 2, int(sz["y"]))
+	var jo_jelzes := 0
+	for i in 12:
+		g.advance_turn(true)
+		var kov := w.szike_hely(sz, w.turn + 1)
+		var h: Variant = w.hazard_at(kov.x, kov.y, "blade")
+		if h != null and h["warn"] and w.hazards.size() == 1:
+			jo_jelzes += 1
+	ok(jo_jelzes == 12, "szike: mindig pontosan az a mező villog, ahová a következő körben lép (%d/12)" % jo_jelzes)
+	ok(bs.hp == 1000 - 4 * Data.gep_dmg("szike", 2, 1), "szike: a sínen álló szörnyet minden áthaladáskor megvágja (%d)" % bs.hp)
+	ok(p.hp == 500, "szike: a sín mellett állva nem ér el")
+	p.x = int(sz["x"])
+	p.y = int(sz["y"])
+	for i in 6:
+		g.advance_turn(true)
+	ok(p.hp == 500 - (Data.gep_dmg("szike", 2, 1) - int(p.def / 3.0)), "szike: a sínen álló hőst megvágja, amikor odaér (%d)" % p.hp)
+	ok(not nyers(Lang.txt(p.msgs[p.msgs.size() - 1]["t"])), "szike: az üzenet le van fordítva")
+
+	# ── 12.4 spóragubó: megduzzad, kipukkad, felhőt hagy; a gombalényeket nem bántja; újra beérik
+	g = arena("Lovag")
+	p = g.player
+	w = g.world
+	w.dungeon_level = 3
+	p.max_hp = 500
+	p.hp = 500
+	w.mons.clear()
+	var gb := gep("gubo", p.x + 1, p.y)
+	gb["n"] = 1
+	w.gepek.append(gb)
+	ok(w.veszely_mezok().has(Dungeon.idx(p.x, p.y)), "gubó: az érett gubó szomszédsága veszélyes mezőnek számít")
+	g.advance_turn(true)
+	ok(int(gb["all"]) == 1 and w.hazards.is_empty(), "gubó: ha valaki mellé lép, előbb csak megduzzad (figyelmeztet)")
+	var gob := babu(g, "goblin", p.x + 2, p.y)
+	var spo := babu(g, "spore", p.x + 2, p.y + 1)
+	g.advance_turn(true)
+	var felho := 0
+	for h in w.hazards:
+		if h["kind"] == "spora" and not h["warn"]:
+			felho += 1
+	ok(int(gb["all"]) == 2 and felho == 9, "gubó: a következő körben kipukkad, 3×3-as spórafelhő marad utána (%d)" % felho)
+	ok(p.hp == 500, "gubó: a pukkanás pillanata még nem sebez (van idő kilépni)")
+	g.advance_turn(true)
+	var gd := Data.gep_dmg("gubo", 3, 1)
+	ok(p.hp == 500 - gd and p.poison >= 2, "gubó: a felhőben maradó hős sebződik és megmérgeződik (%d)" % p.hp)
+	ok(gob.hp == 1000 - gd and spo.hp == 1000, "gubó: a felhő a szörnyet is marja, a spóralényt nem")
+	for i in Data.FELHO_KOR:
+		g.advance_turn(true)
+	ok(w.hazards.is_empty(), "gubó: a felhő %d kör után eloszlik" % Data.FELHO_KOR)
+	p.x += 10
+	gob.x += 10
+	spo.x += 10
+	for i in int(Data.GUBO_UJRA[0]):
+		g.advance_turn(true)
+	ok(int(gb["all"]) == 0, "gubó: idővel újra beérik")
+	gob.x = int(gb["x"]) + 1
+	gob.y = int(gb["y"]) + 1
+	g.advance_turn(true)
+	ok(int(gb["all"]) == 1, "gubó: a szörny is kiváltja")
+	gob.x += 10
+	g.advance_turn(true)
+	g.advance_turn(true)
+	spo.x = int(gb["x"]) + 1
+	spo.y = int(gb["y"])
+	for i in int(Data.GUBO_UJRA[0]) + 2:
+		g.advance_turn(true)
+	ok(int(gb["all"]) == 0, "gubó: a spóralény nem váltja ki")
+	var gb2 := gep("gubo", p.x + 1, p.y)
+	gb2["n"] = 2
+	w.gepek.append(gb2)
+	g.advance_turn(true)
+	g.advance_turn(true)
+	felho = 0
+	for h in w.hazards:
+		if h["kind"] == "spora":
+			felho += 1
+	ok(felho == 13, "gubó: mélyebb emeleten nagyobb a felhő (%d mező)" % felho)
+
+	# ── 12.5 forgó fogaskerék-padló: felizzik, megcsíp, és negyedfordulatot tesz azzal, aki rajta áll
+	g = arena("Lovag")
+	p = g.player
+	w = g.world
+	w.dungeon_level = 4
+	p.max_hp = 500
+	p.hp = 500
+	w.mons.clear()
+	var kr := gep("korong", p.x + 4, p.y + 4)
+	kr["p"] = 7
+	w.gepek.append(kr)
+	var kx := int(kr["x"])
+	var ky := int(kr["y"])
+	var gyuru := babu(g, "goblin", kx + 1, ky)
+	var kozep := babu(g, "goblin", kx, ky)
+	p.x = kx - 1
+	p.y = ky - 1
+	while w.gep_fazis(kr) != 5:
+		g.advance_turn(true)
+		ok(jelzesek(w, "gear") == (8 if w.gep_fazis(kr) == 5 else 0), "korong: csak a fordulás előtti körben jelez, akkor a gyűrű mind a nyolc mezőjén")
+	ok(p.x == kx - 1 and p.y == ky - 1 and p.hp == 500, "korong: a jelzés körében még semmi nem történik")
+	ok(w.veszely_mezok().has(Dungeon.idx(kx - 1, ky - 1)) and not w.veszely_mezok().has(Dungeon.idx(kx, ky)), "korong: a gyűrű veszélyes, a közepe nem")
+	g.advance_turn(true)
+	var kd := Data.gep_dmg("korong", 4, 1)
+	ok(p.x == kx + 1 and p.y == ky - 1, "korong: a hőst negyedfordulattal odébb viszi (%d,%d)" % [p.x - kx, p.y - ky])
+	ok(p.hp == 500 - (kd - int(p.def / 3.0)), "korong: a fogak megcsípik a hőst (%d)" % p.hp)
+	ok(gyuru.x == kx and gyuru.y == ky + 1 and gyuru.hp < 1000, "korong: a gyűrűn álló szörnyet is elforgatja és megcsípi")
+	ok(kozep.x == kx and kozep.y == ky and kozep.hp == 1000, "korong: a közepén álló a helyén marad, sértetlenül")
+	ok(w.is_vis(p.x, p.y), "korong: a fordulás után a látótér a hős új helyéhez igazodik")
+
+	# ── 12.6 rejtvényszoba: a lapok sorrendje, a rossz lap büntetése, a láda lánca
+	g = arena("Lovag")
+	p = g.player
+	w = g.world
+	p.max_hp = 500
+	p.hp = 500
+	w.mons.clear()
+	var lada2 := {"x": p.x, "y": p.y + 3, "opened": false, "zart": true, "items": [mk("Rúnakard", "epic", 2), mk("Rúnapajzs", "epic", 2)]}
+	w.chests.append(lada2)
+	w.lapok = [{"x": p.x + 2, "y": p.y, "jel": 0, "sor": 1, "le": false},
+		{"x": p.x + 3, "y": p.y, "jel": 1, "sor": 0, "le": false},
+		{"x": p.x + 4, "y": p.y, "jel": 2, "sor": 2, "le": false}]
+	var x0 := p.x
+	var y0 := p.y
+	p.y = y0 + 2
+	ok(g.do_move(0, 1) and g.pending_chest == null and p.y == y0 + 2, "rejtvény: a leláncolt láda nem nyílik ki")
+	ok(not nyers(Lang.txt(p.msgs[p.msgs.size() - 1]["t"])), "rejtvény: a láda üzenete le van fordítva")
+	ok(w.robot_celok() == [Dungeon.idx(x0 + 3, y0)], "rejtvény: az első lap a 0. sorszámú")
+	ok(w.veszely_mezok().has(Dungeon.idx(x0 + 2, y0)) and not w.veszely_mezok().has(Dungeon.idx(x0 + 3, y0)), "rejtvény: a soron kívüli lapra nem érdemes lépni")
+	p.y = y0
+	p.x = x0 + 3
+	g._land(p.x, p.y)
+	ok(w.lapok[1]["le"] and w.lapok_le() == 1 and w.hazards.is_empty(), "rejtvény: a jó lap lenyomva marad")
+	p.x = x0 + 4
+	g._land(p.x, p.y)
+	ok(w.lapok_le() == 0, "rejtvény: a rossz lap mindet visszaugrasztja")
+	var hj: Variant = w.hazard_at(p.x, p.y)
+	ok(hj != null and hj["warn"], "rejtvény: a büntetés előre jelzett csapás (ki lehet térni)")
+	ok(lada2["zart"], "rejtvény: a láda zárva marad")
+	w.hazards.clear()
+	var szorny := babu(g, "goblin", x0 + 3, y0)
+	g.advance_turn(true)
+	ok(w.lapok_le() == 0, "rejtvény: a szörny nem nyomja le a lapot")
+	szorny.alive = false
+	for lx in [3, 2, 4]:
+		p.x = x0 + lx
+		g._land(p.x, p.y)
+	ok(w.lapok_le() == 3 and not lada2["zart"] and w.zart_lada() == null, "rejtvény: helyes sorrendben lehull a lánc")
+	ok(w.veszely_mezok().is_empty() and w.robot_celok().is_empty(), "rejtvény: megoldás után a lapok ártalmatlanok")
+	p.x = x0
+	p.y = y0 + 2
+	ok(g.do_move(0, 1) and g.pending_chest == lada2, "rejtvény: a megoldás után a láda kinyitható")
+
+	# ── 12.7 mentés: a gépek, a lapok, a leláncolt láda és a felhő megmarad; a régi mentés is betölt
+	Meta.reset()
+	SaveGame.erase_all()
+	var gs := Game.new()
+	gs.autosave = false
+	gs.start("Lovag", "normal")
+	for i in 60:
+		var wp := World.create(gs.player, 3, "normal", 3)
+		if not wp.lapok.is_empty() and wp.gepek.size() >= 2:
+			gs.world = wp
+			break
+	var ws := gs.world
+	ok(not ws.lapok.is_empty() and ws.gepek.size() >= 2, "mentés: van mit menteni (rejtvényszobás pálya gépekkel)")
+	if not ws.lapok.is_empty() and ws.gepek.size() >= 2:
+		ws.gepek[0]["all"] = 2
+		ws.gepek[0]["t"] = 77
+		ws.gepek[1]["all"] = 1
+		ws.lapok[0]["le"] = true
+		ws.hazards.append({"x": gs.player.x, "y": gs.player.y, "kind": "spora", "ttl": 2, "dmg": 3, "warn": false, "mind": true})
+		SaveGame.current = ""
+		ok(SaveGame.save_run(gs), "mentés: a pályaelemekkel együtt elmenthető")
+		var gl := SaveGame.load_run()
+		ok(gl != null, "mentés: visszatölthető")
+		if gl != null:
+			var wl := gl.world
+			ok(wl.gepek == ws.gepek, "mentés: a gépek (fajta, hely, ütem, állapot) azonosak")
+			ok(wl.lapok == ws.lapok and wl.lapok_le() == 1, "mentés: a nyomólapok és az állásuk azonos")
+			var zl: Variant = wl.zart_lada()
+			var zs0: Variant = ws.zart_lada()
+			ok(zl != null and zl["x"] == zs0["x"] and zl["y"] == zs0["y"], "mentés: a leláncolt láda zárva marad")
+			ok(wl.hazards.size() == 1 and wl.hazards[0]["kind"] == "spora" and wl.hazards[0]["mind"], "mentés: a spórafelhő megmarad")
+			ok(wl.room_kind == ws.room_kind, "mentés: a rejtvényszoba jelölése megmarad")
+		# régi mentés: a fájlból kivesszük mindazt, amit a régi változat még nem írt bele
+		var ut_f := SaveGame.path_of(SaveGame.current)
+		var j := JSON.new()
+		ok(j.parse(FileAccess.get_file_as_string(ut_f)) == OK, "mentés: a fájl érvényes JSON")
+		var d: Dictionary = j.data
+		(d["palya"] as Dictionary).erase("gepek")
+		(d["palya"] as Dictionary).erase("lapok")
+		for c in (d["palya"]["chests"] as Array):
+			(c as Dictionary).erase("zart")
+		for h in (d["palya"]["hazards"] as Array):
+			(h as Dictionary).erase("mind")
+		var f := FileAccess.open(ut_f, FileAccess.WRITE)
+		f.store_string(JSON.stringify(d))
+		f.close()
+		var gr := SaveGame.load_run()
+		ok(gr != null, "régi mentés: betölthető")
+		if gr != null:
+			ok(gr.world.gepek.is_empty() and gr.world.lapok.is_empty() and gr.world.zart_lada() == null, "régi mentés: gépek és rejtvény nélkül tölt be")
+			ok(gr.world.hazards.size() == 1 and not gr.world.hazards[0]["mind"], "régi mentés: a veszélyzóna a szörnyekre nem hat")
+			var t0 := gr.world.turn
+			gr.player.hp = gr.player.max_hp
+			gr.advance_turn(true)
+			ok(gr.world.turn > t0, "régi mentés: tovább lehet játszani")
+	SaveGame.erase_all()
+	Meta.reset()
+
+	# ── 12.8 a rajzok hibátlanul lefutnak (fej nélkül is), és minden fajtának van saját rajza
+	var c := Cv.new()
+	var ci := RenderingServer.canvas_item_create()
+	c.begin(ci)
+	var halok: Array = []
+	var rajzok: Array[Callable] = [
+		func() -> void: Sprites2.zsilip(c, 0, 0, 48, 0.5, false, true, true, 10.0),
+		func() -> void: Sprites2.zsilip(c, 0, 0, 48, 1.0, true, false, false, 10.0),
+		func() -> void: Sprites2.szike_sin(c, 0, 0, 48, true, true, true),
+		func() -> void: Sprites2.szike(c, 0, 0, 48, 10.0),
+		func() -> void: Sprites2.gubo(c, 0, 0, 48, 0, 10.0),
+		func() -> void: Sprites2.gubo(c, 0, 0, 48, 1, 10.0),
+		func() -> void: Sprites2.gubo(c, 0, 0, 48, 2, 10.0),
+		func() -> void: Sprites2.sporafelho(c, 0, 0, 48, 10.0, 1.0),
+		func() -> void: Sprites2.korong(c, 24, 24, 48, 0.3, 1.0),
+		func() -> void: Sprites2.nyomolap(c, 0, 0, 48, 3, false, 10.0),
+		func() -> void: Sprites2.nyomolap(c, 0, 0, 48, 4, true, 10.0),
+		func() -> void: Sprites2.lada_lanc(c, 0, 0, 48),
+		func() -> void: Sprites2.lada_jelek(c, 0, 0, 48, [2, 0, 1, 4, 3], 2, 10.0)]
+	for rajz in rajzok:
+		c.rec_begin()
+		rajz.call()
+		var halo: Array = c.rec_end()
+		var uj := (halo[0] as PackedVector2Array).size() > 0
+		for elozo in halok:
+			if not _halo_mas(halo, elozo):
+				uj = false
+		halok.append(halo)
+		ok(uj, "pályaelem-rajz %d: látható és más, mint a többi" % halok.size())
+	RenderingServer.free_rid(ci)
+	print("  %d féle pályaelem + rejtvényszoba: működés, mentés, rajz rendben" % Data.GEP_ZONA.size())
+
+
+# ══════════ 13. HANGOK: lépések, szörnyhangok, felfigyelés, fázisváltás ══════════
+## egy hang legnagyobb kitérése (0..1) és „élessége” (a magas hangok aránya: a szomszédos
+## minták különbségének energiája az egész energiájához mérve)
+func hang_jellemzok(wav: AudioStreamWAV) -> Array:
+	var d := wav.data
+	var n := int(d.size() / 2.0)
+	var csucs := 0.0
+	var e := 0.0
+	var ed := 0.0
+	var elozo := 0.0
+	for i in n:
+		var v := d.decode_s16(i * 2) / 32767.0
+		csucs = maxf(csucs, absf(v))
+		e += v * v
+		ed += (v - elozo) * (v - elozo)
+		elozo = v
+	return [csucs, ed / maxf(e, 0.000001), n]
+
+
+func szornyhang_db(naplo: Array) -> int:
+	var n := 0
+	for h in naplo:
+		if str(h[0]) in ["gep", "hus", "lebego", "kuszo"]:
+			n += 1
+	return n
+
+
+func test_hangok() -> void:
+	# ── 13.1 a hangkészlet: minden név, amit a játék lejátszhat, létezik, hallható és nem torzít
+	var a := Audio.new()
+	root.add_child(a)
+	a.setup(false)
+	var nevek := {}
+	var re := RegEx.create_from_string('play\\("([a-z_0-9]+)"')
+	for fajl in ["game.gd", "main.gd"]:
+		for mm in re.search_all(FileAccess.get_file_as_string("res://scripts/" + fajl)):
+			nevek[mm.get_string(1)] = fajl
+	for z in range(1, Data.MAX_LEVEL + 1):
+		nevek["step%d" % z] = "game.gd"
+	for k in Data.MON_HANG:
+		nevek[str(Data.MON_HANG[k])] = "data.gd"
+	var jell := {}
+	for nev in nevek:
+		var van: bool = a._sfx.has(nev) and not (a._sfx[nev] as Array).is_empty()
+		ok(van, "hang: „%s” létezik (%s)" % [nev, nevek[nev]])
+		if not van:
+			continue
+		var j := hang_jellemzok((a._sfx[nev] as Array)[0])
+		jell[nev] = j
+		ok(float(j[0]) > 0.02 and float(j[0]) <= 1.0 and int(j[2]) > 400, "hang: „%s” hallható és nem üres (csúcs %.2f, %d minta)" % [nev, j[0], j[2]])
+	for k in Data.MONS:
+		ok(Data.MON_HANG.has(k), "szörnyhang: %s besorolva egy fajtába" % k)
+	ok(nevek.has("fazis") and nevek.has("eszlel"), "a fázisváltásnak és a felfigyelésnek saját hangja van")
+	# a lépés halk; a kemény talaj (márvány, fémrács) élesebben koppan, mint a kazánlemez és a puha padló
+	for z in range(1, Data.MAX_LEVEL + 1):
+		var cs := 0.0
+		for wv in (a._sfx["step%d" % z] as Array):
+			cs = maxf(cs, float(hang_jellemzok(wv)[0]))
+		ok(cs < 0.45 and (a._sfx["step%d" % z] as Array).size() >= 3, "lépés (%d. zóna): halk, és több változata van (csúcs %.2f)" % [z, cs])
+	ok(float(jell["step3"][1]) < float(jell["step2"][1]) and float(jell["step3"][1]) < float(jell["step4"][1]) and float(jell["step1"][1]) < float(jell["step4"][1]),
+		"lépés: a puha padló tompább a márványnál és a fémrácsnál (élesség: %.3f / %.3f / %.3f / %.3f)" % [jell["step1"][1], jell["step2"][1], jell["step3"][1], jell["step4"][1]])
+	ok(float(jell["kuszo"][1]) > float(jell["hus"][1]) and float(jell["kuszo"][1]) > float(jell["lebego"][1]),
+		"szörnyhang: a surrogás élesebb a hörgésnél és a zümmögésnél (%.3f / %.3f / %.3f)" % [jell["kuszo"][1], jell["hus"][1], jell["lebego"][1]])
+	print("  %d hang; lépések élessége zónánként: %.3f · %.3f · %.3f · %.3f" % [nevek.size(), jell["step1"][1], jell["step2"][1], jell["step3"][1], jell["step4"][1]])
+
+	# ── 13.2 hangerő és némítás: a meglévő hang-beállítás kezeli
+	var pi0 := a._pi
+	a.set_muted(true)
+	a.play("step1")
+	a.play("gep", 0.5)
+	ok(a._pi == pi0, "némítva egyetlen új hang sem szól")
+	a.set_muted(false)
+	a.play("nincs_ilyen_hang")
+	a.play("step1", 0.0)
+	ok(a._pi == pi0, "ismeretlen név és nulla hangerő: nem történik semmi")
+	a.play("gep", 0.5)
+	var lej: AudioStreamPlayer = a._players[pi0]
+	ok(a._pi == (pi0 + 1) % a._players.size() and absf(lej.volume_db - linear_to_db(Audio.MASTER * 0.5)) < 0.01, "a hangerő-szorzó érvényesül (%.1f dB)" % lej.volume_db)
+	a.play("sword")
+	ok(absf(a._players[(pi0 + 1) % a._players.size()].volume_db - linear_to_db(Audio.MASTER)) < 0.01, "a többi hang teljes hangerővel szól")
+	var csupasz := Audio.new()
+	csupasz._build_sfx()
+	csupasz.play("step1")   # lejátszók nélkül (setup nélkül) sem okoz hibát
+	ok(csupasz._players.is_empty(), "lejátszók nélkül a hang kérése ártalmatlan")
+	csupasz.free()
+	a.set_muted(false)
+	a.queue_free()
+
+	# ── 13.3 lépéshang: zónánként más talaj, halkan
+	var g := arena("Lovag")
+	var p := g.player
+	var w := g.world
+	var naplo: Array = []
+	g.sfx = func(n: String, v: float = 1.0) -> void: naplo.append([n, v])
+	w.mons.clear()
+	for z in range(1, Data.MAX_LEVEL + 1):
+		w.dungeon_level = z
+		naplo.clear()
+		g.do_move(1, 0)
+		ok(naplo.size() >= 1 and naplo[0][0] == "step%d" % z and float(naplo[0][1]) == Data.LEPES_HANGERO and float(naplo[0][1]) < 1.0, "lépéshang a %d. zónában: %s" % [z, str(naplo)])
+	w.dungeon_level = 1
+
+	# ── 13.4 szörnyhangok: csak a látható, közeli, mozduló szörny szól; ritkítva; távolsággal halkul
+	p.max_hp = 100000
+	p.hp = 100000
+	g._hang_rng.seed = 7
+	var kulcsok := ["rat", "goblin", "drone", "golem", "spider", "orc", "scalpel", "skeleton", "leech", "troll"]
+	for i in kulcsok.size():
+		var m := Mon.make(kulcsok[i], p.x - 5 + i, p.y + 4 + (i % 2), "normal")
+		m.awake = true
+		m.eszlelt = true
+		w.mons.append(m)
+	var legtobb := 0
+	var ossz := 0
+	var rossz_hangero := 0
+	for kor in 4:
+		naplo.clear()
+		g.advance_turn(true)
+		var db := szornyhang_db(naplo)
+		legtobb = maxi(legtobb, db)
+		ossz += db
+		var fajtak := {}
+		for h in naplo:
+			if str(h[0]) in ["gep", "hus", "lebego", "kuszo"]:
+				if fajtak.has(h[0]) or float(h[1]) <= 0.0 or float(h[1]) > 0.8:
+					rossz_hangero += 1
+				fajtak[h[0]] = true
+	ok(legtobb <= Data.SZORNYHANG_MAX and ossz >= 2, "tíz mozgó szörny mellett is körönként legfeljebb %d szörnyhang szól (legtöbb %d, négy kör alatt %d)" % [Data.SZORNYHANG_MAX, legtobb, ossz])
+	ok(rossz_hangero == 0, "egy körben egy fajta csak egyszer szól, és a hangereje érvényes")
+	w.mons.clear()
+	var kozeli := Mon.make("goblin", p.x + 2, p.y, "normal")
+	var tavoli := Mon.make("goblin", p.x + 6, p.y, "normal")
+	ok(g._tav_hangero(kozeli) > g._tav_hangero(tavoli) and g._tav_hangero(tavoli) >= 0.2, "a távolabbi szörny halkabb (%.2f > %.2f)" % [g._tav_hangero(kozeli), g._tav_hangero(tavoli)])
+	# egyetlen mozduló, látható szörny: a ritkítás ellenére néhány körön belül megszólal
+	var egy := Mon.make("golem", p.x + 7, p.y + 7, "normal")
+	egy.awake = true
+	egy.eszlelt = true
+	w.mons.append(egy)
+	var szolt := 0
+	var jo_hang := true
+	for kor in 5:
+		naplo.clear()
+		g.advance_turn(true)
+		for h in naplo:
+			if str(h[0]) in ["gep", "hus", "lebego", "kuszo"]:
+				szolt += 1
+				if h[0] != "gep" or absf(float(h[1]) - g._tav_hangero(egy) * 0.8) > 0.001:
+					jo_hang = false
+	ok(szolt >= 1 and jo_hang, "a közeledő gólem a gépi hangján szól, a távolságának megfelelő hangerővel (%d)" % szolt)
+	# nem látható szörny néma
+	w.mons.clear()
+	var rejtett := Mon.make("goblin", p.x + 5, p.y + 5, "normal")
+	rejtett.awake = true
+	rejtett.eszlelt = true
+	w.mons.append(rejtett)
+	w.vis.fill(0)
+	var x0 := rejtett.x
+	naplo.clear()
+	for kor in 3:
+		g.advance_turn(true)
+	ok(rejtett.x != x0 and szornyhang_db(naplo) == 0, "a nem látható szörny mozog, de néma")
+	w.vis.fill(1)
+	# a hallótávon kívüli szörny néma
+	w.mons.clear()
+	var messzi := Mon.make("goblin", p.x + 14, p.y, "normal")
+	messzi.awake = true
+	messzi.eszlelt = true
+	w.mons.append(messzi)
+	naplo.clear()
+	for kor in 3:
+		g.advance_turn(true)
+	ok(messzi.x < p.x + 14 and szornyhang_db(naplo) == 0, "a hallótávon (%d mező) kívül mozgó szörny néma" % Data.SZORNYHANG_TAV)
+
+	# ── 13.5 „felfigyelt rád”: egyszer, amikor a szörny először meglátja a hőst
+	w.mons.clear()
+	g.fx.clear()
+	var uj1 := Mon.make("goblin", p.x + 4, p.y, "normal")
+	var uj2 := Mon.make("orc", p.x - 4, p.y, "normal")
+	w.mons.append(uj1)
+	w.mons.append(uj2)
+	naplo.clear()
+	g.advance_turn(true)
+	var eszl := 0
+	for h in naplo:
+		if h[0] == "eszlel":
+			eszl += 1
+	var jelek := 0
+	for f in g.fx:
+		if f.get("txt", "") == "!":
+			jelek += 1
+	ok(uj1.eszlelt and uj2.eszlelt and eszl == 1 and jelek == 2, "két szörny egyszerre figyel fel: két felkiáltójel, de csak egy hang (%d / %d)" % [jelek, eszl])
+	naplo.clear()
+	g.advance_turn(true)
+	eszl = 0
+	for h in naplo:
+		if h[0] == "eszlel":
+			eszl += 1
+	ok(eszl == 0, "a felfigyelés hangja nem ismétlődik")
+	w.mons.clear()
+	var nem_lat := Mon.make("goblin", p.x + 4, p.y, "normal")
+	w.mons.append(nem_lat)
+	w.vis.fill(0)
+	naplo.clear()
+	g.advance_turn(true)
+	ok(not nem_lat.eszlelt and naplo.is_empty(), "akit a hős nem lát, az még nem figyelt fel")
+	w.vis.fill(1)
+
+	# ── 13.6 főellenség: a fázisváltásnak saját hangja van
+	w.mons.clear()
+	var fo := Mon.make("rust_worm", p.x + 3, p.y, "normal")
+	w.mons.append(fo)
+	naplo.clear()
+	g.boss_phase2(fo)
+	var hangok := {}
+	for h in naplo:
+		hangok[h[0]] = true
+	ok(hangok.has("fazis") and hangok.has("roar"), "fázisváltás: bömbölés + a fázisváltás saját hangja (%s)" % str(hangok.keys()))
+	g.pending_dialog = []
+
+	# ── 13.7 hang nélkül (fej nélküli futás, nincs sfx) minden ugyanúgy megy
+	g.sfx = Callable()
+	w.mons.clear()
+	var csendes := Mon.make("goblin", p.x + 3, p.y, "normal")
+	w.mons.append(csendes)
+	g.advance_turn(true)
+	g.do_move(0, 1)
+	ok(csendes.eszlelt and g._szornyhangok({csendes: Vector2i(0, 0)}) == 0, "hangkimenet nélkül a szörnyek ugyanúgy észrevesznek, hang nem készül")
+
+	# ── 13.8 mentés: aki már felfigyelt, betöltés után nem kiált fel újra
+	Meta.reset()
+	SaveGame.erase_all()
+	var gs := Game.new()
+	gs.autosave = false
+	gs.start("Lovag", "normal")
+	gs.world.mons[0].eszlelt = true
+	gs.world.mons[1].eszlelt = false
+	SaveGame.current = ""
+	ok(SaveGame.save_run(gs), "hang-állapot: elmenthető")
+	var gl := SaveGame.load_run()
+	ok(gl != null and gl.world.mons[0].eszlelt and not gl.world.mons[1].eszlelt, "a felfigyelés állapota megmarad a mentésben")
+	SaveGame.erase_all()
+	Meta.reset()
+
+
+# ══════════ 14. A 15 PÁLYA NEHÉZSÉGE: a hangolás táblái jól vannak bekötve ══════════
+## (A számok maguk méréssel készültek — tests/egyensuly.gd —, itt csak azt nézzük, hogy a táblák
+## teljesek, és hogy a játék tényleg azokból dolgozik.)
+func test_nehezseg() -> void:
+	var n := Data.palyak()
+	ok(n == 15 and Data.PALYA_HP.size() == n and Data.PALYA_ATK.size() == n and Data.PALYA_CSAPAS.size() == n, "minden pályának van szorzója (%d pálya)" % n)
+	ok(Data.palya_sorszam(1, 1) == 1 and Data.palya_sorszam(1, 4) == 4 and Data.palya_sorszam(2, 1) == 5 and Data.palya_sorszam(4, 3) == 15, "a pálya sorszáma a kaland elejétől számol")
+	ok(Data.palya_hp(1) == 1.0 and Data.palya_atk(1) == 0 and Data.palya_csapas(1) == 0, "az első pálya szörnyei a tábla szerinti alapértékükkel indulnak")
+	var no := true
+	for i in range(1, n):
+		if Data.PALYA_ATK[i] < Data.PALYA_ATK[i - 1] or Data.PALYA_CSAPAS[i] < Data.PALYA_CSAPAS[i - 1] or Data.PALYA_HP[i] <= 1.0:
+			no = false
+	ok(no, "mélyebb pályán a szörnyek támadása és a csapások ereje sosem csökken")
+	# a szörnyek életereje ténylegesen nő pályáról pályára (a zónaváltásnál is: az új zóna lényei eleve szívósabbak)
+	var elozo := 0.0
+	var hp_no := true
+	for z in range(1, Data.MAX_LEVEL + 1):
+		var atlag := 0.0
+		for k in Data.POOL[z]:
+			atlag += float(Data.MONS[k]["hp"])
+		atlag /= (Data.POOL[z] as Array).size()
+		for e in range(1, Data.emeletek(z) + 1):
+			var most := atlag * Data.palya_hp(Data.palya_sorszam(z, e))
+			if most <= elozo:
+				hp_no = false
+			elozo = most
+	ok(hp_no, "a közönséges szörnyek átlagos életereje pályáról pályára nő")
+
+	# ── a pálya létrehozásakor minden szörny egyszer kapja meg az erősítést; a zóna ura nem
+	for zona in [1, 2, 4]:
+		for em in [1, Data.emeletek(zona)]:
+			var s := Data.palya_sorszam(zona, em)
+			var w := World.create(Player.create("Lovag"), zona, "normal", em)
+			ok(w.szakasz() == s, "%d/%d: a pálya tudja a sorszámát (%d)" % [zona, em, s])
+			var rossz := 0
+			var fo := 0
+			for m in w.mons:
+				var alap := Mon.make(m.key, 0, 0, "normal")
+				if m.boss:
+					fo += 1
+					if m.max_hp != alap.max_hp or m.atk != alap.atk:
+						rossz += 1
+				elif not m.elite and not m.guard and not m.mini:
+					if m.max_hp != maxi(1, int(round(alap.max_hp * Data.palya_hp(s)))) or m.atk != alap.atk + Data.palya_atk(s):
+						rossz += 1
+				elif m.mini:
+					var mm := Mon.make_mini(m.key, 0, 0, "normal")
+					if m.atk != mm.atk + int(round(Data.palya_atk(s) * Data.MINI_PALYA_ATK)) or m.max_hp != int(round(mm.max_hp * Data.palya_hp(s))):
+						rossz += 1
+			ok(rossz == 0, "%d/%d: a szörnyek ereje a pálya sorszámából jön, a zóna uráé a saját táblájából (%d eltérés)" % [zona, em, rossz])
+			ok(fo == (1 if em == Data.emeletek(zona) else 0), "%d/%d: a zóna ura csak az utolsó emeleten van" % [zona, em])
+	# a nehézség a támadás-többletre csak mérsékelten hat
+	var wk := World.create(Player.create("Lovag"), 2, "easy", 2)
+	var wn := World.create(Player.create("Lovag"), 2, "hard", 2)
+	var bk := wk.erosit(Mon.make("orc", 0, 0, "easy")).atk - Mon.make("orc", 0, 0, "easy").atk
+	var bn := wn.erosit(Mon.make("orc", 0, 0, "hard")).atk - Mon.make("orc", 0, 0, "hard").atk
+	var s6 := Data.palya_atk(6)
+	ok(bk < s6 and bn > s6 and bk > s6 * 0.8 and bn < s6 * 1.3, "könnyű / nehéz: a támadás-többlet mérsékelten változik (%d / %d / %d)" % [bk, s6, bn])
+
+	# ── a megidézett szörny is a pálya szerint erős
+	var g := arena("Lovag")
+	var p := g.player
+	g.world.dungeon_level = 3
+	g.world.emelet = 4
+	g.world.mons.clear()
+	p.max_hp = 100000
+	p.hp = 100000
+	var anya := Mon.make("symbiote", p.x + 3, p.y, "normal")
+	anya.met = true
+	anya.awake = true
+	g.world.mons.append(anya)
+	seed(4)
+	for i in 120:
+		g.advance_turn(true)
+		g.world.hazards.clear()
+	var spora: Mon = null
+	for m in g.world.mons:
+		if m.key == "spore":
+			spora = m
+	ok(spora != null and spora.max_hp == int(round(Mon.make("spore", 0, 0, "normal").max_hp * Data.palya_hp(12))), "a Szimbióta Anya megidézett spórái a 12. pálya erejével születnek")
+
+	# ── a főellenségek csapásai a BOSS_CSAPAS táblából jönnek
+	for lv in Data.BOSS_LVL:
+		var sp := str(Data.MONS[Data.BOSS_LVL[lv]]["sp"])
+		ok(Data.BOSS_CSAPAS.has(sp), "%s: van csapás-táblája" % sp)
+	g = arena("Lovag")
+	p = g.player
+	p.max_hp = 100000
+	p.hp = 100000
+	g.world.mons.clear()
+	var fereg := Mon.make("rust_worm", p.x + 4, p.y, "normal")
+	fereg.met = true
+	fereg.awake = true
+	fereg.cd = 0
+	g.world.mons.append(fereg)
+	g.boss_turn(fereg)
+	var hz: Variant = g.world.hazard_at(p.x, p.y, "steam")
+	ok(hz != null and int(hz["dmg"]) == int(Data.boss_csapas("worm", "goz")), "Rozsdaféreg: a gőzsugár ereje a táblából jön")
+	g.pending_dialog = []
+	# a Tükör-fázis a hős támadásának táblabeli hányadával üt
+	g = arena("Lovag")
+	p = g.player
+	p.base_atk = 1000
+	var karpit := Mon.make("weaver", p.x + 3, p.y, "normal")
+	g.world.mons.append(karpit)
+	g.boss_phase2(karpit)
+	ok(karpit.atk == Data.jround(1000 * Data.boss_csapas("weaver", "tukor")) + 6, "Első Kárpit: a Tükör-fázis ereje a táblából jön (%d)" % karpit.atk)
+	g.pending_dialog = []
+
+	# ── a szörnyek védelmet megkerülő többletütése és az állapot-sebzések
+	g = arena("Lovag")
+	p = g.player
+	p.max_hp = 100000
+	p.hp = 100000
+	g.world.mons.clear()
+	var orgy := Mon.make("assassin", p.x + 1, p.y, "normal")
+	orgy.atk = 1000
+	g.world.mons.append(orgy)
+	var legnagyobb := 0
+	seed(9)
+	for i in 60:
+		var h0 := p.hp
+		g.mon_attack(orgy)
+		legnagyobb = maxi(legnagyobb, h0 - p.hp)
+	var varhato := (1000 + 3 - p.def) + int(floorf(1000 * Data.SZORNY_KRIT))
+	ok(legnagyobb <= varhato and legnagyobb >= varhato - 5, "az Orgyilkos többletütése a támadása %.0f%%-a (%d)" % [Data.SZORNY_KRIT * 100.0, legnagyobb])
+	# égés: a szörnyek életerejével együtt erősödik (különben mélyen semmit sem érne)
+	for par in [[1, 1], [3, 2]]:
+		g = arena("Lovag")
+		g.world.dungeon_level = par[0]
+		g.world.emelet = par[1]
+		g.world.mons.clear()
+		var eg := babu(g, "goblin", g.player.x + 5, g.player.y)
+		eg.burn = 1
+		g.advance_turn(true)
+		var hs := Data.palya_hp(Data.palya_sorszam(par[0], par[1]))
+		ok(eg.hp == 1000 - Data.jround((2 + int(par[0])) * hs), "égés a %d/%d pályán: %d sebzés" % [par[0], par[1], 1000 - eg.hp])
+
+	# ── zsákmány: a hosszabb kalandban ritkább a láda egy-egy szobában
+	ok(Data.LADA_ESELY > 0.0 and Data.LADA_ESELY < 0.42, "a hétköznapi szobák ládái ritkábbak, mint a 4 pályás játékban (%.2f)" % Data.LADA_ESELY)
+	var lada := 0
+	for i in 20:
+		lada += World.create(Player.create("Lovag"), 1 + i % 4, "normal", 1).chests.size()
+	ok(lada >= 20 * 4 and lada <= 20 * 18, "pályánként 4–18 láda van (átlag %.1f)" % (lada / 20.0))
+	print("  pályánként átlag %.1f láda · PALYA_ATK %s" % [lada / 20.0, str(Data.PALYA_ATK)])

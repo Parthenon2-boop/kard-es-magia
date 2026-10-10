@@ -9,9 +9,56 @@ const FOV_R := 8
 const MAX_LEVEL := 4
 ## Zónánként ennyi emelet van (összesen 15 pálya); a zóna ura mindig a zóna utolsó emeletén vár.
 const EMELET_DB := {1: 4, 2: 4, 3: 4, 4: 3}
-## Mélyebb emeleten a szörnyek szívósabbak és nagyobbat ütnek (emeletenként ennyivel).
-const EMELET_HP := 0.10
-const EMELET_ATK := 0.06
+
+# ══════════ A 15 PÁLYA NEHÉZSÉGE (méréssel hangolva: tests/egyensuly.gd) ══════════
+## A hős pályáról pályára erősödik (szintlépés, képességek, zsákmány, tekercsek) — a mérés szerint
+## az első emelet végére a támadása a kezdeti többszöröse. A közönséges szörnyek (és az őrök,
+## a Fertőzöttek, a mini-bossok) ezért a PÁLYA SORSZÁMA szerint erősödnek, a kaland elejétől
+## számolva (1..15), nem zónánként újrakezdve:
+##  PALYA_HP:  ennyiszeres az életerejük (a hős sebzésével tart lépést),
+##  PALYA_ATK: ennyivel NAGYOBB a támadásuk. Hozzáadódik, nem szorzódik: a hős védelme is
+##             összeadódó, így a szörnyfajták közti különbség megmarad (az Orgyilkos nem lesz
+##             a többinél sokszorta veszélyesebb, a Gőzpatkány pedig ártalmatlan),
+##  PALYA_CSAPAS: ennyivel nagyobb a jelzett csapások (padlórács, mini-boss, pályaelemek,
+##             rejtvény) sebzése — ezekből a hős védelmének harmada vonódik le.
+## A zónák urai nem ebből kapják az erejüket: az övék a MONS táblában és a BOSS_CSAPAS-ban áll.
+const PALYA_HP := [1.0, 4.0, 7.0, 10.0, 10.5, 11.5, 12.3, 13.0, 13.5, 14.5, 15.3, 16.0, 9.8, 10.3, 10.8]
+const PALYA_ATK := [0, 18, 34, 48, 57, 66, 74, 81, 98, 104, 110, 116, 132, 139, 144]
+const PALYA_CSAPAS := [0, 6, 11, 15, 18, 20, 22, 23, 26, 28, 30, 32, 35, 37, 38]
+## a nehézség (könnyű / nehéz) a PALYA_ATK-ra csak ennyire hat (a kivonásos védelem miatt a teljes
+## szorzó a könnyűt veszélytelenné, a nehezet játszhatatlanná tenné)
+const NEHEZSEG_PALYA := 0.25
+## a mini-boss a pálya támadás-többletét ennyiszeresen kapja
+const MINI_PALYA_ATK := 1.15
+## a "crit" képességű szörnyek (Orgyilkos, Őrautomata) védelmet megkerülő többletütése: a támadásuk ekkora része
+const SZORNY_KRIT := 0.4
+## a Boszorkány tűzgömbje és a Démon robbanása (védelmet megkerülő varázslat) pályánként erősödik:
+## a szorzója 1 + PALYA_ATK / SZORNY_VARAZS
+const SZORNY_VARAZS := 40.0
+
+
+## A pálya sorszáma a kaland elejétől (1..15): az előző zónák emeletei + ez az emelet.
+static func palya_sorszam(zona: int, emelet: int) -> int:
+	var s := 0
+	for z in range(1, zona):
+		s += emeletek(z)
+	return clampi(s + maxi(1, emelet), 1, PALYA_HP.size())
+
+
+static func palya_hp(s: int) -> float:
+	return float(PALYA_HP[clampi(s, 1, PALYA_HP.size()) - 1])
+
+
+static func palya_atk(s: int) -> int:
+	return int(PALYA_ATK[clampi(s, 1, PALYA_ATK.size()) - 1])
+
+
+static func varazs_szorzo(s: int) -> float:
+	return 1.0 + palya_atk(s) / SZORNY_VARAZS
+
+
+static func palya_csapas(s: int) -> int:
+	return int(PALYA_CSAPAS[clampi(s, 1, PALYA_CSAPAS.size()) - 1])
 
 
 static func emeletek(zona: int) -> int:
@@ -77,30 +124,34 @@ const DIFF_ORDER := ["easy", "normal", "hard"]
 
 # ══════════ TÁRGYAK ══════════
 # A pajzsoknak saját helyük van (slot "shield"), külön a páncéltól.
+## A fegyverek sebzése, a páncélok és pajzsok védelme és a két tekercs (Erő, Véd) ereje a 15 pályás
+## kalandhoz van mérve: a 4 pályás játék számaival a hős a sokszorosára nőtt a szörnyeknek (a mérés
+## szerint az első zóna végére támadás 160+, védelem 110+, miközben a zóna ura 13-at ütött).
+## A ritkaság szorzói és a szintenkénti +12% változatlanok.
 ## "id": a tárgy belső azonosítója (a mentésben is ez áll); a neve a nyelvi fájlban: item.<id>
 const ITEM_BASES := [
-	{"id": "rusty_sword", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 4},
-	{"id": "steel_sword", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 9},
-	{"id": "rune_sword", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 15},
-	{"id": "moonlight_blade", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 22},
-	{"id": "chain_scalpel", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 12},
-	{"id": "wooden_bow", "slot": "weapon", "subtype": "bow", "glyph": ")", "baseDmg": 5, "range": 3},
-	{"id": "composite_bow", "slot": "weapon", "subtype": "bow", "glyph": ")", "baseDmg": 11, "range": 4},
-	{"id": "esoteric_bow", "slot": "weapon", "subtype": "bow", "glyph": ")", "baseDmg": 17, "range": 5},
-	{"id": "hand_cannon", "slot": "weapon", "subtype": "cannon", "glyph": "⌐", "baseDmg": 20, "range": 3},
-	{"id": "infernal_cannon", "slot": "weapon", "subtype": "cannon", "glyph": "⌐", "baseDmg": 30, "range": 4},
-	{"id": "steam_carbine", "slot": "weapon", "subtype": "cannon", "glyph": "⌐", "baseDmg": 25, "range": 4},
-	{"id": "wooden_shield", "slot": "shield", "subtype": "shield", "glyph": "⛨", "baseDef": 3},
-	{"id": "steel_shield", "slot": "shield", "subtype": "shield", "glyph": "⛨", "baseDef": 8},
-	{"id": "rune_shield", "slot": "shield", "subtype": "shield", "glyph": "⛨", "baseDef": 14},
+	{"id": "rusty_sword", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 3},
+	{"id": "steel_sword", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 5},
+	{"id": "rune_sword", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 7},
+	{"id": "moonlight_blade", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 10},
+	{"id": "chain_scalpel", "slot": "weapon", "subtype": "sword", "glyph": "†", "baseDmg": 6},
+	{"id": "wooden_bow", "slot": "weapon", "subtype": "bow", "glyph": ")", "baseDmg": 4, "range": 3},
+	{"id": "composite_bow", "slot": "weapon", "subtype": "bow", "glyph": ")", "baseDmg": 6, "range": 4},
+	{"id": "esoteric_bow", "slot": "weapon", "subtype": "bow", "glyph": ")", "baseDmg": 8, "range": 5},
+	{"id": "hand_cannon", "slot": "weapon", "subtype": "cannon", "glyph": "⌐", "baseDmg": 8, "range": 3},
+	{"id": "infernal_cannon", "slot": "weapon", "subtype": "cannon", "glyph": "⌐", "baseDmg": 12, "range": 4},
+	{"id": "steam_carbine", "slot": "weapon", "subtype": "cannon", "glyph": "⌐", "baseDmg": 10, "range": 4},
+	{"id": "wooden_shield", "slot": "shield", "subtype": "shield", "glyph": "⛨", "baseDef": 2},
+	{"id": "steel_shield", "slot": "shield", "subtype": "shield", "glyph": "⛨", "baseDef": 4},
+	{"id": "rune_shield", "slot": "shield", "subtype": "shield", "glyph": "⛨", "baseDef": 6},
 	{"id": "leather_armor", "slot": "armor", "subtype": "armor", "glyph": "▪", "baseDef": 2},
-	{"id": "chain_mail", "slot": "armor", "subtype": "armor", "glyph": "▪", "baseDef": 6},
-	{"id": "dragon_armor", "slot": "armor", "subtype": "armor", "glyph": "▪", "baseDef": 12},
+	{"id": "chain_mail", "slot": "armor", "subtype": "armor", "glyph": "▪", "baseDef": 3},
+	{"id": "dragon_armor", "slot": "armor", "subtype": "armor", "glyph": "▪", "baseDef": 5},
 	{"id": "healing_potion", "slot": "use", "subtype": "heal", "glyph": "✚", "healAmt": 25},
 	{"id": "greater_healing_potion", "slot": "use", "subtype": "heal", "glyph": "✚", "healAmt": 60},
 	{"id": "vitality_elixir", "slot": "use", "subtype": "maxheal", "glyph": "♥", "maxHpUp": 10},
-	{"id": "scroll_strength", "slot": "use", "subtype": "atk_up", "glyph": "⚡", "atkUp": 5},
-	{"id": "scroll_warding", "slot": "use", "subtype": "def_up", "glyph": "❈", "defUp": 3},
+	{"id": "scroll_strength", "slot": "use", "subtype": "atk_up", "glyph": "⚡", "atkUp": 2},
+	{"id": "scroll_warding", "slot": "use", "subtype": "def_up", "glyph": "❈", "defUp": 1},
 	{"id": "fireball", "slot": "use", "subtype": "fireball", "glyph": "✳", "damage": 40},
 ]
 ## Mentés-kompatibilitás: a régi (2.0-s) mentésekben a tárgyak a MAGYAR nevükkel szerepelnek.
@@ -143,11 +194,27 @@ const MONS := {
 	"bloom": {"hp": 30, "atk": 9, "def": 2, "xp": 48, "sp": "spit"},                             # Húsvirág: helyből mérget köp
 	"sentinel": {"hp": 85, "atk": 14, "def": 9, "xp": 95, "sp": "crit", "mech": true},           # Őrautomata: lassú, de kemény
 	# ── a négy zóna ura (a fázisokat lásd game.gd: boss_turn) ──
-	"rust_worm": {"hp": 150, "atk": 13, "def": 8, "xp": 300, "sp": "worm", "boss": true, "mech": true},
-	"dr_karel": {"hp": 210, "atk": 16, "def": 6, "mres": 5, "xp": 420, "sp": "karel", "boss": true, "mech": true},
-	"symbiote": {"hp": 300, "atk": 19, "def": 9, "mres": 4, "xp": 560, "sp": "symbiote", "boss": true},
-	"weaver": {"hp": 420, "atk": 24, "def": 12, "mres": 6, "xp": 1500, "sp": "weaver", "boss": true, "mech": true},
+	# (az életerejük és a támadásuk a 15 pályás kalandhoz van mérve: a hős addigra sokszorosan erősebb)
+	"rust_worm": {"hp": 1200, "atk": 68, "def": 8, "xp": 300, "sp": "worm", "boss": true, "mech": true},
+	"dr_karel": {"hp": 2550, "atk": 255, "def": 6, "mres": 5, "xp": 420, "sp": "karel", "boss": true, "mech": true},
+	"symbiote": {"hp": 3100, "atk": 345, "def": 9, "mres": 4, "xp": 560, "sp": "symbiote", "boss": true},
+	"weaver": {"hp": 5400, "atk": 210, "def": 12, "mres": 6, "xp": 1500, "sp": "weaver", "boss": true, "mech": true},
 }
+## A zónák urainak különleges csapásai (lásd game.gd: boss_turn). A jelzett csapásokból (gőz, penge,
+## gyökér) a hős védelmének harmada levonódik; a sav, a vérszívás és a gyógyulás körönkénti, teljes érték.
+##  worm: gőzsugár, savtócsa · karel: szikék, vérszívás (a doktor a dupláját gyógyul) ·
+##  symbiote: gyökerek, 2. fázisbeli gyógyulás körönként · weaver: a három csapás, és a
+##  Tükör-fázisban a hős támadásának / varázserejének ekkora részével üt ("tukor")
+const BOSS_CSAPAS := {
+	"worm": {"goz": 46, "sav": 12},
+	"karel": {"penge": 60, "szivas": 28},
+	"symbiote": {"gyoker": 105, "gyogyul": 40},
+	"weaver": {"goz": 125, "penge": 125, "gyoker": 115, "tukor": 0.75},
+}
+
+
+static func boss_csapas(sp: String, mi: String) -> float:
+	return float((BOSS_CSAPAS.get(sp, {}) as Dictionary).get(mi, 0))
 const BOSS_LVL := {1: "rust_worm", 2: "dr_karel", 3: "symbiote", 4: "weaver"}
 const POOL := {
 	1: ["rat", "rat", "goblin", "skeleton", "leech", "leech"],
@@ -160,6 +227,21 @@ const RARE_POOL := {1: ["spider", "orc"], 2: ["golem", "spider"], 3: ["vampire",
 ## Minden példány kicsit más: méret (szorzó) és árnyalat (a színekre szorzott tónus) a szörny magjából.
 const VAR_MERET := [0.90, 0.97, 1.04, 1.12]
 const VAR_TONUS := [Color(1, 1, 1), Color(1.0, 0.90, 0.78), Color(0.84, 0.94, 1.0), Color(0.86, 1.0, 0.80), Color(1.0, 0.84, 0.86)]
+## Szörnyhangok fajtánként (audio.gd): "gep" kattogás / szervó, "hus" nedves cuppanás / hörgés,
+## "lebego" zümmögés, "kuszo" surrogás. Csak a LÁTHATÓ, közeli, éppen mozduló szörny szól,
+## távolsággal halkulva, és körönként legfeljebb SZORNYHANG_MAX darab (ne legyen hangzavar).
+const MON_HANG := {
+	"goblin": "hus", "orc": "hus", "troll": "hus", "vampire": "hus", "demon": "hus", "witch": "hus", "assassin": "hus",
+	"skeleton": "gep", "golem": "gep", "nurse": "gep", "sentinel": "gep", "dr_karel": "gep", "weaver": "gep",
+	"scalpel": "lebego", "drone": "lebego", "spore": "lebego",
+	"rat": "kuszo", "spider": "kuszo", "leech": "kuszo", "bloom": "kuszo", "rust_worm": "kuszo", "symbiote": "kuszo",
+}
+const SZORNYHANG_MAX := 2
+const SZORNYHANG_TAV := 7        # ennél távolabbi szörny már nem hallatszik
+const SZORNYHANG_ESELY := 0.55   # egy mozduló szörny ekkora eséllyel ad hangot (ritkítás)
+## a hős lépése halk: ennyi a hangereje a többi hanghoz képest
+const LEPES_HANGERO := 0.55
+
 ## Fertőzött (elit) szörny: erősebb, zölden izzik, és rézötvözetet ejt.
 const ELITE_CHANCE := 0.11
 const ELITE_HP := 1.6
@@ -181,6 +263,9 @@ const CLASSES := {
 ## a feloldható hősök (a CLASS_ORDER a három alap; a hősválasztó a feloldottakat is mutatja)
 const EXTRA_CLASSES := ["Sebész"]
 const MELEE_MULT := {"Lovag": 1.35, "Íjász": 0.7, "Mágus": 0.6, "Sebész": 1.1}
+## a Véd tekercs a lovagnak ennyivel többet ad (a 4 pályás játékban 2 volt; a hosszú kalandban a sok
+## tekercs a lovagot a többi kaszthoz képest sebezhetetlenné tette)
+const LOVAG_VED_TEKERCS := 1
 const ORGAN_MAX := 3
 const ORGAN_CHANCE := 0.3
 const BLEED_MAX := 6
@@ -194,8 +279,49 @@ const ROOM_KINDS := {
 	"kereskedo": {"col": "#60d080", "icon": "◉"},
 	"csapda": {"col": "#e05050", "icon": "⚠"},
 	"esemeny": {"col": "#ffd870", "icon": "?"},
+	"rejtveny": {"col": "#b890ff", "icon": "◈"},
 }
 const ROOM_KIND_ORDER := ["kincstar", "szentely", "kereskedo", "csapda", "esemeny"]
+## a térkép színezéséhez: a minden emeleten meglévő termek + a csak néha megjelenő rejtvényszoba
+const ROOM_KIND_ALL := ["kincstar", "szentely", "kereskedo", "csapda", "esemeny", "rejtveny"]
+
+## Egy hétköznapi szobában ekkora eséllyel áll láda (a kincstár, a csapdaterem és a titkos
+## kamrák ládái ezen felül vannak).
+const LADA_ESELY := 0.12
+
+# ══════════ REJTVÉNYSZOBA ══════════
+## Nem minden emeleten van. Egy leláncolt páncélláda áll a közepén, körülötte jeles nyomólapok:
+## a láda fölött izzó jelek SORRENDJÉBEN kell rájuk lépni. Rossz lapra lépve a sor elölről
+## kezdődik, és a zóna csapása (előre jelezve) kitör a hős körül. A lapokra csak a hős hat.
+const REJTVENY_ESELY := 0.45
+## a lapok jelei sorban: kör, háromszög, négyzet, rombusz, kereszt (rajzolva: Sprites2.lap_jel)
+const LAP_SZINEK := ["#ff7060", "#ffd060", "#70d0ff", "#90e070", "#d090ff"]
+
+# ══════════ ZÓNÁNKÉNTI PÁLYAELEMEK ("gépek", World.gepek) ══════════
+## Minden zónának saját, működő pályaeleme van. Mind ELŐRE JELEZ (a jelzett mező egy kör múlva
+## sújt le), a szörnyekre ugyanúgy hat, mint a hősre, és mélyebb emeleten több van belőle,
+## nagyobbat sebez és szaporább.
+##  1. "zsilip": gőzzsilip a folyosón — szabályos ütemben két körre gőz zárja el (a nyomásmérő mutatja)
+##  2. "szike":  sínen ingázó szike — körönként egy mezőt halad, a következő mezője előre villog
+##  3. "gubo":   spóragubó — ha valaki mellé lép, megduzzad, a következő körben spórafelhővé pukkad
+##  4. "korong": forgó fogaskerék-padló — felizzik, megcsíp, és negyedfordulatot tesz azzal, aki rajta áll
+const GEP_ZONA := {1: "zsilip", 2: "szike", 3: "gubo", 4: "korong"}
+## emeletenként (1..4) a gőzzsilip üteme: ennyi körből az utolsó kettőben fúj a gőz
+const ZSILIP_PERIOD := [8, 8, 7, 6]
+const KORONG_PERIOD := [7, 6, 5, 5]
+const GUBO_UJRA := [14, 12, 10, 8]      # ennyi kör múlva érik be újra a kipukkadt gubó
+const FELHO_KOR := 3                    # a spórafelhő ennyi körig marad
+## a gépek sebzése: alap + emeletenként (a hősnél a védelem harmada levonódik, mint minden jelzett csapásnál)
+const GEP_DMG := {"zsilip": [7, 2], "szike": [9, 2], "gubo": [8, 3], "korong": [10, 2]}
+
+
+## Egy pályaelem sebzése a zóna adott emeletén. A jelzett csapásokhoz (gőz, szike, fogak) a pálya
+## csapás-többlete is hozzáadódik (a hős védelme addigra megnőtt); a spórafelhő körönként, a
+## védelemtől függetlenül mar, ahhoz nem.
+static func gep_dmg(tip: String, zona: int, emelet: int) -> int:
+	var d: Array = GEP_DMG.get(tip, [5, 1])
+	var alap := int(d[0]) + int(d[1]) * (emelet - 1)
+	return alap if tip == "gubo" else alap + palya_csapas(palya_sorszam(zona, emelet))
 
 # ══════════ ZÓNA-VESZÉLYEK, ESEMÉNYEK, MINI-BOSSOK ══════════
 ## Padlórácsok: szabályos időközönként kitör belőlük a zóna csapása (előtte egy körrel jeleznek).
@@ -205,7 +331,9 @@ const VENT_PERIOD := 6
 const EVENTS := ["fogoly", "verautomata", "mutoasztal"]
 ## Zónánként egy vándorló mini-boss: háromszoros életerő, saját csapás, és ereklyét hagy maga után.
 const MINI := {1: "rat", 2: "nurse", 3: "spore", 4: "demon"}
-const MINI_HP := 3.2
+const MINI_HP := 2.6
+## ...és ennyi életerő jár még hozzá (a pálya szorzója előtt)
+const MINI_HP_PLUSZ := 8
 const MINI_ATK := 1.35
 ## a kincstár őre: erős, aranyban gazdag szörny
 const GUARD_POOL := {1: ["orc", "skeleton"], 2: ["orc", "golem"], 3: ["troll", "golem"], 4: ["golem", "demon"]}
@@ -250,7 +378,10 @@ const SKILL_COL := {"Lovag": "#ffd060", "Mágus": "#8cc4ff", "Íjász": "#a0e070
 
 # ══════════ VESZÉLYZÓNÁK (a főellenségek előre jelzett támadásai) ══════════
 ## "warn": a mező egy kör múlva robban (ki lehet lépni belőle); "acid": tócsa, amíg el nem párolog.
-const HAZ_COL := {"steam": "#ffe0b0", "blade": "#ffffff", "root": "#70d060", "acid": "#b0e030"}
+## "spora": a spóragubó felhője (mérgez); "gear": a forgó fogaskerék-padló fogai.
+const HAZ_COL := {"steam": "#ffe0b0", "blade": "#ffffff", "root": "#70d060", "acid": "#b0e030", "spora": "#c8e060", "gear": "#ffc050"}
+## akiket a spórafelhő nem bánt (maguk is gombák)
+const SPORA_IMMUNIS := ["spore", "bloom", "symbiote"]
 ## a kereskedő árai ritkaság szerint (10–60 arany között marad)
 const SHOP_PRICE := {"common": 14, "rare": 24, "epic": 38, "legendary": 56}
 

@@ -114,7 +114,7 @@ func stat_lines(cls: String, mag := 0) -> Array[String]:
 		if mage: s.append(Lang.T("st.mag_perm", atk_up * 2))
 		else: s.append(Lang.T("st.atk_perm", atk_up))
 	if def_up > 0:
-		s.append(Lang.T("st.def_perm", def_up + (2 if cls == "Lovag" else 0)))
+		s.append(Lang.T("st.def_perm", def_up + (Data.LOVAG_VED_TEKERCS if cls == "Lovag" else 0)))
 	if damage > 0:
 		if mage: s.append(Lang.T("st.fire_mage", damage, mag))
 		else: s.append(Lang.T("st.fire", damage))
@@ -134,6 +134,6 @@ func short_stats(cls: String, mag := 0) -> String:
 	if heal > 0: s.append("+%d♥" % heal)
 	if max_hp_up > 0: s.append(Lang.T("sh.maxhp", max_hp_up))
 	if atk_up > 0: s.append(Lang.T("sh.mag_perm", atk_up * 2) if mage else Lang.T("sh.atk_perm", atk_up))
-	if def_up > 0: s.append(Lang.T("sh.def_perm", def_up + (2 if cls == "Lovag" else 0)))
+	if def_up > 0: s.append(Lang.T("sh.def_perm", def_up + (Data.LOVAG_VED_TEKERCS if cls == "Lovag" else 0)))
 	if damage > 0: s.append(("✳%d+%d" % [damage, mag]) if mage else ("✳%d" % damage))
 	return "  ·  ".join(s)

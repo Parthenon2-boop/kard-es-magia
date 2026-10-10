@@ -28,6 +28,10 @@ var _ghost_idx := 0
 var mood := "game"
 var _cine_idx := 0
 var _boss_idx := 0
+## saját véletlenforrás: a hangok változatai nem nyúlnak a játék közös véletlenjéhez
+var _rng := RandomNumberGenerator.new()
+## ezek a hangok enyhén változó hangmagassággal szólnak
+const VALTOZO := ["step", "step1", "step2", "step3", "step4", "gep", "hus", "lebego", "kuszo"]
 
 ## a képsorok zenéje: lassú, szomorú akkordbontás (a-moll – F-dúr – C-dúr – G-dúr), 220 Hz-hez mérve
 const CINE_ARP := [220.0, 261.63, 329.63, 440.0, 329.63, 261.63, 174.61, 220.0, 261.63, 349.23, 261.63, 220.0,
@@ -91,14 +95,20 @@ func set_mood(m: String) -> void:
 		tw.tween_property(_loop_player, "volume_db", linear_to_db(MASTER * (0.55 if m == "cine" else 1.0)), 1.2)
 
 
-func play(n: String) -> void:
-	if muted or not _sfx.has(n):
+## `vol`: 0..1 hangerő-szorzó (a távoli szörny halkabb). Némítva, ismeretlen névnél vagy
+## lejátszók nélkül (pl. fej nélküli futásban, ha a setup() nem futott) nem történik semmi.
+func play(n: String, vol: float = 1.0) -> void:
+	if muted or not _sfx.has(n) or _players.is_empty() or vol <= 0.0:
 		return
 	var arr: Array = _sfx[n]
 	var p := _players[_pi]
 	_pi = (_pi + 1) % _players.size()
-	p.stream = arr[randi() % arr.size()]
-	p.play()
+	p.stream = arr[_rng.randi() % arr.size()]
+	p.volume_db = linear_to_db(MASTER * clampf(vol, 0.0, 1.0))
+	# a lépések és a szörnyhangok minden alkalommal kicsit máshogy szólnak
+	p.pitch_scale = (0.94 + _rng.randf() * 0.12) if n in VALTOZO else 1.0
+	if p.is_inside_tree():
+		p.play()
 
 
 # ══════════ ALAPOK ══════════
@@ -197,6 +207,204 @@ func _build_sfx() -> void:
 	_sfx["roar"] = [_roar()]
 	_sfx["warn"] = [_arp([740, 554], 0.09, 0.10, 0.16, "triangle")]
 	_sfx["note"] = [_arp([659, 880, 1175], 0.07, 0.09, 0.5, "sine")]
+	# lépések zónánként más talajon: kazánlemez, márvány, puha hús, fémrács
+	for z in range(1, 5):
+		_sfx["step%d" % z] = [_lepes(z), _lepes(z), _lepes(z)]
+	# szörnyhangok fajtánként (lásd Data.MON_HANG): gépi, húsos, lebegő, kúszó
+	_sfx["gep"] = [_gep_hang(), _gep_hang(), _gep_hang()]
+	_sfx["hus"] = [_hus_hang(), _hus_hang(), _hus_hang()]
+	_sfx["lebego"] = [_lebego_hang(), _lebego_hang(), _lebego_hang()]
+	_sfx["kuszo"] = [_kuszo_hang(), _kuszo_hang(), _kuszo_hang()]
+	_sfx["eszlel"] = [_eszlel()]
+	_sfx["fazis"] = [_fazis()]
+	# pályaelemek: nyomólap, forgó fogaskerék-padló, kipukkadó spóragubó
+	_sfx["plate"] = [_lap_hang()]
+	_sfx["gear"] = [_fogaskerek()]
+	_sfx["gubo"] = [_pukkanas()]
+
+
+# ── lépések ──
+## A hős lépése: halk, rövid koppanás; a talaj a zónától függ.
+##  1 kazánlemez (tompa döngés + fémes csengés) · 2 márvány (éles koppanás)
+##  3 puha, szerves padló (cuppanó tompa lépés) · 4 fémrács (zörgő, magas csengés)
+func _lepes(zona: int) -> AudioStreamWAV:
+	var b := _buf(0.13)
+	var r := randf()
+	match zona:
+		1:
+			var lp := Biquad.new("lowpass", 240 + r * 80, 1.2, SR)
+			var f1 := 410.0 + r * 60.0
+			for i in b.size():
+				var t := float(i) / SR
+				b[i] = lp.process(randf() * 2 - 1) * xr(t, 0, 0.06, 0.22, 0.001) \
+					+ (sin(TAU * f1 * t) * 0.030 + sin(TAU * f1 * 2.76 * t) * 0.016) * xr(t, 0, 0.12, 1.0, 0.01)
+		2:
+			var hp := Biquad.new("highpass", 1500 + r * 500, 0.9, SR)
+			for i in b.size():
+				var t := float(i) / SR
+				b[i] = hp.process(randf() * 2 - 1) * xr(t, 0, 0.022, 0.16, 0.001) \
+					+ sin(TAU * xr(t, 0, 0.05, 190, 95) * t) * xr(t, 0, 0.06, 0.10, 0.001)
+		3:
+			var lp2 := Biquad.new("lowpass", 330 + r * 100, 0.8, SR)
+			for i in b.size():
+				var t := float(i) / SR
+				var g := lr(t, 0, 0.02, 0.0, 0.20) if t < 0.02 else xr(t, 0.02, 0.12, 0.20, 0.001)
+				b[i] = lp2.process(randf() * 2 - 1) * g + sin(TAU * xr(t, 0, 0.09, 170, 80) * t) * g * 0.35
+		_:
+			var bp := Biquad.new("bandpass", 2100 + r * 500, 4.0, SR)
+			var f2 := 880.0 + r * 120.0
+			for i in b.size():
+				var t := float(i) / SR
+				# két gyors koppanás: a rács megzörren a talp alatt
+				var kop := xr(t, 0, 0.025, 1.0, 0.01) + (xr(t, 0.04, 0.07, 0.6, 0.01) if t >= 0.04 else 0.0)
+				b[i] = bp.process(randf() * 2 - 1) * kop * 0.30 \
+					+ (sin(TAU * f2 * t) * 0.022 + sin(TAU * f2 * 1.93 * t) * 0.014) * xr(t, 0, 0.12, 1.0, 0.01)
+	return to_wav(b, SR)
+
+
+# ── szörnyhangok ──
+## gépi lény: rövid szervó-búgás és néhány kattanás
+func _gep_hang() -> AudioStreamWAV:
+	var b := _buf(0.32)
+	var bp := Biquad.new("bandpass", 900, 2.0, SR)
+	var ph := 0.0
+	var f0 := 150.0 + randf() * 70.0
+	var katt: Array[float] = [0.02 + randf() * 0.03, 0.14 + randf() * 0.04, 0.24 + randf() * 0.04]
+	for i in b.size():
+		var t := float(i) / SR
+		var fr := f0 * (1.0 + 0.5 * sin(PI * minf(1.0, t / 0.22)))
+		ph = fmod(ph + fr / SR, 1.0)
+		var v := bp.process(1.0 if ph < 0.5 else -1.0) * (lr(t, 0, 0.03, 0.0, 0.10) if t < 0.03 else xr(t, 0.03, 0.26, 0.10, 0.001))
+		for k in katt:
+			if t >= k and t < k + 0.012:
+				v += (randf() * 2 - 1) * xr(t - k, 0, 0.012, 0.22, 0.01)
+		b[i] = v
+	return to_wav(b, SR)
+
+
+## húsos lény: nedves cuppanás és mély hörgés
+func _hus_hang() -> AudioStreamWAV:
+	var b := _buf(0.38)
+	var bp := Biquad.new("bandpass", 600, 2.5, SR)
+	var lp := Biquad.new("lowpass", 380, 1.0, SR)
+	var ph := 0.0
+	var f0 := 58.0 + randf() * 26.0
+	var lfo := 19.0 + randf() * 9.0
+	for i in b.size():
+		var t := float(i) / SR
+		if i % 16 == 0:
+			bp.set_freq(xr(t, 0, 0.16, 700, 220))
+		# cuppanás: szűrt zaj, amely lefelé csúszik
+		var cupp := bp.process(randf() * 2 - 1) * (lr(t, 0, 0.015, 0.0, 0.30) if t < 0.015 else xr(t, 0.015, 0.16, 0.30, 0.001))
+		# hörgés: remegő mély fűrészhang
+		ph = fmod(ph + (f0 + sin(TAU * lfo * t) * f0 * 0.35) / SR, 1.0)
+		var g := 0.0 if t < 0.06 else (lr(t, 0.06, 0.12, 0.0, 0.16) if t < 0.12 else xr(t, 0.12, 0.36, 0.16, 0.001))
+		b[i] = cupp + lp.process(2.0 * (ph - floorf(ph + 0.5))) * g
+	return to_wav(b, SR)
+
+
+## lebegő lény: szárnyzúgás-szerű zümmögés
+func _lebego_hang() -> AudioStreamWAV:
+	var b := _buf(0.42)
+	var bp := Biquad.new("bandpass", 700 + randf() * 300, 1.6, SR)
+	var ph := 0.0
+	var f0 := 135.0 + randf() * 60.0
+	var szarny := 31.0 + randf() * 12.0
+	for i in b.size():
+		var t := float(i) / SR
+		ph = fmod(ph + (f0 + sin(TAU * 5.0 * t) * 9.0) / SR, 1.0)
+		var saw := 2.0 * (ph - floorf(ph + 0.5))
+		var g := lr(t, 0, 0.10, 0.0, 0.13) if t < 0.10 else lr(t, 0.10, 0.40, 0.13, 0.0)
+		b[i] = bp.process(saw) * g * (0.55 + 0.45 * sin(TAU * szarny * t))
+	return to_wav(b, SR)
+
+
+## kúszó lény: apró lábak / pikkelyek surrogása
+func _kuszo_hang() -> AudioStreamWAV:
+	var b := _buf(0.34)
+	var hp := Biquad.new("highpass", 2600 + randf() * 900, 0.9, SR)
+	var lep := 0.036 + randf() * 0.016
+	for i in b.size():
+		var t := float(i) / SR
+		# sűrű, apró zajlöketek sora + halk, folyamatos sistergés
+		var k := fmod(t, lep)
+		var tik := xr(k, 0, 0.012, 1.0, 0.02) if k < 0.012 else 0.0
+		var g := lr(t, 0, 0.03, 0.0, 1.0) if t < 0.03 else lr(t, 0.03, 0.33, 1.0, 0.0)
+		b[i] = hp.process(randf() * 2 - 1) * (tik * 0.26 + 0.04) * g
+	return to_wav(b, SR)
+
+
+## "felfigyelt rád": két gyors, felfelé ugró hang (a szörny először veszi észre a hőst)
+func _eszlel() -> AudioStreamWAV:
+	var b := _buf(0.26)
+	var ph := 0.0
+	for i in b.size():
+		var t := float(i) / SR
+		var masodik := t >= 0.09
+		var tt := t - 0.09 if masodik else t
+		var fr := xr(tt, 0, 0.07, 620.0 if masodik else 440.0, 930.0 if masodik else 620.0)
+		ph = fmod(ph + fr / SR, 1.0)
+		var g := lr(tt, 0, 0.008, 0.0, 0.12) if tt < 0.008 else xr(tt, 0.008, 0.15 if masodik else 0.08, 0.12, 0.001)
+		b[i] = (4.0 * absf(ph - 0.5) - 1.0) * g
+	return to_wav(b, SR)
+
+
+## főellenség fázisváltása: lecsúszó, remegő fémes sziréna + mély dobbanás
+func _fazis() -> AudioStreamWAV:
+	var b := _buf(1.0)
+	var lp := Biquad.new("lowpass", 1400, 1.2, SR)
+	var ph := 0.0
+	var ph2 := 0.0
+	for i in b.size():
+		var t := float(i) / SR
+		var fr := xr(t, 0, 0.8, 330, 82)
+		ph = fmod(ph + fr / SR, 1.0)
+		ph2 = fmod(ph2 + fr * 1.498 / SR, 1.0)
+		var saw := 2.0 * (ph - floorf(ph + 0.5)) + 1.4 * (ph2 - floorf(ph2 + 0.5))
+		var g := lr(t, 0, 0.04, 0.0, 0.20) if t < 0.04 else xr(t, 0.04, 0.95, 0.20, 0.001)
+		var dob := sin(TAU * xr(t, 0, 0.25, 110, 40) * t) * xr(t, 0, 0.35, 0.40, 0.001)
+		b[i] = lp.process(saw) * g * (0.6 + 0.4 * sin(TAU * 13.0 * t)) + dob
+	return to_wav(b, SR)
+
+
+# ── pályaelemek ──
+## nyomólap: kő a kövön — koppanás, alatta mély kattanás
+func _lap_hang() -> AudioStreamWAV:
+	var b := _buf(0.22)
+	var hp := Biquad.new("highpass", 1200, 0.9, SR)
+	for i in b.size():
+		var t := float(i) / SR
+		b[i] = hp.process(randf() * 2 - 1) * xr(t, 0, 0.03, 0.22, 0.001) \
+			+ sin(TAU * xr(t, 0, 0.12, 150, 70) * t) * xr(t, 0, 0.2, 0.28, 0.001) \
+			+ sin(TAU * 660.0 * t) * xr(t, 0, 0.18, 0.05, 0.001)
+	return to_wav(b, SR)
+
+
+## forgó fogaskerék-padló: kilenc kattanás (a fogak) mély morajlás fölött
+func _fogaskerek() -> AudioStreamWAV:
+	var b := _buf(0.6)
+	var lp := Biquad.new("lowpass", 160, 1.0, SR)
+	var bp := Biquad.new("bandpass", 1500, 5.0, SR)
+	for i in b.size():
+		var t := float(i) / SR
+		var k := fmod(t, 0.055)
+		var tik := xr(k, 0, 0.014, 1.0, 0.02) if (k < 0.014 and t < 0.5) else 0.0
+		var nz := randf() * 2 - 1
+		b[i] = bp.process(nz) * tik * 0.5 + lp.process(nz) * (lr(t, 0, 0.1, 0.0, 0.7) if t < 0.1 else xr(t, 0.1, 0.58, 0.7, 0.001))
+	return to_wav(b, SR)
+
+
+## spóragubó: tompa pukkanás, utána szálló spórák sziszegése
+func _pukkanas() -> AudioStreamWAV:
+	var b := _buf(0.5)
+	var hp := Biquad.new("highpass", 2400, 0.8, SR)
+	var lp := Biquad.new("lowpass", 500, 1.0, SR)
+	for i in b.size():
+		var t := float(i) / SR
+		var nz := randf() * 2 - 1
+		b[i] = lp.process(nz) * xr(t, 0, 0.07, 0.8, 0.001) + sin(TAU * xr(t, 0, 0.08, 240, 60) * t) * xr(t, 0, 0.1, 0.3, 0.001) \
+			+ hp.process(nz) * (0.0 if t < 0.03 else xr(t, 0.03, 0.48, 0.12, 0.001))
+	return to_wav(b, SR)
 
 
 ## félreugrás: gyors, felfelé söprő szélhang

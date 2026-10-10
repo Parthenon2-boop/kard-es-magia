@@ -275,6 +275,13 @@ static func mark_rooms(rooms: Array[Rect2i]) -> Array[String]:
 			break
 		kinds[cand[k]] = kind
 		k += 1
+	# rejtvényszoba: nem minden emeleten van, és tágas (legalább 5×5-ös) terem kell hozzá
+	if randf() < Data.REJTVENY_ESELY:
+		for j in range(k, cand.size()):
+			var rr := rooms[cand[j]]
+			if rr.size.x >= 5 and rr.size.y >= 5:
+				kinds[cand[j]] = "rejtveny"
+				break
 	return kinds
 
 
@@ -288,8 +295,8 @@ static func spawn_mons(rooms: Array[Rect2i], level: int, diff: String, kinds: Ar
 	for i in range(1, rooms.size() - 1):
 		var r := rooms[i]
 		var kind: String = kinds[i] if i < kinds.size() else ""
-		if kind == "kereskedo" or kind == "szentely" or kind == "esemeny":
-			continue   # a kereskedő és a szentély terme békés
+		if kind == "kereskedo" or kind == "szentely" or kind == "esemeny" or kind == "rejtveny":
+			continue   # a kereskedő, a szentély és a rejtvényszoba terme békés
 		var cnt := Data.rnd(1, 2 + int(level / 2))
 		for j in cnt:
 			var q := _inner(r)
@@ -331,9 +338,9 @@ static func spawn_chests(rooms: Array[Rect2i], lvl: int, kinds: Array[String] = 
 			bonus = 1        # a kincstárban értékesebb a zsákmány
 		elif kind == "csapda":
 			n = 1            # a csapdateremben egy láda garantált
-		elif kind == "kereskedo" or kind == "szentely" or kind == "esemeny":
+		elif kind == "kereskedo" or kind == "szentely" or kind == "esemeny" or kind == "rejtveny":
 			n = 0
-		elif randf() < 0.42:
+		elif randf() < Data.LADA_ESELY:
 			n = 1
 		for j in n:
 			var q := _inner(r)
@@ -446,6 +453,210 @@ static func spawn_vents(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Arr
 	return out
 
 
+# ══════════ REJTVÉNYSZOBA ══════════
+## A rejtvényszoba közepére egy leláncolt páncélláda kerül, köré jeles nyomólapok. A láda
+## körül mind a nyolc mező szabad padló, ezért semmit nem zárhat el (a „sose lehessen
+## bezáródni” biztosíték sértetlen); a lapok járható mezők. Visszaadja a lapokat:
+## {x, y, jel (a rajta lévő jel sorszáma), sor (hányadikként kell rálépni), le (lenyomva)}.
+static func spawn_rejtveny(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Array[String], level: int, emelet: int, chests: Array, used: Dictionary) -> Array:
+	var out: Array = []
+	for i in kinds.size():
+		if kinds[i] != "rejtveny" or not out.is_empty():
+			continue
+		var r := rooms[i]
+		var c := center(r)
+		var jo := true
+		for ax in range(c.x - 1, c.x + 2):
+			for ay in range(c.y - 1, c.y + 2):
+				var k := idx(ax, ay)
+				if tiles[k] != Data.FLOOR or used.has(k):
+					jo = false
+		if not jo:
+			continue
+		# mélyebben hosszabb a sor: 3 lap, a zóna 3. emeletétől és a 3. zónától eggyel-eggyel több
+		var n := 3 + (1 if emelet >= 3 else 0) + (1 if level >= 3 else 0)
+		var helyek: Array[Vector2i] = []
+		for tries in 300:
+			if helyek.size() >= n:
+				break
+			var q := Vector2i(Data.rnd(r.position.x, r.position.x + r.size.x - 1), Data.rnd(r.position.y, r.position.y + r.size.y - 1))
+			var k := idx(q.x, q.y)
+			if tiles[k] != Data.FLOOR or used.has(k) or (absi(q.x - c.x) <= 1 and absi(q.y - c.y) <= 1):
+				continue
+			used[k] = true
+			helyek.append(q)
+		if helyek.size() < 3:
+			continue
+		var sorrend: Array = range(helyek.size())
+		sorrend.shuffle()
+		for j in helyek.size():
+			out.append({"x": helyek[j].x, "y": helyek[j].y, "jel": j, "sor": int(sorrend[j]), "le": false})
+		used[idx(c.x, c.y)] = true
+		chests.append({"x": c.x, "y": c.y, "opened": false, "zart": true, "items": [_jutalom(level), _jutalom(level)]})
+	return out
+
+
+## a rejtvény jutalma: legalább ritka tárgy, a zónánál eggyel jobb szinten
+static func _jutalom(lvl: int) -> Item:
+	var rk := Item.roll_rarity(lvl + 2)
+	if rk == "common":
+		rk = "rare"
+	return Item.make(Data.pick(Data.ITEM_BASES), rk, lvl + 1)
+
+
+# ══════════ ZÓNÁNKÉNTI PÁLYAELEMEK (gépek) ══════════
+## A zóna saját, működő pályaeleme (lásd Data.GEP_ZONA). Egy elem: {tip, x, y, dx, dy, n, ph, p, t, all}.
+## Egyik sem tesz falat sehová és egyik sem áll meg egy mezőn örökre: az út mindig szabaddá válik.
+## Mélyebb emeleten több van belőlük, szaporábbak és veszélyesebbek. A kezdőszobába, a lejárat
+## termébe és a különleges termekbe nem kerül.
+static func spawn_gepek(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Array[String], level: int, emelet: int, used: Dictionary) -> Array:
+	var out: Array = []
+	var em := clampi(emelet, 1, 4)
+	match str(Data.GEP_ZONA.get(level, "")):
+		"zsilip": _zsilipek(tiles, rooms, em, used, out)
+		"szike": _szikek(tiles, rooms, kinds, em, used, out)
+		"gubo": _gubok(tiles, rooms, kinds, em, used, out)
+		"korong": _korongok(tiles, rooms, kinds, em, used, out)
+	return out
+
+
+static func _gep(tip: String, x: int, y: int) -> Dictionary:
+	return {"tip": tip, "x": x, "y": y, "dx": 0, "dy": 0, "n": 0, "ph": 0, "p": 0, "t": 0, "all": 0}
+
+
+static func _kozonseges(rooms: Array[Rect2i], kinds: Array[String], i: int, min_w: int, min_h: int) -> bool:
+	return (kinds[i] if i < kinds.size() else "") == "" and rooms[i].size.x >= min_w and rooms[i].size.y >= min_h
+
+
+## 1. zóna — gőzzsilip: egyenes, egy mező széles folyosószakasz (két oldalán fal), amelyet
+## szabályos ütemben két körre gőz zár el. `n` mező hosszú; a nyomásmérő mutatja, mikor fúj.
+static func _zsilipek(tiles: PackedByteArray, rooms: Array[Rect2i], em: int, used: Dictionary, out: Array) -> void:
+	var szoba := PackedByteArray()
+	szoba.resize(W * H)
+	for r in rooms:
+		var g := r.grow(1)   # a szoba ajtaja előtti mező se legyen zsilip (ott állva lehessen kivárni)
+		for x in range(maxi(0, g.position.x), mini(W, g.position.x + g.size.x)):
+			for y in range(maxi(0, g.position.y), mini(H, g.position.y + g.size.y)):
+				szoba[idx(x, y)] = 1
+	var n := 2 if em == 1 else 3
+	var jeloltek: Array = []
+	for x in range(2, W - 2 - n):
+		for y in range(2, H - 2 - n):
+			for d: Vector2i in [Vector2i(1, 0), Vector2i(0, 1)]:
+				var jo := true
+				for i in range(-1, n + 1):
+					var tx := x + d.x * i
+					var ty := y + d.y * i
+					var k := idx(tx, ty)
+					# a szakasz és a két vége is folyosó: padló, két oldalán fal
+					if tiles[k] != Data.FLOOR or szoba[k] == 1 or used.has(k) \
+							or tiles[idx(tx + d.y, ty + d.x)] == Data.FLOOR or tiles[idx(tx - d.y, ty - d.x)] == Data.FLOOR:
+						jo = false
+						break
+				if jo:
+					jeloltek.append([x, y, d])
+	jeloltek.shuffle()
+	var db := 1 + em
+	for j in jeloltek:
+		if db <= 0:
+			break
+		var d: Vector2i = j[2]
+		var tul_kozel := false
+		for masik in out:
+			if absi(int(masik["x"]) - int(j[0])) + absi(int(masik["y"]) - int(j[1])) < 8:
+				tul_kozel = true
+		if tul_kozel:
+			continue
+		var g := _gep("zsilip", j[0], j[1])
+		g["dx"] = d.x
+		g["dy"] = d.y
+		g["n"] = n
+		g["p"] = int(Data.ZSILIP_PERIOD[em - 1])
+		g["ph"] = Data.rnd(0, int(g["p"]) - 1)
+		for i in n:
+			used[idx(int(j[0]) + d.x * i, int(j[1]) + d.y * i)] = true
+		out.append(g)
+		db -= 1
+
+
+## 2. zóna — sínen ingázó szike: egy terem belsejében, egyenes sínen jár oda-vissza, körönként
+## egy mezőt. A 3. emelettől két szike jár ugyanazon a sínen, ellentétes ütemben.
+static func _szikek(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Array[String], em: int, used: Dictionary, out: Array) -> void:
+	var sinek := 0
+	for i in range(2, rooms.size() - 1):
+		if not _kozonseges(rooms, kinds, i, 5, 4) or randf() > 0.20 + 0.07 * em or sinek >= 3 + em * 2:
+			continue
+		var r := rooms[i]
+		var vizsz := r.size.x >= r.size.y
+		var hossz := (r.size.x if vizsz else r.size.y) - 2
+		var n := mini(hossz, Data.rnd(4, 7))
+		if n < 3:
+			continue
+		var x0 := Data.rnd(r.position.x + 1, r.position.x + r.size.x - 1 - n) if vizsz else Data.rnd(r.position.x + 1, r.position.x + r.size.x - 2)
+		var y0 := Data.rnd(r.position.y + 1, r.position.y + r.size.y - 2) if vizsz else Data.rnd(r.position.y + 1, r.position.y + r.size.y - 1 - n)
+		var d := Vector2i(1, 0) if vizsz else Vector2i(0, 1)
+		var jo := true
+		for k in n:
+			var ti := idx(x0 + d.x * k, y0 + d.y * k)
+			if tiles[ti] != Data.FLOOR or used.has(ti):
+				jo = false
+		if not jo:
+			continue
+		for k in n:
+			used[idx(x0 + d.x * k, y0 + d.y * k)] = true
+		var ph := Data.rnd(0, 2 * (n - 1) - 1)
+		for b in (2 if em >= 3 else 1):
+			var g := _gep("szike", x0, y0)
+			g["dx"] = d.x
+			g["dy"] = d.y
+			g["n"] = n
+			g["ph"] = ph + b * (n - 1)
+			out.append(g)
+		sinek += 1
+
+
+## 3. zóna — spóragubó: a terem belsejében ül; ha valaki mellé lép, megduzzad, aztán kipukkad.
+## A 3. emelettől a felhője nagyobb (n = 2: a négy égtáj felé egy mezővel tovább ér).
+static func _gubok(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Array[String], em: int, used: Dictionary, out: Array) -> void:
+	for i in range(2, rooms.size() - 1):
+		if not _kozonseges(rooms, kinds, i, 5, 4) or randf() > 0.14 + 0.04 * em:
+			continue
+		for j in Data.rnd(1, 2 if em >= 3 else 1):
+			var q := _free_spot(tiles, rooms[i], used)
+			if q.x < 0:
+				continue
+			used[idx(q.x, q.y)] = true
+			var g := _gep("gubo", q.x, q.y)
+			g["n"] = 2 if em >= 3 else 1
+			out.append(g)
+
+
+## 4. zóna — forgó fogaskerék-padló: 3×3-as korong egy tágas terem belsejében (körülötte
+## mindig marad egy mező széles kerülőút). (x, y) a közepe.
+static func _korongok(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Array[String], em: int, used: Dictionary, out: Array) -> void:
+	for i in range(2, rooms.size() - 1):
+		if not _kozonseges(rooms, kinds, i, 5, 5) or randf() > 0.30 + 0.07 * em:
+			continue
+		var r := rooms[i]
+		var cx := Data.rnd(r.position.x + 2, r.position.x + r.size.x - 3)
+		var cy := Data.rnd(r.position.y + 2, r.position.y + r.size.y - 3)
+		var jo := true
+		for ax in range(cx - 1, cx + 2):
+			for ay in range(cy - 1, cy + 2):
+				var k := idx(ax, ay)
+				if tiles[k] != Data.FLOOR or used.has(k):
+					jo = false
+		if not jo:
+			continue
+		for ax in range(cx - 1, cx + 2):
+			for ay in range(cy - 1, cy + 2):
+				used[idx(ax, ay)] = true
+		var g := _gep("korong", cx, cy)
+		g["p"] = int(Data.KORONG_PERIOD[em - 1])
+		g["ph"] = Data.rnd(0, int(g["p"]) - 1)
+		out.append(g)
+
+
 # ══════════ CSAPDÁK ══════════
 ## Csapda csak szoba belsejébe kerül (folyosóra soha), így sosem áll az EGYETLEN út közepén:
 ## a szobán belül mindig ki lehet kerülni. A kezdőszoba csapdamentes.
@@ -457,7 +668,7 @@ static func spawn_traps(tiles: PackedByteArray, rooms: Array[Rect2i], kinds: Arr
 		var n := 0
 		if kind == "csapda":
 			n = Data.rnd(4, 7)
-		elif kind == "szentely" or kind == "kereskedo" or kind == "esemeny":
+		elif kind == "szentely" or kind == "kereskedo" or kind == "esemeny" or kind == "rejtveny":
 			n = 0
 		elif randf() < 0.34:
 			n = Data.rnd(1, 1 + int(level / 2))
