@@ -27,6 +27,7 @@ var msgs: Array = []    # {t, c} — t: fordítási hivatkozás (Lang.ref), a ki
 var msg_seq := 0        # hányadik üzenet (a HUD ebből tudja, hogy változott a lista)
 var poison := 0
 var lunge := 0.0
+var rf := 1.0           # a kirajzolt irány (megforduláskor -1 és 1 között siklik át)
 var lunge_dx := 0
 var lunge_dy := 0
 var on_level_up: Callable = Callable()

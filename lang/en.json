@@ -684,5 +684,10 @@
 	"set.tempo.d": "While you stand still, enemies step this often on their own.",
 	"set.tempo.0": "Slow",
 	"set.tempo.1": "Medium",
-	"set.tempo.2": "Fast"
+	"set.tempo.2": "Fast",
+
+	"hud.emelet": "floor {0}/{1}",
+	"msg.emelet": "▼ You descend: floor {0}/{1}.",
+	"banner.emelet": "Deeper floor",
+	"banner.emelet.ur": "The last floor — the zone's master waits here"
 }

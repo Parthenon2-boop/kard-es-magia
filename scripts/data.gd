@@ -7,6 +7,22 @@ const MAP_W := 80
 const MAP_H := 60
 const FOV_R := 8
 const MAX_LEVEL := 4
+## Zónánként ennyi emelet van (összesen 15 pálya); a zóna ura mindig a zóna utolsó emeletén vár.
+const EMELET_DB := {1: 4, 2: 4, 3: 4, 4: 3}
+## Mélyebb emeleten a szörnyek szívósabbak és nagyobbat ütnek (emeletenként ennyivel).
+const EMELET_HP := 0.10
+const EMELET_ATK := 0.06
+
+
+static func emeletek(zona: int) -> int:
+	return int(EMELET_DB.get(zona, 1))
+
+
+static func palyak() -> int:
+	var db := 0
+	for z in EMELET_DB:
+		db += int(EMELET_DB[z])
+	return db
 const TILE := 48
 const HUD_H := 112
 const WALL := 0

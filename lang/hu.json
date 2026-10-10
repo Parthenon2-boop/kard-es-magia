@@ -684,5 +684,10 @@
 	"set.tempo.d": "Ha állsz, az ellenségek ilyen sűrűn lépnek maguktól.",
 	"set.tempo.0": "Lassú",
 	"set.tempo.1": "Közepes",
-	"set.tempo.2": "Gyors"
+	"set.tempo.2": "Gyors",
+
+	"hud.emelet": "{0}/{1}. emelet",
+	"msg.emelet": "▼ Lejjebb ereszkedsz: {0}/{1}. emelet.",
+	"banner.emelet": "Mélyebb emelet",
+	"banner.emelet.ur": "Az utolsó emelet — a zóna ura itt vár"
 }

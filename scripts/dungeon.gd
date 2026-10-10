@@ -282,7 +282,7 @@ static func _inner(r: Rect2i) -> Vector2i:
 	return Vector2i(Data.rnd(r.position.x + 1, r.position.x + r.size.x - 2), Data.rnd(r.position.y + 1, r.position.y + r.size.y - 2))
 
 
-static func spawn_mons(rooms: Array[Rect2i], level: int, diff: String, kinds: Array[String] = []) -> Array[Mon]:
+static func spawn_mons(rooms: Array[Rect2i], level: int, diff: String, kinds: Array[String] = [], fonok := true) -> Array[Mon]:
 	var pool: Array = Data.POOL.get(level, ["goblin"])
 	var mons: Array[Mon] = []
 	for i in range(1, rooms.size() - 1):
@@ -310,8 +310,12 @@ static func spawn_mons(rooms: Array[Rect2i], level: int, diff: String, kinds: Ar
 			var mc := center(rooms[i])
 			mons.append(Mon.make_mini(str(Data.MINI.get(level, "rat")), mc.x, mc.y, diff))
 			break
+	# a zóna ura csak a zóna utolsó emeletén vár; a felsőbb emeleten egy őr áll a lejáratnál
 	var b := center(rooms[rooms.size() - 1])
-	mons.append(Mon.make(Data.BOSS_LVL[level], b.x, b.y, diff))
+	if fonok:
+		mons.append(Mon.make(Data.BOSS_LVL[level], b.x, b.y, diff))
+	else:
+		mons.append(Mon.make_guard(Data.pick(Data.GUARD_POOL.get(level, ["orc"])), b.x, b.y, diff))
 	return mons
 
 

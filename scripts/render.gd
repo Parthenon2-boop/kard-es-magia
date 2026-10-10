@@ -417,8 +417,9 @@ static func world_mid(m: Node, c: Cv) -> void:
 		if ma <= 0.02:
 			continue
 		# támadáskor a szörny nekilendül a hősnek
-		var sx := (mo.rx - cam.x) * T + mo.lunge * mo.lunge_dx * T * 0.34
-		var sy := (mo.ry - cam.y) * T + mo.lunge * mo.lunge_dy * T * 0.34
+		var ml := lendulet(mo.lunge)
+		var sx := (mo.rx - cam.x) * T + ml * mo.lunge_dx * T * 0.38
+		var sy := (mo.ry - cam.y) * T + ml * mo.lunge_dy * T * 0.38
 		if not _on_screen(sx, sy, W, gh, 2.0):
 			continue
 		c.ga(ma)
@@ -441,16 +442,17 @@ static func world_mid(m: Node, c: Cv) -> void:
 		var since: float = now - mo.hit_ms
 		var jolt := 0.0
 		if since >= 0.0 and since < 140.0:
-			jolt = (1.0 - since / 140.0) * 3.0 * (1.0 if int(since / 35.0) % 2 == 0 else -1.0)
+			jolt = (1.0 - since / 140.0) * 3.2 * sin(since / 140.0 * TAU * 2.0)
 		c.save()
-		if mo.facing < 0:
-			c.translate((sx + T / 2) * 2, 0)
-			c.scale(-1, 1)
+		_fordit(c, sx + T / 2, mo.rf)
+		Figura.lep = mo.rx + mo.ry
+		Figura.ido = tick + mo.seedv * 40.0
 		# minden példány kicsit más: méret és árnyalat a szörny magjából (a főellenség és a mini-boss nem)
 		var kulon := not (mo.boss or mo.mini)
 		var vm: float = Data.VAR_MERET[int(mo.seedv * 7.0) % Data.VAR_MERET.size()] if kulon else 1.0
 		var vt := (int(mo.seedv * 3.0) % Data.VAR_TONUS.size()) if kulon else 0
 		Sprites.monster_cached(c, mo.key + ("#2" if mo.boss and mo.phase == 2 else ""), sx + T / 2 + jolt, sy + T / 2, T * 0.85 * morph * (1.25 if mo.mini else vm), tick, mo.seedv, vt)
+		Figura.lep = 0.0
 		c.restore()
 		if mo.morph_ms > 0.0 and mt >= 0.0 and mt < 500.0:
 			c.tex(glow, Rect2(sx - T * 0.6, sy - T * 0.6, T * 2.2, T * 2.2), Color(1, 1, 1, 0.8 * (1.0 - mt / 500.0)))
@@ -465,25 +467,27 @@ static func world_mid(m: Node, c: Cv) -> void:
 		# életerő-csík (a főellenségé fent, külön sávon látszik)
 		if not mo.boss and (mo.hp < mo.max_hp or mo.elite or mo.guard or mo.mini):
 			var bw := T - 8
-			var hw := maxf(1.0, floorf(bw * mo.hp / mo.max_hp))
+			var hw := maxf(1.0, bw * clampf((mo.hp_r if mo.hp_r >= 0.0 else float(mo.hp)) / mo.max_hp, 0.0, 1.0))
 			c.fs("#140606"); c.fill_rect(sx + 3, sy - 5, bw + 2, 6)
 			c.fs("#70c8ff" if mo.mini else ("#90e040" if mo.elite else (Data.P["legendary"] if mo.guard else "#e03c30"))); c.fill_rect(sx + 4, sy - 4, hw, 4)
 			if mo.mini:
 				c.ftxt_fit(mo.name, sx + T / 2, sy - 9, "#a0dcff", 10, T * 3.0, "center")
 		c.ga(1.0)
 	# a hős (siklás + előrelendülés támadáskor)
-	var lox := p.lunge * p.lunge_dx * T * 0.3
-	var loy := p.lunge * p.lunge_dy * T * 0.3
+	var pl2 := lendulet(p.lunge)
+	var lox := pl2 * p.lunge_dx * T * 0.34
+	var loy := pl2 * p.lunge_dy * T * 0.34
 	var px2 := (p.rx - cam.x) * T + lox
 	var py2 := (p.ry - cam.y) * T + loy
 	var pc: Color = Cv.col(p.col)
 	pc.a = 0x40 / 255.0
 	c.tex(glow, Rect2(px2 + T * 0.5 - T * 0.9, py2 + T * 0.5 - T * 0.9, T * 1.8, T * 1.8), pc)
 	c.save()
-	if p.facing < 0:
-		c.translate((px2 + T / 2) * 2, 0)
-		c.scale(-1, 1)
+	_fordit(c, px2 + T / 2, p.rf)
+	Figura.lep = p.rx + p.ry
+	Figura.ido = tick
 	Sprites.hero_cached(c, p.cls, px2 + T / 2, py2 + T / 2, T * 0.72, tick, m.skins)
+	Figura.lep = 0.0
 	c.restore()
 	var hs: float = now - p.hurt_ms
 	if p.hurt_ms > 0.0 and hs < 180.0:
@@ -1008,7 +1012,7 @@ static func hud(m: Node, c: Cv) -> void:
 	c.ftxt("◉ %d" % p.gold, cx2, y0 + 50, P["parchGold"], 13)
 	c.ftxt("☣ %d" % p.bio, cx2 + 74, y0 + 50, "#b0e060", 13)
 	c.ftxt("⚙ %d" % p.rez, cx2 + 140, y0 + 50, "#e0a060", 13)
-	c.ftxt_fit(Lang.T("hud.zone", w.dungeon_level, Data.MAX_LEVEL, Lang.T("zone." + str(z["id"]))), cx2, y0 + 72, str(z["acc"]), 12, colw)
+	c.ftxt_fit(Lang.T("hud.zone", w.dungeon_level, Data.MAX_LEVEL, Lang.T("zone." + str(z["id"]))) + "  ·  " + Lang.T("hud.emelet", w.emelet, Data.emeletek(w.dungeon_level)), cx2, y0 + 72, str(z["acc"]), 12, colw)
 	if m.game.on_stair():
 		if m.game.can_descend():
 			var key_s: String = m.key_label(m.binds["stair"])
@@ -1027,3 +1031,21 @@ static func hud(m: Node, c: Cv) -> void:
 			c.ga(0.45 + 0.55 * (float(i + 1) / msgs.size()))
 			c.ftxt_fit(Lang.txt(msgs[i]["t"]), mx, y0 + 27 + i * 18, msgs[i]["c"], 12 if last else 11, mw)
 			c.ga(1.0)
+
+## A nekilendülés görbéje: a figura nem "odaugrik", hanem gyorsan kilendül és lágyan visszahúzódik.
+## l: 1 -> 0 (a támadás óta eltelt idő); az eredmény 0 -> 1 -> 0.
+static func lendulet(l: float) -> float:
+	if l <= 0.0:
+		return 0.0
+	var e := 1.0 - l
+	return sin(minf(1.0, e / 0.3) * PI * 0.5) if e < 0.3 else cos((e - 0.3) / 0.7 * PI * 0.5)
+
+
+## Megfordulás: a figura a függőleges tengelye körül "átfordul" (rf: -1..1), nem pattan át tükörképbe.
+static func _fordit(c: Cv, kx: float, rf: float) -> void:
+	var s := rf if absf(rf) >= 0.12 else (0.12 if rf >= 0.0 else -0.12)
+	if is_equal_approx(s, 1.0):
+		return
+	c.translate(kx, 0)
+	c.scale(s, 1)
+	c.translate(-kx, 0)

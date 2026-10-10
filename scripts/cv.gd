@@ -782,7 +782,12 @@ func tex_region(t: Texture2D, r: Rect2, src: Rect2, mod: Color = Color.WHITE) ->
 	if m.a <= 0.003:
 		return
 	flush()
-	RenderingServer.canvas_item_add_texture_rect_region(ci, r, t.get_rid(), src, m)
+	if xf != Transform2D.IDENTITY:
+		RenderingServer.canvas_item_add_set_transform(ci, xf)
+		RenderingServer.canvas_item_add_texture_rect_region(ci, r, t.get_rid(), src, m)
+		RenderingServer.canvas_item_add_set_transform(ci, Transform2D.IDENTITY)
+	else:
+		RenderingServer.canvas_item_add_texture_rect_region(ci, r, t.get_rid(), src, m)
 
 
 func tex_tiled(t: Texture2D, r: Rect2, mod: Color = Color.WHITE) -> void:

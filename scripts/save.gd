@@ -215,7 +215,7 @@ static func _write(g: Game, id: String, auto: bool) -> bool:
 		"v": VERSION,
 		"idő": Time.get_datetime_string_from_system(),
 		"info": {"nev": "", "auto": auto},
-		"jatek": {"melyseg": w.dungeon_level, "nehezseg": w.diff, "kor": w.turn, "pending_perks": g.pending_perks, "daily": g.daily},
+		"jatek": {"melyseg": w.dungeon_level, "emelet": w.emelet, "nehezseg": w.diff, "kor": w.turn, "pending_perks": g.pending_perks, "daily": g.daily},
 		"hos": {"cls": p.cls, "x": p.x, "y": p.y, "col": p.col, "facing": p.facing,
 			"max_hp": p.max_hp, "hp": p.hp, "base_atk": p.base_atk, "base_mag": p.base_mag, "base_def": p.base_def,
 			"lives": p.lives, "xp": p.xp, "plvl": p.plvl, "xp_next": p.xp_next, "poison": p.poison,
@@ -449,6 +449,8 @@ static func load_run(id := "") -> Game:
 	w.decor = _dict_list(mp.get("decor"), {"x": 0, "y": 0, "type": "bones", "seed": 0.0})
 	w.torches = _dict_list(mp.get("torches"), {"x": 0, "y": 0, "ph": 0.0})
 	w.dungeon_level = clampi(int(jt.get("melyseg", 1)), 1, Data.MAX_LEVEL)
+	# a régi (emelet nélküli) mentésekben a zóna egyetlen pályája a főellenségé volt
+	w.emelet = clampi(int(jt.get("emelet", Data.emeletek(w.dungeon_level))), 1, Data.emeletek(w.dungeon_level))
 	w.diff = str(jt.get("nehezseg", "normal"))
 	if not Data.DIFF.has(w.diff):
 		w.diff = "normal"

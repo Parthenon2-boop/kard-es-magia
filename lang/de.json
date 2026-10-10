@@ -684,5 +684,10 @@
 	"set.tempo.d": "Wenn du stehst, ziehen die Gegner so oft von selbst.",
 	"set.tempo.0": "Langsam",
 	"set.tempo.1": "Mittel",
-	"set.tempo.2": "Schnell"
+	"set.tempo.2": "Schnell",
+
+	"hud.emelet": "Ebene {0}/{1}",
+	"msg.emelet": "▼ Du steigst hinab: Ebene {0}/{1}.",
+	"banner.emelet": "Tiefere Ebene",
+	"banner.emelet.ur": "Die letzte Ebene — hier wartet der Herr der Zone"
 }

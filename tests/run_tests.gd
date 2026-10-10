@@ -795,11 +795,27 @@ func test_save() -> void:
 	g3.start("Lovag", "normal")
 	ok(not SaveGame.has_save(), "induláskor (autosave nélkül) még nincs mentés")
 	g3.autosave = true
+	ok(g3.world.emelet == 1 and g3.world.boss() == null, "a kaland a zóna első emeletén indul, ott nincs főellenség")
+	ok(not g3.next_level() and g3.world.dungeon_level == 1 and g3.world.emelet == 2, "előbb a zóna második emelete jön")
+	ok(g3.world.boss() == null, "a közbülső emeleten sincs főellenség")
+	SaveGame.refresh()
+	var g4e := SaveGame.load_run()
+	ok(g4e != null and g4e.world.emelet == 2 and g4e.world.dungeon_level == 1, "a mentés az emeletet is őrzi")
+	while g3.world.emelet < Data.emeletek(1):
+		g3.next_level()
+	ok(g3.world.boss() != null, "a zóna ura az utolsó emeleten vár")
 	ok(not g3.next_level(), "lejjebb a 2. mélységbe")
 	SaveGame.refresh()
 	ok(SaveGame.has_save(), "a szintváltás automatikusan mentett")
 	var g4 := SaveGame.load_run()
-	ok(g4 != null and g4.world.dungeon_level == 2, "az automata mentés a 2. mélységet őrzi")
+	ok(g4 != null and g4.world.dungeon_level == 2 and g4.world.emelet == 1, "az automata mentés a 2. mélységet őrzi")
+	var lepesek := 0
+	var gv := Game.new()
+	gv.start("Lovag", "normal")
+	while not gv.next_level() and lepesek < 50:
+		lepesek += 1
+	ok(Data.palyak() == 15 and lepesek == Data.palyak() - 1, "a kaland %d pályából áll (%d lejárat)" % [Data.palyak(), lepesek])
+	ok(Data.EMELET_DB.size() == Data.MAX_LEVEL, "minden zónának megvan az emeletszáma")
 
 	# ── sérült / régi mentés: nincs folytatás
 	SaveGame.erase_all()
@@ -1667,6 +1683,8 @@ func test_story() -> void:
 	var gs2 := Game.new()
 	gs2.autosave = false
 	gs2.start("Íjász", "normal")
+	while gs2.world.boss() == null:
+		gs2.next_level()   # a zóna ura az utolsó emeleten van
 	var ps := gs2.player
 	ps.bio = 17; ps.rez = 9; ps.kills = 23; ps.dash_cd = 3; ps.skill_cd = 5; ps.rooted = 1; ps.dir_x = 0; ps.dir_y = -1
 	gs2.world.hazards.append({"x": ps.x, "y": ps.y, "kind": "acid", "ttl": 4, "dmg": 3, "warn": false})
@@ -2017,6 +2035,10 @@ func test_uj() -> void:
 	ok(g1.player.max_hp == Data.CLASSES["Lovag"]["hp"], "a napi kihívásban a Műtőterem fejlesztései nem számítanak")
 	g1.next_level()
 	g2.next_level()
+	ok(g1.world.tiles == g2.world.tiles and g1.world.emelet == 2, "a következő emelet is közös")
+	while g1.world.dungeon_level < 2:
+		g1.next_level()
+		g2.next_level()
 	ok(g1.world.tiles == g2.world.tiles and g1.world.dungeon_level == 2, "a következő zóna is közös")
 	var gn := Game.new()
 	gn.autosave = false

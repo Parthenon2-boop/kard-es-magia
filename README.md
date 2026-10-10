@@ -277,3 +277,9 @@ A szörnyek, a főellenségek (mindkét fázis), a hősök, Nora és a Próféta
 A hős festett képe a viselt **test**-darabot követi (`hos_<kaszt>_<test-darab>.png`), minden test-darabhoz
 egy teljes öltözet tartozik. A forráslapok a `tools/figuralapok` mappában vannak; újravágás:
 `godot --headless --path . -s res://tools/figura_racs.gd -- <lap> <oszlop>x<sor> <nevek> - fust`
+
+## Pályák és mozgás
+
+A kaland `Data.MAX_LEVEL` zónából áll, zónánként `Data.EMELETEK` emelettel (most 4 × 2 = 8 pálya); a zóna ura mindig
+az utolsó emeleten vár, a felsőbb emelet lejáratát egy őr vigyázza. A festett figurák lépnek (`Figura._rajz`):
+a lépés üteme a figura helyéből (`rx + ry`) adódik, ezért pontosan a mozgás sebességéhez igazodik.

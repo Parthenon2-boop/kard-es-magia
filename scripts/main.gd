@@ -1543,7 +1543,7 @@ func _hud_sig() -> Array:
 	var p := game.player
 	var w := game.world
 	return [W, H, p.hp, p.max_hp, p.xp, p.xp_next, p.lives, p.poison, p.regen, p.lifesteal,
-		p.cls, p.plvl, p.atk, p.mag, p.def, p.msg_seq, w.turn, w.dungeon_level, w.diff,
+		p.cls, p.plvl, p.atk, p.mag, p.def, p.msg_seq, w.turn, w.dungeon_level, w.emelet, w.diff,
 		p.weapon, p.armor, p.shield, game.on_stair(), binds["stair"], p.gold, p.perk_seq, Lang.seq,
 		p.relic_seq, p.organs, p.steam_charge,
 		p.dash_cd, p.skill_cd, p.bio, p.rez, p.stun, p.rooted, Render.potions(p), game.can_descend(),
@@ -1628,10 +1628,14 @@ func _update_motion(now: float) -> void:
 			m.rx = _glide(m.rx, m.x, mon_d)
 			m.ry = _glide(m.ry, m.y, mon_d)
 	if p.lunge > 0:
-		p.lunge = maxf(0.0, p.lunge - dt * 0.008)
+		p.lunge = maxf(0.0, p.lunge - dt * 0.0062)
+	# a megfordulás nem ugrás: a figura egy pillanat alatt átfordul (rf: -1..1), az életerő-csík pedig lágyan fogy
+	p.rf = move_toward(p.rf, float(signi(p.facing)) if p.facing != 0 else 1.0, dt / 55.0)
 	for m in game.world.mons:
 		if m.lunge > 0:
-			m.lunge = maxf(0.0, m.lunge - dt * 0.007)
+			m.lunge = maxf(0.0, m.lunge - dt * 0.0056)
+		m.rf = move_toward(m.rf, float(signi(m.facing)) if m.facing != 0 else 1.0, dt / 60.0)
+		m.hp_r = float(m.hp) if m.hp_r < 0.0 or m.hp_r < m.hp else maxf(float(m.hp), m.hp_r - maxf(0.02, (m.hp_r - m.hp) * dt / 140.0))
 	var t := float(Data.TILE)
 	var gh := H - Data.HUD_H
 	var cam_w := ceilf(W / t) + 2

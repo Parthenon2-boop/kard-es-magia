@@ -37,6 +37,8 @@ var corr := 0        # marás: halmozódik, rétegenként -2 védelem
 var bleed := 0       # vérzés: halmozódik, körönként sebez és fogy
 # ── csak a kirajzoláshoz ──
 var lunge := 0.0     # támadáskor előrelendül (1 -> 0)
+var rf := 1.0        # a kirajzolt irány: a megforduláskor -1 és 1 között siklik át
+var hp_r := -1.0     # az életerő-csíkon mutatott érték (lágyan követi a valódit)
 var lunge_dx := 0
 var lunge_dy := 0
 var morph_ms := 0.0  # főellenség: mikor váltott fázist (átalakulás-villanás)

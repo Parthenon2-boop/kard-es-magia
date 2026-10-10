@@ -23,6 +23,7 @@ var vis := PackedByteArray()       # most látható mezők
 var explored := PackedByteArray()  # bejárt mezők (szintenként külön)
 var fade := PackedFloat32Array()   # mezőnkénti, lágyan változó fényerő (0..1)
 var dungeon_level := 1
+var emelet := 1             # a zónán belüli emelet (1..Data.emeletek(zóna)); a zóna ura az utolsón van
 var diff := "normal"
 var turn := 0
 var player: Player
@@ -31,13 +32,24 @@ var explored_seq := 0       # nő, ha ÚJ mező derül ki (az automata térkép 
 var new_explored := PackedInt32Array()   # a térkép még be nem rajzolt új mezői
 
 
-static func create(p: Player, dl: int, df: String) -> World:
+## em: a zónán belüli emelet; 0 = a zóna utolsó (főellenséges) emelete
+static func create(p: Player, dl: int, df: String, em: int = 0) -> World:
 	var w := World.new()
+	var utolso := Data.emeletek(dl)
+	em = utolso if em <= 0 else clampi(em, 1, utolso)
 	var g := Dungeon.generate_map(dl)
 	w.tiles = g["tiles"]
 	w.rooms = g["rooms"]
 	w.room_kind = Dungeon.mark_rooms(w.rooms)
-	w.mons = Dungeon.spawn_mons(w.rooms, dl, df, w.room_kind)
+	w.mons = Dungeon.spawn_mons(w.rooms, dl, df, w.room_kind, em >= utolso)
+	# mélyebb emeleten a szörnyek erősebbek (a zóna ura és a mini-boss nem változik)
+	if em > 1:
+		for mo in w.mons:
+			if mo.boss or mo.mini:
+				continue
+			mo.max_hp = int(round(mo.max_hp * (1.0 + Data.EMELET_HP * (em - 1))))
+			mo.hp = mo.max_hp
+			mo.atk = int(round(mo.atk * (1.0 + Data.EMELET_ATK * (em - 1))))
 	w.chests = Dungeon.spawn_chests(w.rooms, dl, w.room_kind)
 	Dungeon.ensure_open(w.tiles, w.rooms, w.chests)
 	# a titkos ajtók CSAK nyitnak (falat bontanak), ezért a bejárhatóság-biztosíték után jöhetnek
@@ -56,6 +68,7 @@ static func create(p: Player, dl: int, df: String) -> World:
 	w.decor = Dungeon.spawn_decor(w.tiles, w.rooms, dl)
 	w.torches = Dungeon.seed_torches(w.rooms)
 	w.dungeon_level = dl
+	w.emelet = em
 	w.diff = df
 	w.player = p
 	w.explored.resize(Data.MAP_W * Data.MAP_H)

@@ -78,11 +78,11 @@ func start(cls: String, diff: String, napi := "") -> void:
 
 
 ## Új zóna. A napi kihívásban a pálya a nap magjából épül: aznap mindenkinek ugyanaz.
-func _uj_vilag(n: int, diff: String) -> World:
+func _uj_vilag(n: int, diff: String, em: int = 1) -> World:
 	if daily == "":
-		return World.create(player, n, diff)
-	seed(Daily.mag(daily) + n * 7919)
-	var w := World.create(player, n, diff)
+		return World.create(player, n, diff, em)
+	seed(Daily.mag(daily) + n * 7919 + em * 104729)
+	var w := World.create(player, n, diff, em)
 	randomize()   # a harc szerencséje már nem közös
 	return w
 
@@ -104,6 +104,17 @@ func _level_up() -> void:
 
 ## true, ha a játék véget ért (győzelem)
 func next_level() -> bool:
+	# a zónán belül előbb a következő emelet jön; a zóna ura az utolsón van
+	if world.emelet < Data.emeletek(world.dungeon_level):
+		var em := world.emelet + 1
+		player.add_msg(Lang.ref("msg.emelet", em, Data.emeletek(world.dungeon_level)), Story.zone(world.dungeon_level)["acc"])
+		world = _uj_vilag(world.dungeon_level, world.diff, em)
+		fx.clear()
+		banner = {"k": "zone." + Story.zone_id(world.dungeon_level), "s": "banner.emelet.ur" if em >= Data.emeletek(world.dungeon_level) else "banner.emelet", "col": Story.zone(world.dungeon_level)["acc"],
+			"n": world.dungeon_level, "t0": now_ms.call()}
+		if autosave:
+			SaveGame.save_run(self)
+		return false
 	var n := world.dungeon_level + 1
 	if n > Data.MAX_LEVEL:
 		if autosave:
