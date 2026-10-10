@@ -1,6 +1,7 @@
 extends SceneTree
 ## Figuralap (egy képen több festett figura, egyszínű háttéren, rácsban) szétvágása külön figurákra.
-##   godot --headless --path . -s res://tools/figura_racs.gd -- <kép> <oszlop>x<sor> <név1,név2,...> [célmappa] [fust]
+##   godot --headless --path . -s res://tools/figura_racs.gd -- <kép> <oszlop>x<sor> <név1,név2,...> [célmappa] [fust] [magasság] [mind]
+## A "mind" kapcsolóval a cella minden alakja megmarad (nem csak a legnagyobb összefüggő folt).
 ## A "fust" kapcsoló a figura belsejében is kiszedi a háttér áttetsző visszfényét (gőz, füst, szikra) —
 ## csak a világos képpontokat érinti, a sötét lila ruha megmarad.
 ## A neveket sorfolytonosan kell megadni (balról jobbra, fentről le); a "-" nevű cella kimarad.
@@ -33,13 +34,14 @@ func _init() -> void:
 	var fust := a.size() >= 5 and str(a[4]) == "fust"
 	if a.size() >= 6 and str(a[5]).is_valid_int():
 		MAGAS = int(a[5])
+	var mind := a.size() >= 7 and str(a[6]) == "mind"     # több különálló alak egy cellában (pl. menetelő sereg): mind marad
 	var racs := false
 	DirAccess.make_dir_recursive_absolute(cel)
 	_kulcs(img)
 	_perem(img)
 	if fust:
 		_fust(img)
-	var dobozok := _foltok(img, cols * rows)
+	var dobozok := [] if mind else _foltok(img, cols * rows)
 	if dobozok.size() != cols * rows:
 		print("  a foltok száma ", dobozok.size(), " (várt: ", cols * rows, ") — a rács celláit használom")
 		dobozok = []
@@ -57,9 +59,10 @@ func _init() -> void:
 		if nev == "-" or nev == "":
 			continue
 		var resz := img.get_region(dobozok[i])
-		if racs:
+		if racs and not mind:
 			_szel_le(resz)
-		_fo_marad(resz)
+		if not mind:
+			_fo_marad(resz)
 		var r2 := resz.get_used_rect()
 		if r2.size.x < 8 or r2.size.y < 8:
 			print("  üres cella: ", nev)
